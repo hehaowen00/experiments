@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Scrollable Spreadsheet</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 20px;
+    }
+
+    #formulaBar {
+      width: 100%;
+      padding: 8px;
+      font-size: 16px;
+      margin-bottom: 10px;
+      box-sizing: border-box;
+    }
+
+    .controls {
+      margin-bottom: 10px;
+    }
+
+    .controls button {
+      padding: 6px 10px;
+      font-size: 14px;
+      margin-right: 5px;
+    }
+
+    .container {
+      width: 100%;
+      max-height: 500px;
+      overflow: auto;
+      position: relative;
+      border: 1px solid #ccc;
+    }
+
+    .spreadsheet {
+      border-collapse: collapse;
+      table-layout: fixed;
+      width: max-content;
+    }
+
+    .spreadsheet th,
+    .spreadsheet td {
+      border: 1px solid #ccc;
+      text-align: center;
+      width: 60px;
+      height: 20px;
+      position: relative;
+      overflow: hidden;
+      background-color: white;
+    }
+
+    .spreadsheet th {
+      background-color: #f3f3f3;
+      z-index: 2;
+    }
+
+    .spreadsheet th.sticky-col {
+      position: sticky;
+      left: 0;
+      z-index: 3;
+      background-color: #f9f9f9;
+    }
+
+    .spreadsheet thead th {
+      position: sticky;
+      top: 0;
+      z-index: 4;
+    }
+
+    .spreadsheet .cell {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+
+    .selected {
+      outline: 2px solid #007bff;
+    }
+  </style>
+</head>
+<body>
+
+<h2>Scrollable Spreadsheet</h2>
+
+<input type="text" id="formulaBar" placeholder="Edit"/>
+
+<div class="controls">
+  <button onclick="addRow()">Add Row</button>
+  <button onclick="addColumn()">Add Column</button>
+</div>
+
+<div class="container">
+  <table class="spreadsheet" id="sheet"></table>
+</div>
+
+<script>
+  let rows = 30;
+  let cols = 20;
+  let selected = { row: 0, col: 0 };
+  const cellData = {};
+
+  function colLabel(index) {
+    let label = '';
+    index++;
+    while (index > 0) {
+      let rem = (index - 1) % 26;
+      label = String.fromCharCode(65 + rem) + label;
+      index = Math.floor((index - 1) / 26);
+    }
+    return label;
+  }
+
+  function cellRef(row, col) {
+    return `${colLabel(col)}${row + 1}`;
+  }
+
+  function onCellChange(ref, value) {
+    console.log("Edited", { cell: ref, value });
+  }
+
+  function selectCell(row, col) {
+    const prev = document.querySelector('.cell.selected');
+    if (prev) prev.classList.remove('selected');
+
+    const cell = document.querySelector(`.cell[data-row="${row}"][data-col="${col}"]`);
+    if (cell) {
+      cell.classList.add('selected');
+      selected = { row, col };
+      const ref = cellRef(row, col);
+      document.getElementById('formulaBar').value = cellData[ref] || '';
+      document.getElementById('formulaBar').focus();
+    }
+  }
+
+  function buildGrid() {
+    const table = document.getElementById('sheet');
+    table.innerHTML = '';
+
+    const thead = document.createElement('thead');
+    const header = document.createElement('tr');
+
+    const corner = document.createElement('th');
+    corner.classList.add('sticky-col');
+    header.appendChild(corner);
+
+    for (let c = 0; c < cols; c++) {
+      const th = document.createElement('th');
+      th.textContent = colLabel(c);
+      header.appendChild(th);
+    }
+    thead.appendChild(header);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+
+    for (let r = 0; r < rows; r++) {
+      const tr = document.createElement('tr');
+
+      const rowHeader = document.createElement('th');
+      rowHeader.textContent = r + 1;
+      rowHeader.classList.add('sticky-col');
+      tr.appendChild(rowHeader);
+
+      for (let c = 0; c < cols; c++) {
+        const td = document.createElement('td');
+        const div = document.createElement('div');
+        div.className = 'cell';
+        div.dataset.row = r;
+        div.dataset.col = c;
+        div.textContent = cellData[cellRef(r, c)] || '';
+
+        div.addEventListener('click', () => selectCell(r, c));
+
+        td.appendChild(div);
+        tr.appendChild(td);
+      }
+
+      tbody.appendChild(tr);
+    }
+
+    table.appendChild(tbody);
+
+    selectCell(selected.row, selected.col);
+  }
+
+  function updateCell(row, col, value) {
+    const ref = cellRef(row, col);
+    cellData[ref] = value;
+    const cell = document.querySelector(`.cell[data-row="${row}"][data-col="${col}"]`);
+    if (cell) cell.textContent = value;
+    onCellChange(ref, value);
+  }
+
+  function addRow() {
+    rows++;
+    buildGrid();
+  }
+
+  function addColumn() {
+    cols++;
+    buildGrid();
+  }
+
+  document.getElementById('formulaBar').addEventListener('input', (e) => {
+    const { row, col } = selected;
+    updateCell(row, col, e.target.value);
+  });
+
+  document.addEventListener('keydown', (e) => {
+    const { row, col } = selected;
+    let newRow = row, newCol = col;
+
+    switch (e.key) {
+      case 'ArrowUp': newRow = Math.max(0, row - 1); break;
+      case 'ArrowDown': newRow = Math.min(rows - 1, row + 1); break;
+      case 'ArrowLeft': newCol = Math.max(0, col - 1); break;
+      case 'ArrowRight': newCol = Math.min(cols - 1, col + 1); break;
+      default: return;
+    }
+
+    selectCell(newRow, newCol);
+    e.preventDefault();
+  });
+
+  buildGrid();
+</script>
+
+</body>
+</html>
