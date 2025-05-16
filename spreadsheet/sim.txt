@@ -1,5 +1,0 @@
-LOAD("player_stats.csv")
-
-VAR AvgPoints = MEAN(GROUPBY("PlayerID"), "PointsTotal")
-
-VAR LEBRON = SELECT(AvgPoints, "PlayerID" == "2544")

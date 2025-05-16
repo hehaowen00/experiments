@@ -1,3 +1,3 @@
-module github.com/hehaowen00/workspace/lisp
+module lisp
 
 go 1.23.0
