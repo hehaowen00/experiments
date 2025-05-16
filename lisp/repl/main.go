@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/hehaowen00/workspace/lisp"
+	"lisp"
 )
 
 func main() {
