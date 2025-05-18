@@ -1,0 +1,346 @@
+<!doctype html>
+<html class="no-js" lang="">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="x-ua-compatible" content="ie=edge">
+    <title>City Simulation</title>
+    <meta name="description" content="City simulation game">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-bottom: 20px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        button {
+            padding: 8px 16px;
+            margin-right: 10px;
+            margin-bottom: 20px;
+            cursor: pointer;
+        }
+        .container {
+            display: flex;
+            gap: 20px;
+        }
+        .left-panel {
+            flex: 1;
+        }
+        .right-panel {
+            flex: 1;
+        }
+        .world-map {
+            display: grid;
+            grid-template-columns: repeat(10, 30px);
+            grid-gap: 2px;
+            margin-top: 20px;
+        }
+        .tile {
+            width: 30px;
+            height: 30px;
+            background-color: #7cba6b;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            cursor: pointer;
+        }
+        .tile.building {
+            background-color: #a67c52;
+        }
+        .tile.road {
+            background-color: #555;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="left-panel">
+            <h2>Citizens</h2>
+            <table id="citizens-table">
+                <thead>
+                    <tr>
+                        <th>id</th>
+                        <th>name</th>
+                        <th>age</th>
+                        <th>occupation</th>
+                        <th>activity</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+
+            <button id="add-person">Add Person</button>
+            <button id="place-house">Place House</button>
+            <button id="next-day">Next Day</button>
+
+            <h2>World Map</h2>
+            <div class="world-map" id="world-map"></div>
+        </div>
+
+        <div class="right-panel">
+            <h2>Resources</h2>
+            <table id="resources-table">
+                <thead>
+                    <tr>
+                        <th>item</th>
+                        <th>count</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+
+            <h2>Buildings</h2>
+            <table id="buildings-table">
+                <thead>
+                    <tr>
+                        <th>id</th>
+                        <th>type</th>
+                        <th>location</th>
+                        <th>occupants</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+
+    <script type="text/javascript">
+        // Game state
+        const JOBS = {
+            1: "Farmer",
+            2: "Woodcutter",
+            3: "Miner",
+            4: "Builder",
+            5: "Merchant"
+        };
+
+        const BUILDINGS = {
+            HOUSE: { id: 1, name: "House", cost: { wood: 10 } },
+            FARM: { id: 2, name: "Farm", cost: { wood: 15, stone: 5 } },
+            MINE: { id: 3, name: "Mine", cost: { wood: 20, stone: 10 } }
+        };
+
+        const RESOURCES = {
+            wood: 100,
+            food: 50,
+            stone: 30,
+            gold: 10
+        };
+
+        let citizens = [
+            { id: 1, name: "Alice", age: 25, occupation: 1, activity: "Farming", home: null },
+            { id: 2, name: "Bob", age: 30, occupation: 2, activity: "Chopping wood", home: null }
+        ];
+
+        let buildings = [];
+        let worldMap = Array(10).fill().map(() => Array(10).fill(0)); // 0 = grass
+
+        // World class
+        class World {
+            constructor() {
+                this.day = 1;
+                this.selectedBuilding = null;
+                this.initMap();
+                this.renderAll();
+            }
+
+            initMap() {
+                const mapElement = document.getElementById('world-map');
+                mapElement.innerHTML = '';
+
+                for (let y = 0; y < 10; y++) {
+                    for (let x = 0; x < 10; x++) {
+                        const tile = document.createElement('div');
+                        tile.className = 'tile';
+                        tile.dataset.x = x;
+                        tile.dataset.y = y;
+
+                        if (worldMap[x][y] === 1) {
+                            tile.classList.add('building');
+                            tile.textContent = 'H';
+                        } else if (worldMap[x][y] === 2) {
+                            tile.classList.add('road');
+                            tile.textContent = '#';
+                        }
+
+                        tile.addEventListener('click', () => this.handleTileClick(x, y));
+                        mapElement.appendChild(tile);
+                    }
+                }
+            }
+
+            handleTileClick(x, y) {
+                if (this.selectedBuilding) {
+                    if (this.canPlaceBuilding(x, y)) {
+                        this.placeBuilding(x, y, this.selectedBuilding);
+                        this.selectedBuilding = null;
+                    } else {
+                        alert("Cannot place building here!");
+                    }
+                }
+            }
+
+            canPlaceBuilding(x, y) {
+                return worldMap[x][y] === 0; // Only on grass
+            }
+
+            placeBuilding(x, y, buildingType) {
+                worldMap[x][y] = 1; // Mark as building
+
+                const building = {
+                    id: buildings.length + 1,
+                    type: buildingType.id,
+                    x: x,
+                    y: y,
+                    occupants: []
+                };
+
+                buildings.push(building);
+                this.deductResources(buildingType.cost);
+                this.renderAll();
+            }
+
+            deductResources(cost) {
+                for (const [resource, amount] of Object.entries(cost)) {
+                    RESOURCES[resource] -= amount;
+                }
+            }
+
+            addCitizen() {
+                const names = ["Charlie", "David", "Eve", "Frank", "Grace"];
+                const randomName = names[Math.floor(Math.random() * names.length)];
+                const randomAge = Math.floor(Math.random() * 30) + 18;
+                const randomJob = Math.floor(Math.random() * 5) + 1;
+
+                citizens.push({
+                    id: citizens.length + 1,
+                    name: randomName,
+                    age: randomAge,
+                    occupation: randomJob,
+                    activity: "Idle",
+                    home: null
+                });
+
+                this.renderAll();
+            }
+
+            nextDay() {
+                this.day++;
+
+                // Citizens work
+                citizens.forEach(citizen => {
+                    switch (citizen.occupation) {
+                        case 1: // Farmer
+                            RESOURCES.food += 2;
+                            citizen.activity = "Harvesting crops";
+                            break;
+                        case 2: // Woodcutter
+                            RESOURCES.wood += 3;
+                            citizen.activity = "Chopping wood";
+                            break;
+                        case 3: // Miner
+                            RESOURCES.stone += 1;
+                            RESOURCES.gold += 0.1;
+                            citizen.activity = "Mining";
+                            break;
+                        default:
+                            citizen.activity = "Idle";
+                    }
+                });
+
+                // Citizens consume food
+                RESOURCES.food = Math.max(0, RESOURCES.food - citizens.length);
+
+                this.renderAll();
+            }
+
+            renderCitizens() {
+                const table = document.querySelector('#citizens-table tbody');
+                table.innerHTML = '';
+
+                citizens.forEach(citizen => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${citizen.id}</td>
+                        <td>${citizen.name}</td>
+                        <td>${citizen.age}</td>
+                        <td>${JOBS[citizen.occupation]}</td>
+                        <td>${citizen.activity}</td>
+                    `;
+                    table.appendChild(row);
+                });
+            }
+
+            renderResources() {
+                const table = document.querySelector('#resources-table tbody');
+                table.innerHTML = '';
+
+                for (const [resource, amount] of Object.entries(RESOURCES)) {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${resource}</td>
+                        <td>${Math.floor(amount)}</td>
+                    `;
+                    table.appendChild(row);
+                }
+            }
+
+            renderBuildings() {
+                const table = document.querySelector('#buildings-table tbody');
+                table.innerHTML = '';
+
+                buildings.forEach(building => {
+                    const row = document.createElement('tr');
+                    const buildingName = Object.values(BUILDINGS).find(b => b.id === building.type).name;
+                    row.innerHTML = `
+                        <td>${building.id}</td>
+                        <td>${buildingName}</td>
+                        <td>(${building.x}, ${building.y})</td>
+                        <td>${building.occupants.length}</td>
+                    `;
+                    table.appendChild(row);
+                });
+            }
+
+            renderAll() {
+                this.renderCitizens();
+                this.renderResources();
+                this.renderBuildings();
+                this.initMap();
+
+                document.getElementById('place-house').textContent =
+                    this.selectedBuilding ? `Placing ${this.selectedBuilding.name} (Click map)` : "Place House";
+            }
+        }
+
+        // Initialize the world
+        let world;
+
+        window.onload = () => {
+            world = new World();
+
+            // Event listeners
+            document.getElementById('add-person').addEventListener('click', () => world.addCitizen());
+            document.getElementById('place-house').addEventListener('click', () => {
+                world.selectedBuilding = BUILDINGS.HOUSE;
+                world.renderAll();
+            });
+            document.getElementById('next-day').addEventListener('click', () => world.nextDay());
+        };
+    </script>
+</body>
+</html>
