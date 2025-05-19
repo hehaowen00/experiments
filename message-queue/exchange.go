@@ -2,20 +2,23 @@ package messagequeue
 
 import (
 	"database/sql"
+	"log"
 	"os"
 	"sync"
 	"sync/atomic"
+
+	_ "github.com/mattn/go-sqlite3"
 )
 
 type Exchange struct {
 	metadata *sql.DB
 	topics   map[string]*topic
 	rw       sync.RWMutex
-	in       chan []byte
 	running  atomic.Bool
 }
 
 func NewExchange() (*Exchange, error) {
+	log.Println("creating exchange...")
 	if _, err := os.Stat("./_msq_"); os.IsNotExist(err) {
 		err := os.MkdirAll("./_msq_", 0777)
 		if err != nil {
@@ -28,11 +31,33 @@ func NewExchange() (*Exchange, error) {
 		panic(err)
 	}
 
-	metadataDB.Exec(`create table if not exist topics (id text not null, name text not null, primary key (id))`)
+	_, err = metadataDB.Exec(`create table if not exists topics (id text not null, name text not null, primary key (id))`)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := metadataDB.Query(`select id, name from topics`)
+	if err != nil {
+		panic(err)
+	}
+	defer rows.Close()
 
 	ex := &Exchange{
 		metadata: metadataDB,
 		topics:   map[string]*topic{},
+	}
+
+	for rows.Next() {
+		id := ""
+		name := ""
+		rows.Scan(&id, &name)
+
+		t, err := newTopic(name)
+		if err != nil {
+			return nil, err
+		}
+
+		ex.topics[name] = t
 	}
 
 	return ex, nil
@@ -55,13 +80,17 @@ func (ex *Exchange) Stop() {
 }
 
 func (ex *Exchange) CreateTopic(topic string) error {
+	ex.rw.Lock()
+	defer ex.rw.Unlock()
+
 	if !ex.running.Load() {
 		return nil
 	}
 
 	_, err := ex.metadata.Exec(`insert into topics (id, name) values (?, ?)`, 0, topic)
 	if err != nil {
-		return err
+		err = nil
+		// return err
 	}
 
 	t, err := newTopic(topic)
@@ -114,11 +143,52 @@ func (ex *Exchange) NewPublisher(
 
 func (ex *Exchange) NewConsumer(
 	topic string,
+	channel string,
 	handler func([]byte) error,
 ) (*Consumer, error) {
 	c := &Consumer{
 		handler: handler,
 	}
+
+	ex.rw.RLock()
+	t, ok := ex.topics[topic]
+	if !ok {
+		ex.rw.RUnlock()
+
+		err := ex.CreateTopic(topic)
+		if err != nil {
+			return nil, err
+		}
+
+		t, ok = ex.topics[topic]
+	} else {
+		ex.rw.RUnlock()
+	}
+
+	if !ok {
+		log.Panicln("topic not found:", topic)
+	}
+
+	go func() {
+		for {
+			id, msg, err := t.readNext(channel)
+			if err != nil {
+				log.Println(err)
+				break
+			}
+
+			err = c.handler(msg)
+			if err != nil {
+				return
+			}
+
+			err = t.markRead(channel, id)
+			if err != nil {
+				log.Println(err)
+				break
+			}
+		}
+	}()
 
 	return c, nil
 }
