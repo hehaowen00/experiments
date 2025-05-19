@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"log"
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -58,6 +59,7 @@ func NewExchange() (*Exchange, error) {
 		}
 
 		ex.topics[name] = t
+		t.run()
 	}
 
 	return ex, nil
@@ -84,6 +86,18 @@ func (ex *Exchange) CreateTopic(topic string) error {
 	defer ex.rw.Unlock()
 
 	if !ex.running.Load() {
+		return ERR_STOPPED
+	}
+
+	if strings.HasSuffix(topic, "#temp") {
+		t, err := newTopic(topic)
+		if err != nil {
+			return err
+		}
+
+		ex.topics[topic] = t
+		t.run()
+
 		return nil
 	}
 
@@ -99,13 +113,14 @@ func (ex *Exchange) CreateTopic(topic string) error {
 	}
 
 	ex.topics[topic] = t
+	t.run()
 
 	return nil
 }
 
 func (ex *Exchange) ClearTopic(topic string) error {
 	if !ex.running.Load() {
-		return nil
+		return ERR_STOPPED
 	}
 
 	ex.rw.RLock()
@@ -117,7 +132,7 @@ func (ex *Exchange) ClearTopic(topic string) error {
 
 func (ex *Exchange) DeleteTopic(topic string) error {
 	if !ex.running.Load() {
-		return nil
+		return ERR_STOPPED
 	}
 
 	return nil
@@ -125,7 +140,7 @@ func (ex *Exchange) DeleteTopic(topic string) error {
 
 func (ex *Exchange) DeleteConsumer(topic string, channel string) error {
 	if !ex.running.Load() {
-		return nil
+		return ERR_STOPPED
 	}
 
 	return nil
@@ -134,6 +149,10 @@ func (ex *Exchange) DeleteConsumer(topic string, channel string) error {
 func (ex *Exchange) NewPublisher(
 	topics ...string,
 ) (*Publisher, error) {
+	if !ex.running.Load() {
+		return nil, ERR_STOPPED
+	}
+
 	p := &Publisher{
 		ex: ex,
 	}
@@ -144,8 +163,12 @@ func (ex *Exchange) NewPublisher(
 func (ex *Exchange) NewConsumer(
 	topic string,
 	channel string,
-	handler func([]byte) error,
+	handler func(id string, payload []byte) error,
 ) (*Consumer, error) {
+	if !ex.running.Load() {
+		return nil, ERR_STOPPED
+	}
+
 	c := &Consumer{
 		handler: handler,
 	}
@@ -177,7 +200,7 @@ func (ex *Exchange) NewConsumer(
 				break
 			}
 
-			err = c.handler(msg)
+			err = c.handler(id, msg)
 			if err != nil {
 				return
 			}

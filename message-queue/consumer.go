@@ -1,7 +1,7 @@
 package messagequeue
 
 type Consumer struct {
-	handler func([]byte) error
+	handler func(string, []byte) error
 }
 
 func (c *Consumer) Stop() error {

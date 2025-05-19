@@ -20,21 +20,27 @@ func main() {
 		panic(err)
 	}
 
-	pub, err := ex.NewPublisher("test")
-	if err != nil {
-		panic(err)
-	}
-
-	con, err := ex.NewConsumer("test", "testing", func(b []byte) error {
-		log.Println(string(b))
-		return nil
-	})
+	con, err := ex.NewConsumer(
+		"test",
+		"testing",
+		func(id string, b []byte) error {
+			log.Println(id, string(b))
+			return nil
+		},
+	)
 	if err != nil {
 		panic(err)
 	}
 	defer con.Stop()
 
 	log.Println("publishing message...")
+
+	pub, err := ex.NewPublisher("test")
+	if err != nil {
+		panic(err)
+	}
+
+	_ = pub
 
 	err = pub.Publish("test", []byte("hello world!"))
 	if err != nil {

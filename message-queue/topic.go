@@ -2,7 +2,8 @@ package messagequeue
 
 import (
 	"database/sql"
-	"log"
+	"errors"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -11,25 +12,31 @@ import (
 	"github.com/segmentio/ksuid"
 )
 
+var ERR_STOPPED = errors.New("stopped")
+
 type topic struct {
-	db            *sql.DB
-	name          string
-	last          string
-	consumers     []chan struct{}
-	consumersRead map[string]string
-	running       atomic.Bool
-	// in            chan []byte
-	// waiting       chan chan struct{}
-	rw sync.RWMutex
+	db        *sql.DB
+	name      string
+	last      string
+	consumers []chan struct{}
+	running   atomic.Bool
+	rw        sync.RWMutex
+
+	log     []string
+	entries map[string][]byte
 }
 
 func newTopic(name string) (*topic, error) {
-	db, err := sql.Open("sqlite3", "./_msq_/"+name+".db")
-	if err != nil {
-		return nil, err
+	if strings.HasSuffix(name, "#temp") {
+		t := &topic{
+			name:      name,
+			consumers: []chan struct{}{},
+		}
+
+		go t.gc()
 	}
 
-	_, err = db.Exec(`create table if not exists topics (id text not null, name text not null, primary key (id))`)
+	db, err := sql.Open("sqlite3", "./_msq_/"+name+".db")
 	if err != nil {
 		return nil, err
 	}
@@ -44,25 +51,70 @@ func newTopic(name string) (*topic, error) {
 		return nil, err
 	}
 
-	return &topic{
-		name: name,
-		db:   db,
-		// in:            make(chan []byte),
-		consumers:     []chan struct{}{},
-		consumersRead: map[string]string{},
-	}, nil
+	last := ""
+	err = db.QueryRow(`select max(last_read) from channels`).Scan(&last)
+	if err != sql.ErrNoRows && err != nil {
+		return nil, err
+	}
+
+	t := &topic{
+		name:      name,
+		db:        db,
+		consumers: []chan struct{}{},
+		last:      last,
+	}
+
+	go t.gc()
+
+	return t, nil
+}
+
+func (t *topic) run() {
+	t.running.Store(true)
+}
+
+func (t *topic) gc() {
+	ch := newClosedChan[time.Time]()
+	instant := ch
+
+	for {
+		select {
+		case <-instant:
+			last := ""
+			instant = time.After(5 * time.Minute)
+
+			err := t.db.QueryRow(`select min(last_read) from channels`).Scan(&last)
+			if err != nil {
+				panic(err)
+			}
+
+			_, err = t.db.Exec(`delete from messages where id <= ?`, last)
+			if err != nil {
+				panic(err)
+			}
+		}
+	}
+}
+
+func newClosedChan[T any]() <-chan T {
+	ch := make(chan T)
+	close(ch)
+	return ch
 }
 
 func (t *topic) Send(msg []byte) error {
-	// for {
-	// 	select {
-	// 	case msg := <-t.in:
+	if !t.running.Load() {
+		return ERR_STOPPED
+	}
+
 	t.rw.Lock()
 	defer t.rw.Unlock()
 
+	id := ksuid.New().String()
+
 	_, err := t.db.Exec(
 		`insert into messages (id, timestamp, msg) values (?, ?, ?)`,
-		ksuid.New().String(),
+		id,
 		time.Now().UnixMilli(),
 		msg,
 	)
@@ -76,17 +128,13 @@ func (t *topic) Send(msg []byte) error {
 		close(v)
 	}
 	t.consumers = nil
-	// case notify := <-t.waiting:
-	// 	t.rw.Lock()
-	// 	t.rw.Unlock()
-	// }
-	// }
+	t.last = id
 
 	return nil
 }
 
 func (t *topic) readNext(channel string) (string, []byte, error) {
-	log.Println("read next", channel)
+	// log.Println("read next", channel)
 
 	last := ""
 
@@ -97,15 +145,24 @@ func (t *topic) readNext(channel string) (string, []byte, error) {
 		return "", nil, err
 	}
 
-	log.Println("reading", channel, last)
-
 	for {
+		if !t.running.Load() {
+			return "", nil, ERR_STOPPED
+		}
+
 		id := ""
 		msg := []byte{}
 
-		err := t.db.QueryRow(`select id, msg from messages where id > ? order by id desc limit 1`, last).Scan(&id, &msg)
-		log.Println("read", last, id, err)
+		if last == "" && t.last != "" {
+			t.markRead(channel, t.last)
+			last = t.last
+		}
+
+		err := t.db.QueryRow(`select id, msg from messages where id > ? order by id desc limit 1`, last).
+			Scan(&id, &msg)
+
 		if err == sql.ErrNoRows {
+			err = nil
 			t.rw.Lock()
 			ch := make(chan struct{})
 			t.consumers = append(t.consumers, ch)
@@ -116,6 +173,7 @@ func (t *topic) readNext(channel string) (string, []byte, error) {
 		if err != nil {
 			return "", nil, err
 		}
+
 		if id != "" {
 			return id, msg, nil
 		}
@@ -124,19 +182,80 @@ func (t *topic) readNext(channel string) (string, []byte, error) {
 
 func (t *topic) markRead(channel string, id string) error {
 	_, err := t.db.Exec(`insert into channels (id, last_read) values (?, ?) on conflict(id) do update set last_read = ?`, channel, id, id)
+	time.Sleep(time.Second)
 	return err
 }
 
 func (t *topic) Clear() error {
-	_, err := t.db.Exec(`delete from messages`)
+	tx, err := t.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	_, err = tx.Exec(`delete from messages`)
 	if err != nil {
 		return err
 	}
 
-	return nil
+	_, err = tx.Exec(`delete from channels`)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit()
 }
 
 func (t *topic) Stop() {
+	t.rw.Lock()
+
 	t.running.Store(false)
 	t.db.Close()
+
+	for _, v := range t.consumers {
+		close(v)
+	}
+	t.consumers = nil
+
+	err := t.db.QueryRow(`select min(last_read) from channels`).Scan(&last)
+	if err != nil {
+		panic(err)
+	}
+
+	_, err = t.db.Exec(`delete from messages where id <= ?`, last)
+	if err != nil {
+		panic(err)
+	}
+
+	t.rw.Unlock()
+}
+
+type dbStore struct {
+	db *sql.DB
+}
+
+type memStore struct {
+	log      []string          // append only list of published payloads
+	entries  map[string][]byte // lookup table of id to payload
+	channels map[string]string
+}
+
+type istore interface {
+	clear()
+	gc()
+	readNext(channel string) (string, []byte, error)
+	markRead(channel, id string) error
+}
+
+func (s *memStore) clear() {
+	s.log = nil
+	s.channels = map[string]string{}
+	s.entries = map[string][]byte{}
+}
+
+func (s *memStore) gc() {
+	last := ""
+	for _, v := range s.channels {
+		last = min(last, v)
+	}
 }
