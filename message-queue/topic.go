@@ -52,7 +52,7 @@ func newTopic(name string) (*topic, error) {
 	}
 
 	last := ""
-	err = db.QueryRow(`select max(last_read) from channels`).Scan(&last)
+	err = db.QueryRow(`select last_read from channels order by last_read desc limit 1`).Scan(&last)
 	if err != sql.ErrNoRows && err != nil {
 		return nil, err
 	}
@@ -64,7 +64,7 @@ func newTopic(name string) (*topic, error) {
 		last:      last,
 	}
 
-	go t.gc()
+	// go t.gc()
 
 	return t, nil
 }
@@ -122,13 +122,15 @@ func (t *topic) Send(msg []byte) error {
 		panic(err)
 	}
 
-	time.Sleep(time.Second)
+	// time.Sleep(time.Second)
 
 	for _, v := range t.consumers {
 		close(v)
 	}
 	t.consumers = nil
 	t.last = id
+
+	// time.Sleep(time.Second)
 
 	return nil
 }
@@ -158,7 +160,7 @@ func (t *topic) readNext(channel string) (string, []byte, error) {
 			last = t.last
 		}
 
-		err := t.db.QueryRow(`select id, msg from messages where id > ? order by id desc limit 1`, last).
+		err := t.db.QueryRow(`select id, msg from messages where id > ? order by id ASC limit 1`, last).
 			Scan(&id, &msg)
 
 		if err == sql.ErrNoRows {
@@ -182,7 +184,7 @@ func (t *topic) readNext(channel string) (string, []byte, error) {
 
 func (t *topic) markRead(channel string, id string) error {
 	_, err := t.db.Exec(`insert into channels (id, last_read) values (?, ?) on conflict(id) do update set last_read = ?`, channel, id, id)
-	time.Sleep(time.Second)
+	// time.Sleep(time.Second)
 	return err
 }
 
@@ -210,14 +212,15 @@ func (t *topic) Stop() {
 	t.rw.Lock()
 
 	t.running.Store(false)
-	t.db.Close()
 
 	for _, v := range t.consumers {
 		close(v)
 	}
 	t.consumers = nil
 
-	err := t.db.QueryRow(`select min(last_read) from channels`).Scan(&last)
+	last := ""
+
+	err := t.db.QueryRow(`select last_read from channels order by last_read desc limit 1`).Scan(&last)
 	if err != nil {
 		panic(err)
 	}
@@ -227,6 +230,7 @@ func (t *topic) Stop() {
 		panic(err)
 	}
 
+	t.db.Close()
 	t.rw.Unlock()
 }
 
