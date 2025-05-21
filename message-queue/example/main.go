@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	messagequeue "message-queue"
 	"time"
@@ -20,11 +21,14 @@ func main() {
 		panic(err)
 	}
 
+	var count int64
+
 	con, err := ex.NewConsumer(
 		"test",
 		"testing",
 		func(id string, b []byte) error {
-			log.Println(id, string(b))
+			log.Println(count, id, string(b))
+			count++
 			return nil
 		},
 	)
@@ -42,10 +46,14 @@ func main() {
 
 	_ = pub
 
-	err = pub.Publish("test", []byte("hello world!"))
-	if err != nil {
-		panic(err)
+	for i := range 10 {
+		fmt.Println("publish", i)
+
+		err = pub.Publish("test", []byte("hello world!"))
+		if err != nil {
+			panic(err)
+		}
 	}
 
-	time.Sleep(time.Second * 10)
+	time.Sleep(time.Second * 1)
 }
