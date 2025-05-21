@@ -46,7 +46,7 @@ func main() {
 
 	_ = pub
 
-	for i := range 10 {
+	for i := range 100 {
 		fmt.Println("publish", i)
 
 		err = pub.Publish("test", []byte("hello world!"))
@@ -55,5 +55,5 @@ func main() {
 		}
 	}
 
-	time.Sleep(time.Second * 1)
+	time.Sleep(time.Second * 100)
 }
