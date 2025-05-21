@@ -3,16 +3,23 @@ package messagequeue
 import (
 	"database/sql"
 	"errors"
+	"fmt"
+	"log"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
-	"github.com/segmentio/ksuid"
 )
 
-var ERR_STOPPED = errors.New("stopped")
+var ErrStopped = errors.New("stopped")
+
+func EncodeTimestamp(millis int64) string {
+	adjusted := millis
+	str := fmt.Sprintf("%020d", adjusted)
+	return str
+}
 
 type topic struct {
 	db        *sql.DB
@@ -21,9 +28,6 @@ type topic struct {
 	consumers []chan struct{}
 	running   atomic.Bool
 	rw        sync.RWMutex
-
-	log     []string
-	entries map[string][]byte
 }
 
 func newTopic(name string) (*topic, error) {
@@ -104,25 +108,24 @@ func newClosedChan[T any]() <-chan T {
 
 func (t *topic) Send(msg []byte) error {
 	if !t.running.Load() {
-		return ERR_STOPPED
+		return ErrStopped
 	}
 
 	t.rw.Lock()
 	defer t.rw.Unlock()
 
-	id := ksuid.New().String()
+	now := time.Now().UnixMilli()
+	id := EncodeTimestamp(now)
 
 	_, err := t.db.Exec(
 		`insert into messages (id, timestamp, msg) values (?, ?, ?)`,
 		id,
-		time.Now().UnixMilli(),
+		now,
 		msg,
 	)
 	if err != nil {
 		panic(err)
 	}
-
-	// time.Sleep(time.Second)
 
 	for _, v := range t.consumers {
 		close(v)
@@ -130,7 +133,7 @@ func (t *topic) Send(msg []byte) error {
 	t.consumers = nil
 	t.last = id
 
-	// time.Sleep(time.Second)
+	time.Sleep(time.Millisecond * 10)
 
 	return nil
 }
@@ -140,28 +143,31 @@ func (t *topic) readNext(channel string) (string, []byte, error) {
 
 	last := ""
 
+	t.rw.Lock()
 	err := t.db.QueryRow(`select last_read from channels where id = ?`, channel).Scan(&last)
 	if err == sql.ErrNoRows {
 		err = nil
+		if last == "" && t.last != "" {
+			t.markRead(channel, t.last)
+			last = t.last
+		}
 	} else if err != nil {
 		return "", nil, err
 	}
+	t.rw.Unlock()
 
 	for {
 		if !t.running.Load() {
-			return "", nil, ERR_STOPPED
+			return "", nil, ErrStopped
 		}
 
 		id := ""
 		msg := []byte{}
 
-		if last == "" && t.last != "" {
-			t.markRead(channel, t.last)
-			last = t.last
-		}
-
 		err := t.db.QueryRow(`select id, msg from messages where id > ? order by id ASC limit 1`, last).
 			Scan(&id, &msg)
+
+		log.Println("get next", channel, id, last)
 
 		if err == sql.ErrNoRows {
 			err = nil
@@ -172,6 +178,7 @@ func (t *topic) readNext(channel string) (string, []byte, error) {
 			<-ch
 			continue
 		}
+
 		if err != nil {
 			return "", nil, err
 		}
@@ -184,7 +191,6 @@ func (t *topic) readNext(channel string) (string, []byte, error) {
 
 func (t *topic) markRead(channel string, id string) error {
 	_, err := t.db.Exec(`insert into channels (id, last_read) values (?, ?) on conflict(id) do update set last_read = ?`, channel, id, id)
-	// time.Sleep(time.Second)
 	return err
 }
 

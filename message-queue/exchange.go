@@ -86,7 +86,7 @@ func (ex *Exchange) CreateTopic(topic string) error {
 	defer ex.rw.Unlock()
 
 	if !ex.running.Load() {
-		return ERR_STOPPED
+		return ErrStopped
 	}
 
 	if strings.HasSuffix(topic, "#temp") {
@@ -120,7 +120,7 @@ func (ex *Exchange) CreateTopic(topic string) error {
 
 func (ex *Exchange) ClearTopic(topic string) error {
 	if !ex.running.Load() {
-		return ERR_STOPPED
+		return ErrStopped
 	}
 
 	ex.rw.RLock()
@@ -132,7 +132,7 @@ func (ex *Exchange) ClearTopic(topic string) error {
 
 func (ex *Exchange) DeleteTopic(topic string) error {
 	if !ex.running.Load() {
-		return ERR_STOPPED
+		return ErrStopped
 	}
 
 	return nil
@@ -140,7 +140,7 @@ func (ex *Exchange) DeleteTopic(topic string) error {
 
 func (ex *Exchange) DeleteConsumer(topic string, channel string) error {
 	if !ex.running.Load() {
-		return ERR_STOPPED
+		return ErrStopped
 	}
 
 	return nil
@@ -150,7 +150,7 @@ func (ex *Exchange) NewPublisher(
 	topics ...string,
 ) (*Publisher, error) {
 	if !ex.running.Load() {
-		return nil, ERR_STOPPED
+		return nil, ErrStopped
 	}
 
 	p := &Publisher{
@@ -166,7 +166,7 @@ func (ex *Exchange) NewConsumer(
 	handler func(id string, payload []byte) error,
 ) (*Consumer, error) {
 	if !ex.running.Load() {
-		return nil, ERR_STOPPED
+		return nil, ErrStopped
 	}
 
 	c := &Consumer{
