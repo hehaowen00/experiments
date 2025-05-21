@@ -1,30 +1,45 @@
 package messagequeue
 
 import (
+	"context"
 	"database/sql"
 	"log"
+	"math"
 	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 )
 
 type Exchange struct {
-	metadata *sql.DB
-	topics   map[string]*topic
-	rw       sync.RWMutex
-	running  atomic.Bool
+	metadata   *sql.DB
+	topics     map[string]*topic
+	rw         sync.RWMutex
+	running    atomic.Bool
+	maxRetries int
 }
 
-func NewExchange() (*Exchange, error) {
+type ExchangeOpts struct {
+	MaxRetries int
+}
+
+func NewExchange(opts ...*ExchangeOpts) (*Exchange, error) {
 	log.Println("creating exchange...")
+
 	if _, err := os.Stat("./_msq_"); os.IsNotExist(err) {
 		err := os.MkdirAll("./_msq_", 0777)
 		if err != nil {
 			return nil, err
 		}
+	}
+
+	if len(opts) == 0 {
+		opts = append(opts, &ExchangeOpts{
+			MaxRetries: 3,
+		})
 	}
 
 	metadataDB, err := sql.Open("sqlite3", "./_msq_/metadata.db")
@@ -44,23 +59,24 @@ func NewExchange() (*Exchange, error) {
 	defer rows.Close()
 
 	ex := &Exchange{
-		metadata: metadataDB,
-		topics:   map[string]*topic{},
+		metadata:   metadataDB,
+		topics:     map[string]*topic{},
+		maxRetries: opts[0].MaxRetries,
 	}
 
-	for rows.Next() {
-		id := ""
-		name := ""
-		rows.Scan(&id, &name)
+	// for rows.Next() {
+	// 	id := ""
+	// 	name := ""
+	// 	rows.Scan(&id, &name)
 
-		t, err := newTopic(name)
-		if err != nil {
-			return nil, err
-		}
+	// 	t, err := newTopic(name)
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
 
-		ex.topics[name] = t
-		t.run()
-	}
+	// 	ex.topics[name] = t
+	// 	t.run()
+	// }
 
 	return ex, nil
 }
@@ -169,8 +185,13 @@ func (ex *Exchange) NewConsumer(
 		return nil, ErrStopped
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+
 	c := &Consumer{
 		handler: handler,
+		ctx:     ctx,
+		cancel:  cancel,
+		once:    sync.Once{},
 	}
 
 	ex.rw.RLock()
@@ -200,9 +221,18 @@ func (ex *Exchange) NewConsumer(
 				break
 			}
 
-			err = c.handler(id, msg)
-			if err != nil {
-				return
+			for i := 0; i < ex.maxRetries; i++ {
+				err = c.handler(id, msg)
+				if err != nil {
+					if i == ex.maxRetries-1 {
+						log.Println("max retries reached:", topic, err)
+						break
+					}
+
+					dur := math.Exp(float64(i))
+					time.Sleep(time.Duration(dur) * time.Second)
+					continue
+				}
 			}
 
 			err = t.markRead(channel, id)
@@ -214,4 +244,20 @@ func (ex *Exchange) NewConsumer(
 	}()
 
 	return c, nil
+}
+
+func (ex *Exchange) GetTopic(topic string) (*topic, error) {
+	if !ex.running.Load() {
+		return nil, ErrStopped
+	}
+
+	ex.rw.RLock()
+	t, ok := ex.topics[topic]
+	ex.rw.RUnlock()
+
+	if !ok {
+		return nil, ErrTopicNotFound
+	}
+
+	return t, nil
 }
