@@ -1,6 +1,7 @@
 package messagequeue
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -16,9 +17,7 @@ import (
 var ErrStopped = errors.New("stopped")
 
 func EncodeTimestamp(millis int64) string {
-	adjusted := millis
-	str := fmt.Sprintf("%020d", adjusted)
-	return str
+	return fmt.Sprintf("%024d", millis)
 }
 
 type topic struct {
@@ -28,6 +27,10 @@ type topic struct {
 	consumers []chan struct{}
 	running   atomic.Bool
 	rw        sync.RWMutex
+
+	ctx    context.Context
+	cancel context.CancelFunc
+	once   sync.Once
 }
 
 func newTopic(name string) (*topic, error) {
@@ -61,16 +64,45 @@ func newTopic(name string) (*topic, error) {
 		return nil, err
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+
 	t := &topic{
 		name:      name,
 		db:        db,
 		consumers: []chan struct{}{},
 		last:      last,
+		ctx:       ctx,
+		cancel:    cancel,
+		once:      sync.Once{},
 	}
 
-	// go t.gc()
+	go t.gc()
 
 	return t, nil
+}
+
+type metrics struct {
+	TotalMessages int64
+	TotalChannels int64
+}
+
+func (t *topic) Metrics() *metrics {
+	var totalMessages, totalChannels int64
+
+	err := t.db.QueryRow(`select count(*) from messages`).Scan(&totalMessages)
+	if err != nil {
+		panic(err)
+	}
+
+	err = t.db.QueryRow(`select count(*) from channels`).Scan(&totalChannels)
+	if err != nil {
+		panic(err)
+	}
+
+	return &metrics{
+		TotalMessages: totalMessages,
+		TotalChannels: totalChannels,
+	}
 }
 
 func (t *topic) run() {
@@ -81,13 +113,20 @@ func (t *topic) gc() {
 	ch := newClosedChan[time.Time]()
 	instant := ch
 
+out:
 	for {
 		select {
+		case <-t.ctx.Done():
+			break out
 		case <-instant:
 			last := ""
 			instant = time.After(5 * time.Minute)
 
-			err := t.db.QueryRow(`select min(last_read) from channels`).Scan(&last)
+			err := t.db.QueryRow(`select last_read from channels order by last_read desc limit 1`).Scan(&last)
+			if err == sql.ErrNoRows {
+				continue
+			}
+
 			if err != nil {
 				panic(err)
 			}
@@ -106,9 +145,9 @@ func newClosedChan[T any]() <-chan T {
 	return ch
 }
 
-func (t *topic) Send(msg []byte) error {
+func (t *topic) Send(msg []byte) (string, error) {
 	if !t.running.Load() {
-		return ErrStopped
+		return "", ErrStopped
 	}
 
 	t.rw.Lock()
@@ -133,28 +172,26 @@ func (t *topic) Send(msg []byte) error {
 	t.consumers = nil
 	t.last = id
 
-	time.Sleep(time.Millisecond * 10)
+	time.Sleep(time.Millisecond * 5)
 
-	return nil
+	return id, nil
 }
 
 func (t *topic) readNext(channel string) (string, []byte, error) {
-	// log.Println("read next", channel)
-
 	last := ""
 
-	t.rw.Lock()
 	err := t.db.QueryRow(`select last_read from channels where id = ?`, channel).Scan(&last)
 	if err == sql.ErrNoRows {
 		err = nil
 		if last == "" && t.last != "" {
+			t.rw.Lock()
 			t.markRead(channel, t.last)
 			last = t.last
+			t.rw.Unlock()
 		}
 	} else if err != nil {
 		return "", nil, err
 	}
-	t.rw.Unlock()
 
 	for {
 		if !t.running.Load() {
@@ -218,6 +255,9 @@ func (t *topic) Stop() {
 	t.rw.Lock()
 
 	t.running.Store(false)
+	t.once.Do(func() {
+		t.cancel()
+	})
 
 	for _, v := range t.consumers {
 		close(v)
@@ -240,32 +280,122 @@ func (t *topic) Stop() {
 	t.rw.Unlock()
 }
 
-type dbStore struct {
-	db *sql.DB
-}
-
 type memStore struct {
-	log      []string          // append only list of published payloads
-	entries  map[string][]byte // lookup table of id to payload
-	channels map[string]string
+	messages map[string][]byte
+	order    []string
+	lastRead map[string]string
+
+	name      string
+	last      string
+	consumers []chan struct{}
+	running   atomic.Bool
+	rw        sync.RWMutex
+
+	ctx    context.Context
+	cancel context.CancelFunc
+	once   sync.Once
 }
 
-type istore interface {
-	clear()
-	gc()
-	readNext(channel string) (string, []byte, error)
-	markRead(channel, id string) error
-}
+func newMemStore(name string) *memStore {
+	ctx, cancel := context.WithCancel(context.Background())
 
-func (s *memStore) clear() {
-	s.log = nil
-	s.channels = map[string]string{}
-	s.entries = map[string][]byte{}
-}
-
-func (s *memStore) gc() {
-	last := ""
-	for _, v := range s.channels {
-		last = min(last, v)
+	return &memStore{
+		messages:  map[string][]byte{},
+		order:     []string{},
+		lastRead:  map[string]string{},
+		name:      name,
+		last:      "",
+		consumers: []chan struct{}{},
+		running:   atomic.Bool{},
+		ctx:       ctx,
+		cancel:    cancel,
 	}
+}
+
+func (m *memStore) run() {
+	m.running.Store(true)
+}
+
+func (m *memStore) Send(msg []byte) (string, error) {
+	if !m.running.Load() {
+		return "", ErrStopped
+	}
+
+	m.rw.Lock()
+	defer m.rw.Unlock()
+
+	now := time.Now().UnixMilli()
+	id := EncodeTimestamp(now)
+
+	m.messages[id] = msg
+	m.order = append(m.order, id)
+	m.last = id
+
+	for _, v := range m.consumers {
+		close(v)
+	}
+	m.consumers = nil
+
+	time.Sleep(time.Millisecond * 5)
+
+	return id, nil
+}
+
+func (m *memStore) readNext(channel string) (string, []byte, error) {
+	last := ""
+
+	if m.lastRead[channel] == "" && m.last != "" {
+		m.rw.Lock()
+		m.markRead(channel, m.last)
+		last = m.last
+		m.rw.Unlock()
+	} else {
+		last = m.lastRead[channel]
+	}
+
+	for {
+		if !m.running.Load() {
+			return "", nil, ErrStopped
+		}
+
+		id := ""
+		msg := []byte{}
+
+		for _, v := range m.order {
+			if v > last {
+				id = v
+				msg = m.messages[v]
+				break
+			}
+		}
+
+		if id != "" {
+			return id, msg, nil
+		}
+
+		m.rw.Lock()
+		ch := make(chan struct{})
+		m.consumers = append(m.consumers, ch)
+		m.rw.Unlock()
+		<-ch
+	}
+}
+
+func (m *memStore) markRead(channel string, id string) error {
+	m.rw.Lock()
+	defer m.rw.Unlock()
+
+	m.lastRead[channel] = id
+	return nil
+}
+
+func (m *memStore) Clear() error {
+	m.rw.Lock()
+	defer m.rw.Unlock()
+
+	m.messages = map[string][]byte{}
+	m.order = []string{}
+	m.lastRead = map[string]string{}
+
+	return nil
 }

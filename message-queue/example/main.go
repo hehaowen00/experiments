@@ -21,9 +21,14 @@ func main() {
 		panic(err)
 	}
 
+	err = ex.CreateTopic("testing")
+	if err != nil {
+		panic(err)
+	}
+
 	var count int64
 
-	con, err := ex.NewConsumer(
+	c, err := ex.NewConsumer(
 		"test",
 		"testing",
 		func(id string, b []byte) error {
@@ -35,7 +40,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	defer con.Stop()
+	defer c.Stop()
 
 	log.Println("publishing message...")
 
@@ -46,14 +51,29 @@ func main() {
 
 	_ = pub
 
-	for i := range 100 {
-		fmt.Println("publish", i)
-
-		err = pub.Publish("test", []byte("hello world!"))
+	for i := range 1000 {
+		id, err := pub.Publish("test", []byte("hello world!"))
 		if err != nil {
 			panic(err)
 		}
+
+		fmt.Println("publish", i, id)
+
+		// id, err = pub.Publish("testing", []byte("hello world!"))
+		// if err != nil {
+		// 	panic(err)
+		// }
+
+		break
 	}
+
+	t, err := ex.GetTopic("testing")
+	if err != nil {
+		panic(err)
+	}
+
+	metrics := t.Metrics()
+	log.Println("metrics:", metrics.TotalMessages, metrics.TotalChannels)
 
 	time.Sleep(time.Second * 100)
 }
