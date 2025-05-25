@@ -62,7 +62,7 @@ def gini_index(y_parent, y_left, y_right):
     return parent - weighted
 
 class Node:
-    def __init__(self, criterion, max_depth=None, min_sample_split=3, depth=0) -> None:
+    def __init__(self, criterion, max_depth=None, min_sample_split=3, depth=0, max_features=None) -> None:
         self.left = None
         self.right = None
         self.feature = None
@@ -74,6 +74,7 @@ class Node:
         self.max_depth = max_depth
         self.min_sample_split = min_sample_split
         self.depth = depth
+        self.max_features = max_features
 
     def fit(self, X, y):
         if len(set(y)) == 1:
@@ -110,7 +111,11 @@ class Node:
         best_feature = None
         best_threshold = None
 
-        for feature in X.columns:
+        features = list(X.columns)
+        if self.max_features is not None:
+            features = np.random.choice(features, self.max_features, replace=False)
+
+        for feature in features:
             # print(feature)
             values = sorted(X[feature].unique())
             possible_thresholds = [(v1+v2)/2 for v1, v2 in zip(values[:-1], values[1:])]
@@ -164,10 +169,11 @@ class Node:
             return self.right.predict_row(row)
     
 class DecisionTreeClassifier:
-    def __init__(self, criterion: str = 'information', max_depth = 20, min_sample_split=5) -> None:
+    def __init__(self, criterion: str = 'information', max_depth = 20, min_sample_split=5, max_features=None) -> None:
         self.root = None
         self.max_depth = max_depth
         self.min_sample_split = min_sample_split
+        self.max_features = max_features
 
         lut = {
             'information': info_gain,
@@ -178,7 +184,7 @@ class DecisionTreeClassifier:
             raise Exception('criterion not found: ' + criterion)
 
     def fit(self, X, y):
-        self.root = Node(self.criterion, self.max_depth, self.min_sample_split)
+        self.root = Node(self.criterion, self.max_depth, self.min_sample_split, max_features=self.max_features)
         self.root.fit(X, y)
 
     def predict(self, X):
@@ -187,9 +193,6 @@ class DecisionTreeClassifier:
     def print(self, tree=None, indent=' '):
         if not tree:
             tree = self.root
-
-        # if len(indent) > 20:
-        #     raise Exception('wth')
 
         if tree.is_leaf:
             print(tree.prediction)

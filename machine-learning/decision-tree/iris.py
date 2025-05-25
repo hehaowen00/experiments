@@ -3,6 +3,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
 from sklearn.preprocessing import LabelEncoder
 from tree import DecisionTreeClassifier
+from forest import RandomForestClassifier
 
 '''
 entropy = sum(C, i=1, -p_i * log2(p_i))
@@ -36,3 +37,9 @@ if __name__ == '__main__':
 
     print(accuracy_score(y_test, res))
     tree.print()
+
+    rf = RandomForestClassifier() 
+    rf.fit(x_train, y_train)
+
+    res = rf.predict(x_test)
+    print(accuracy_score(y_test, res))
