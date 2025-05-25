@@ -62,7 +62,7 @@ def gini_index(y_parent, y_left, y_right):
     return parent - weighted
 
 class Node:
-    def __init__(self, criterion) -> None:
+    def __init__(self, criterion, max_depth=None, min_sample_split=3, depth=0) -> None:
         self.left = None
         self.right = None
         self.feature = None
@@ -71,8 +71,31 @@ class Node:
         self.prediction = None
         self.gain = None
         self.criterion = criterion
+        self.max_depth = max_depth
+        self.min_sample_split = min_sample_split
+        self.depth = depth
 
     def fit(self, X, y):
+        if len(set(y)) == 1:
+            self.is_leaf = True
+            self.prediction = y.iloc[0]
+            return
+
+        if len(X) < self.min_sample_split:
+            self.is_leaf = True
+            self.prediction = y.mode()[0]
+            return
+
+        if self.max_depth is not None and self.depth >= self.max_depth:
+            self.is_leaf = True
+            self.prediction = y.mode()[0]
+            return
+
+        if len(X.columns) == 0:
+            self.is_leaf = True
+            self.prediction = y.mode()[0]
+            return
+
         if len(set(y)) == 1:
             self.is_leaf = True
             self.prediction = y.iloc[0]
@@ -125,10 +148,10 @@ class Node:
         X_left, y_left = X[left_mask], y[left_mask]
         X_right, y_right = X[right_mask], y[right_mask]
 
-        self.left = Node(self.criterion)
+        self.left = Node(self.criterion, max_depth=self.max_depth, min_sample_split=self.min_sample_split, depth=self.depth + 1)
         self.left.fit(X_left, y_left)
 
-        self.right = Node(self.criterion)
+        self.right = Node(self.criterion, max_depth=self.max_depth, min_sample_split=self.min_sample_split, depth=self.depth + 1)
         self.right.fit(X_right, y_right)
 
     def predict_row(self, row):
@@ -141,8 +164,11 @@ class Node:
             return self.right.predict_row(row)
     
 class DecisionTreeClassifier:
-    def __init__(self, criterion: str = 'information') -> None:
+    def __init__(self, criterion: str = 'information', max_depth = 20, min_sample_split=5) -> None:
         self.root = None
+        self.max_depth = max_depth
+        self.min_sample_split = min_sample_split
+
         lut = {
             'information': info_gain,
             'gini': gini_index,
@@ -152,7 +178,7 @@ class DecisionTreeClassifier:
             raise Exception('criterion not found: ' + criterion)
 
     def fit(self, X, y):
-        self.root = Node(self.criterion)
+        self.root = Node(self.criterion, self.max_depth, self.min_sample_split)
         self.root.fit(X, y)
 
     def predict(self, X):
@@ -214,7 +240,7 @@ if __name__ == '__main__':
     # ent = info_gain(df[['m1', 'm2', 'm3']], df['classification'], 'm3')
     # print(ent)
 
-    tree = DecisionTreeClassifier('gini')
+    tree = DecisionTreeClassifier('information', max_depth=10)
     tree.fit(x_train, y_train)
     res = tree.predict(X)
 
