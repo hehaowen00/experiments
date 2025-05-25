@@ -141,7 +141,7 @@ if __name__ == '__main__':
 
     ensemble = VotingClassifier(
         estimators=[('xgb', xgb), ('rf', rf),],
-        voting='soft',
+        voting='hard',
     )
     ensemble.fit(x_train, y_train)
 
