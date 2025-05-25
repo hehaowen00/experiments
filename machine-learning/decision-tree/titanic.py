@@ -24,15 +24,19 @@ def encode_data(data):
     enc = LabelEncoder()
     data['Sex'] = enc.fit_transform(data['Sex'])
     data['Embarked'] = enc.fit_transform(data['Embarked'])
-    # data['Ticket'] = enc.fit_transform(data['Ticket'])
-    # data['Cabin'] = enc.fit_transform(data['Cabin'])
-    data['Age'] = data['Age'].dropna()
-    data['Age'] = data['Age'].fillna(data['Age'].median())
+    data['NameLength'] = data['Name'].apply(lambda n: len(n))
+    data['FamilySize'] = data['SibSp'] + data['Parch']
+    # print(data[['Age', 'Title']].groupby(by='Title').median())
+    data['Title'] = data['Name'].apply(lambda n: n.split(',')[1].split('.')[0].strip())
+    data['Age'] = data['Age'].fillna(
+        data.groupby('Title')['Age'].transform('median')
+    )
+    data['Title'] = enc.fit_transform(data['Title'])
     data['Cabin_Cat'] = data['Cabin'].apply(lambda x: str(x)[0])
     data['Cabin_Cat'] = enc.fit_transform(data['Cabin_Cat'])
     data["Deck"] = data["Cabin"].str.slice(0,1)
     data["Room"] = data["Cabin"].str.slice(1,5).str.extract("([0-9]+)", expand=False).astype("float")
-    data["Room"] = data["Room"].fillna(data["Room"].mean())
+    data["Room"] = data["Room"].fillna(0)
     data[['TicketCategory', 'TicketNumber']] = data['Ticket'].str.extract(r'([A-Za-z./\d]+)?\s*(\d+)$')
     data['TicketCategory'] = enc.fit_transform(data['TicketCategory'])
     data['TicketNumber'] = data['TicketNumber'].astype(float)
@@ -47,11 +51,12 @@ if __name__ == '__main__':
     print(train_data.head())
     print(train_data.info())
     print(train_data['TicketNumber'].head())
+    # print(train_data['Title'].head())
 
     # train_data['Deck'] = enc.fit_transform(train_data['Deck'])
 
     decks = [col for col in test_data.columns if col.startswith('Deck_')]
-    train_cols = ['SibSp', 'Sex', 'Parch', 'Fare', 'Pclass', 'Embarked', 'TicketCategory', 'TicketNumber', 'Cabin_Cat', 'Room']
+    train_cols = ['SibSp', 'Sex', 'Parch', 'Fare', 'Pclass', 'Embarked', 'TicketCategory', 'TicketNumber', 'Cabin_Cat', 'Room', 'Title']
     train_cols.extend(decks)
     X = train_data[train_cols]
     y = train_data['Survived']
@@ -69,7 +74,7 @@ if __name__ == '__main__':
     y_train = y
     x_test = test_data[train_cols]
 
-    m = XGBClassifier(n_estimators=100)
+    m = XGBClassifier(n_estimators=1000)
     m.fit(x_train, y_train)
     res = m.predict(x_test)
     # print(accuracy_score(y_test, res))
