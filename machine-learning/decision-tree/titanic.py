@@ -25,5 +25,4 @@ if __name__ == '__main__':
 
     res = tree.predict(x_test)
     print(accuracy_score(y_test, res))
-    print(x_test)
     tree.print()
