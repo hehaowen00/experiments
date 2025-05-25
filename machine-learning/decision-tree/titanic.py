@@ -27,13 +27,16 @@ def encode_data(data, save=False):
     data['FamilySize'] = data['SibSp'] + data['Parch']
     data['Title'] = data['Name'].apply(lambda n: n.split(',')[1].split('.')[0].strip())
     data['Age'] = data['Age'].fillna(
-        data.groupby('Title')['Age'].transform('median')
+        data.groupby('Title')['Age'].transform('mean')
     )
+
+    data['IsMale'] = data['Sex'] == 'male'
     data['FamilyName'] = data['Name'].apply(lambda n: n.split(',')[0])
     data['CabinCat'] = data['Cabin'].apply(lambda x: str(x)[0])
     data["Deck"] = data["Cabin"].str.slice(0,1)
     data["Room"] = data["Cabin"].str.slice(1,5).str.extract("([0-9]+)", expand=False).astype("float")
     data["Room"] = data["Room"].fillna(0)
+    data['IsChild'] = data['Age'] <= 14
 
     data[['TicketCategory', 'TicketNumber']] = data['Ticket'].str.extract(r'^(.*\D)?\s*(\d+)?$')
     data['TicketCategory'] = data['TicketCategory'].str.strip()
@@ -41,7 +44,9 @@ def encode_data(data, save=False):
     data['TicketNumber'].replace('', np.nan, inplace=True)
     data['TicketNumber'] = data['TicketNumber'].astype(float)
 
+    data = one_hot(data, ['Title'], drop_col=False)
     data = one_hot(data, ['Deck'], drop_col=True)
+    data = one_hot(data, ['Embarked'], drop_col=True)
 
     if save:
         data.to_csv('parsed.csv')
@@ -49,8 +54,8 @@ def encode_data(data, save=False):
     data['CabinCat'] = enc.fit_transform(data['CabinCat'])
     data['Title'] = enc.fit_transform(data['Title'])
     data['TicketCategory'] = enc.fit_transform(data['TicketCategory'])
-    data['Sex'] = enc.fit_transform(data['Sex'])
-    data['Embarked'] = enc.fit_transform(data['Embarked'])
+    # data['Sex'] = enc.fit_transform(data['Sex'])
+    # data['Embarked'] = enc.fit_transform(data['Embarked'])
 
     return data
 
@@ -59,16 +64,27 @@ if __name__ == '__main__':
     test_data = pd.read_csv('../datasets/titanic/test.csv')
     train_data = encode_data(train_data, save=True)
     test_data  = encode_data(test_data)
-    print(train_data.head())
-    print(train_data.info())
-    print(train_data['TicketNumber'].head())
+    # print(train_data.head())
+    # print(train_data.info())
+    # print(train_data['TicketNumber'].head())
 
     # print(train_data['Title'].head())
     # train_data['Deck'] = enc.fit_transform(train_data['Deck'])
 
     decks = [col for col in test_data.columns if col.startswith('Deck_')]
-    train_cols = ['SibSp', 'Sex', 'Parch', 'Fare', 'Pclass', 'Embarked', 'TicketCategory', 'TicketNumber', 'CabinCat', 'Room', 'Title']
+    titles = [col for col in test_data.columns if col.startswith('Title_')]
+    titles.remove('Title_Dona')
+    embarked = [col for col in test_data.columns if col.startswith('Embarked_')]
+    # ages = [col for col in test_data.columns if col.startswith('Age_categories_')]
+
+    train_cols = ['SibSp', 'IsMale', 'Parch', 'Fare', 'Pclass', 'TicketCategory',
+                   'TicketNumber', 'CabinCat', 'Room', 'Title', 'IsChild',
+    ]
+    train_cols.extend(titles)
     train_cols.extend(decks)
+    train_cols.extend(embarked)
+    # train_cols.extend(ages)
+    print(train_cols)
     X = train_data[train_cols]
     y = train_data['Survived']
 
@@ -81,28 +97,39 @@ if __name__ == '__main__':
     # res = tree.predict(x_test)
     # print(accuracy_score(y_test, res))
 
-    # x_train = X
-    # y_train = y
-    # x_test = test_data[train_cols]
+    x_train = X
+    y_train = y
+    x_test = test_data[train_cols]
 
     # rf = RandomForestClassifier(n_estimators=100)
     # rf.fit(x_train, y_train)
     # res = rf.predict(x_test)
     # print(accuracy_score(y_test, res))
 
-    m = XGBClassifier(n_estimators=1000)
+    m = XGBClassifier(objective='binary:logistic', n_estimators=1500)
+    m.fit(X, y)
     m.fit(x_train, y_train)
     res = m.predict(x_test)
-    print(accuracy_score(y_test, res))
-    print(pd.Series(res).value_counts())
+    # print(accuracy_score(y_test, res))
+    # print(pd.Series(res).value_counts())
 
-    x_test = test_data[train_cols]
-    res = m.predict(x_test)
+    # res = m.predict(test_data[train_cols])
 
     output = pd.DataFrame({
         'PassengerId': test_data['PassengerId'],
         'Survived': res,
     })
+
+    test_data['Survived'] = pd.Series(res)
+    test_data.to_csv('test.csv')
+
+    solution = pd.read_csv('../datasets/titanic/solution.csv')
+    print(solution['Survived'].value_counts())
+
+    merged = output.merge(solution, on='PassengerId', suffixes=('_df1', '_df2'))
+    diff_scores = merged[merged['Survived_df1'] != merged['Survived_df2']]
+    diff_scores.to_csv('diff.csv')
+    print((len(solution) - len(diff_scores)) / len(solution))
 
     print(output.head())
     print(output['Survived'].value_counts())
