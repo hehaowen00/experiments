@@ -27,17 +27,16 @@ public:
     ~ConnectionDialog();
 
     DatabaseConnection getState();
-    bool cancelled();
 
 public slots:
     void driverChanged(QString);
     void openSQLiteDB(bool);
+    void testConn(bool);
     void saveState(bool);
     void cancel(bool);
 
 private:
     Ui::ConnectionDialog *ui;
-    bool isCancelled;
 };
 
 #endif // CONNECTION_DIALOG_H

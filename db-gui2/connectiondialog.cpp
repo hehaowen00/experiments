@@ -3,7 +3,11 @@
 #include <QDialog>
 #include <QObject>
 #include <QDir>
-#include<QFileDialog>
+#include <QMessageBox>
+#include <QFileDialog>
+#include <QSqlDatabase>
+#include <QSql>
+#include <QSqlQuery>
 
 ConnectionDialog::ConnectionDialog(QWidget *parent)
     : QDialog(parent)
@@ -12,24 +16,26 @@ ConnectionDialog::ConnectionDialog(QWidget *parent)
     ui->setupUi(this);
     this->setWindowTitle("Add New Connection");
     this->adjustSize();
+    ui->testButton->setEnabled(false);
+
     connect(ui->driverInput, SIGNAL(currentTextChanged(QString)), this, SLOT(driverChanged(QString)));
     connect(ui->openDBButton, SIGNAL(clicked(bool)), this, SLOT(openSQLiteDB(bool)));
     connect(ui->saveButton, SIGNAL(clicked(bool)), this, SLOT(saveState(bool)));
     connect(ui->cancelBtn, SIGNAL(clicked(bool)), this, SLOT(cancel(bool)));
+    connect(ui->testButton, SIGNAL(clicked(bool)), this, SLOT(testConn(bool)));
 }
 
 void ConnectionDialog::driverChanged(QString currentTextChanged) {
     if (currentTextChanged == "PostgreSQL") {
         ui->dbWidget->setEnabled(true);
         ui->fileWidget->setEnabled(false);
+        ui->databaseInput->setText("postgres");
+        ui->testButton->setEnabled(true);
     } else {
         ui->dbWidget->setEnabled(false);
         ui->fileWidget->setEnabled(true);
+        ui->testButton->setEnabled(false);
     }
-}
-
-bool ConnectionDialog::cancelled() {
-    return this->isCancelled;
 }
 
 void ConnectionDialog::openSQLiteDB(bool) {
@@ -40,16 +46,89 @@ void ConnectionDialog::openSQLiteDB(bool) {
         tr("SQLite Databases (*.db *.sqlite);;All Files (*)")
     );
 
+    QFileInfo fi = QFileInfo(filepath);
+    if (ui->nameInput->text() == "") {
+        ui->nameInput->setText(fi.fileName());
+    }
     ui->pathInput->setText(filepath);
 }
 
+void ConnectionDialog::testConn(bool) {
+    auto driver = ui->driverInput->currentText();
+
+    if (driver == "PostgreSQL") {
+        bool isNum;
+        auto port = ui->portInput->text().toInt(&isNum);
+        auto db = QSqlDatabase::addDatabase("QPSQL");
+        db.setHostName(ui->hostInput->text());
+        db.setPort(port);
+        db.setDatabaseName(ui->databaseInput->text());
+        db.setUserName(ui->usernameInput->text());
+        db.setPassword(ui->passwordInput->text());
+
+        if (!db.open()) {
+            QMessageBox msg;
+            msg.setText("Unable to open database.");
+            msg.exec();
+            db.close();
+            return;
+        }
+
+        db.close();
+    } else if (driver == "SQLite") {
+        auto db = QSqlDatabase::addDatabase("QSQLITE");
+        db = QSqlDatabase::addDatabase("QSQLITE");
+        db.setDatabaseName(ui->pathInput->text());
+
+        if (!db.open()) {
+            QMessageBox msg;
+            msg.setText("Unable to open database.");
+            msg.exec();
+            db.close();
+            return;
+        }
+
+        db.close();
+    }
+
+    QMessageBox msg;
+    msg.setText("Test successful.");
+    msg.exec();
+    return;
+}
+
 void ConnectionDialog::saveState(bool) {
-    if (ui->nameInput->text().trimmed().length() == 0 ||
-        (ui->hostInput->text().trimmed().length() == 0 &&
-        ui->pathInput->text().trimmed().length() == 0))
-    {
+    auto driver = ui->driverInput->currentText();
+
+    bool nameCheck = ui->nameInput->text().trimmed().length() == 0;
+    if (nameCheck) {
+        QMessageBox msg;
+        msg.setText("Name is required.");
+        msg.exec();
         return;
     }
+
+    bool isNum;
+    ui->portInput->text().toInt(&isNum);
+
+    if (driver != "SQLite" && !isNum) {
+        QMessageBox msg;
+        msg.setText("Port must be a valid number.");
+        msg.exec();
+        return;
+    }
+
+    bool check1 = ui->hostInput->text().trimmed().length() == 0 && ui->pathInput->text().trimmed().length() == 0;
+    bool hostCheck = driver != "SQLite" && (ui->hostInput->text().trimmed().length() == 0);
+
+    if (hostCheck || check1)
+    {
+        QMessageBox msg;
+        msg.setText("Host, Port and Username are required.");
+        msg.exec();
+        return;
+    }
+
     this->accept();
 }
 
