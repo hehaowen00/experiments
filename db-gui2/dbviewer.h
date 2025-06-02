@@ -1,34 +1,32 @@
-#ifndef MAINWINDOW_H
-#define MAINWINDOW_H
+#ifndef DBVIEWER_H
+#define DBVIEWER_H
 
 #include "utils.h"
 
-#include <QMainWindow>
 #include <QSqlDatabase>
-#include <QSql>
 #include <QSqlTableModel>
+#include <QWidget>
 
-QT_BEGIN_NAMESPACE
 namespace Ui {
-class MainWindow;
+class DBViewer;
 }
-QT_END_NAMESPACE
 
-class MainWindow : public QMainWindow
+class DBViewer : public QWidget
 {
     Q_OBJECT
 
 public:
-    MainWindow(QWidget *parent = nullptr);
-    ~MainWindow();
+    explicit DBViewer(QWidget *parent = nullptr);
+    ~DBViewer();
+
 
 private slots:
-    void loadTable(QString);
     void addConnection(bool);
     void loadDatabase(QString);
     void loadTables(QString);
+    void loadTable(QString);
     void applyFilter(bool);
-    void runQuery(bool);
+    // void runQuery(bool);
     void dataChanged(const QModelIndex&, const QModelIndex&, QList<int>);
     void saveChanges(bool);
     void discardChanges(bool);
@@ -36,14 +34,13 @@ private slots:
     void hideDataView(bool);
 
 private:
+    Ui::DBViewer *ui;
+
     void disableUI();
     void enableUI();
 
     void loadSettings();
     void saveSettings();
-
-    Ui::MainWindow *ui;
-    Ui::MainWindow *dialog;
 
     QSqlDatabase db;
     QStringList tables;
@@ -55,4 +52,4 @@ private:
     QString driver;
 };
 
-#endif // MAINWINDOW_H
+#endif // DBVIEWER_H

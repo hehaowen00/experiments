@@ -1,12 +1,14 @@
 #include "connectiondialog.h"
 #include "ui_connection_dialog.h"
+
 #include <QDialog>
-#include <QObject>
 #include <QDir>
-#include <QMessageBox>
 #include <QFileDialog>
-#include <QSqlDatabase>
+#include <QMessageBox>
+#include <QObject>
 #include <QSql>
+#include <QSqlDatabase>
+#include <QSqlError>
 #include <QSqlQuery>
 
 ConnectionDialog::ConnectionDialog(QWidget *parent)
@@ -14,9 +16,10 @@ ConnectionDialog::ConnectionDialog(QWidget *parent)
     , ui(new Ui::ConnectionDialog)
 {
     ui->setupUi(this);
-    this->setWindowTitle("Add New Connection");
-    this->adjustSize();
     ui->testButton->setEnabled(false);
+
+    setWindowTitle("Add New Connection");
+    adjustSize();
 
     connect(ui->driverInput, SIGNAL(currentTextChanged(QString)), this, SLOT(driverChanged(QString)));
     connect(ui->openDBButton, SIGNAL(clicked(bool)), this, SLOT(openSQLiteDB(bool)));
@@ -67,8 +70,11 @@ void ConnectionDialog::testConn(bool) {
         db.setPassword(ui->passwordInput->text());
 
         if (!db.open()) {
+            auto err = db.lastError().text();
+            auto text = QString("Unable to open database: %1").arg(err);
+
             QMessageBox msg;
-            msg.setText("Unable to open database.");
+            msg.setText(text);
             msg.exec();
             db.close();
             return;
@@ -81,8 +87,11 @@ void ConnectionDialog::testConn(bool) {
         db.setDatabaseName(ui->pathInput->text());
 
         if (!db.open()) {
+            auto err = db.lastError().text();
+            auto text = QString("Unable to open database: %1").arg(err);
+
             QMessageBox msg;
-            msg.setText("Unable to open database.");
+            msg.setText(text);
             msg.exec();
             db.close();
             return;
@@ -129,11 +138,11 @@ void ConnectionDialog::saveState(bool) {
         return;
     }
 
-    this->accept();
+    accept();
 }
 
 void ConnectionDialog::cancel(bool) {
-    this->reject();
+    reject();
 }
 
 DatabaseConnection ConnectionDialog::getState() {

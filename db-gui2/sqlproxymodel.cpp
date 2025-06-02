@@ -4,6 +4,7 @@
 #include <QColor>
 #include <QBrush>
 
+
 SQLProxyModel::SQLProxyModel(QObject *parent)
     : QSortFilterProxyModel(parent)
 {
@@ -11,7 +12,7 @@ SQLProxyModel::SQLProxyModel(QObject *parent)
 
 void SQLProxyModel::setMaxSize(int size)
 {
-    this->maxSize = size;
+    maxSize = size;
 }
 
 QVariant SQLProxyModel::data(const QModelIndex &index, int role) const
@@ -20,14 +21,14 @@ QVariant SQLProxyModel::data(const QModelIndex &index, int role) const
 
     if (role == Qt::DisplayRole && (value.type() == QVariant::String || value.type() == QVariant::ByteArray)) {
         QString strValue = value.toString();
-        if (strValue.size() >= this->maxSize) {
+        if (strValue.size() >= maxSize) {
             return QString("[BLOB]");
         }
     }
 
     if (role == Qt::FontRole) {
         QVariant value = sourceModel()->data(mapToSource(index), Qt::DisplayRole);
-        if (value.toString().size() >= this->maxSize) {
+        if (value.toString().size() >= maxSize) {
             QFont italicFont;
             italicFont.setItalic(true);
             return italicFont;
@@ -35,14 +36,27 @@ QVariant SQLProxyModel::data(const QModelIndex &index, int role) const
     }
 
     if (role == Qt::ForegroundRole) {
-        // QVariant displayValue = QSortFilterProxyModel::data(index, Qt::DisplayRole);
-        // qDebug() << "is blob" << displayValue.toString();
         QVariant dataValue = QSortFilterProxyModel::data(index, Qt::DisplayRole);
-        auto length = dataValue.toString().length();
-        if (length >= this->maxSize) {
-            return QBrush(QColor(150, 0, 0));
+        if (dataValue.toString().length() >= maxSize) {
+            return QBrush(QColor(152, 161, 174));  // faded gray
         }
     }
 
     return value;
+}
+
+bool SQLProxyModel::canFetchMore(const QModelIndex &parent) const
+{
+    if (!sourceModel())
+        return false;
+
+    return sourceModel()->canFetchMore(mapToSource(parent));
+}
+
+void SQLProxyModel::fetchMore(const QModelIndex &parent)
+{
+    if (!sourceModel())
+        return;
+
+    sourceModel()->fetchMore(mapToSource(parent));
 }
