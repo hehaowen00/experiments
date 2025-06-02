@@ -19,6 +19,7 @@ public:
     explicit DBViewer(QWidget *parent = nullptr);
     ~DBViewer();
 
+    QString name;
 
 private slots:
     void addConnection(bool);
@@ -42,14 +43,16 @@ private:
     void loadSettings();
     void saveSettings();
 
-    QSqlDatabase db;
+    QSqlDatabase getDB();
     QStringList tables;
     QSqlTableModel *m = nullptr, *temp = nullptr;
     QVector<DatabaseConnection> *conns;
+    DatabaseConnection connectionIndex;
+    int lastConnection = 0;
 
     bool dbOpen = false;
     bool isEnabled = false;
-    QString driver;
+    QString driver, path;
 };
 
 #endif // DBVIEWER_H
