@@ -10,21 +10,30 @@ CONFIG += c++17
 
 SOURCES += \
     connectiondialog.cpp \
+    dbviewer.cpp \
     main.cpp \
     mainwindow.cpp \
+    metadataview.cpp \
     querytab.cpp \
-    sqlproxymodel.cpp
+    sqlproxymodel.cpp \
+    utils.cpp
 
 HEADERS += \
     connectiondialog.h \
+    dbviewer.h \
     mainwindow.h \
+    metadataview.h \
     querytab.h \
-    sqlproxymodel.h
+    sqlproxymodel.h \
+    utils.h
 
 FORMS += \
     connection_dialog.ui \
+    dbviewer.ui \
     mainwindow.ui \
-    querytab.ui
+    metadataview.ui \
+    querytab.ui \
+    scratchpad.ui
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin

@@ -2,17 +2,7 @@
 #define CONNECTION_DIALOG_H
 
 #include <QDialog>
-
-struct DatabaseConnection {
-    QString Driver;
-    QString Name;
-    QString Path;
-    QString Host;
-    QString Port;
-    QString Username;
-    QString Password;
-    QString Database;
-};
+#include "utils.h"
 
 namespace Ui {
 class ConnectionDialog;

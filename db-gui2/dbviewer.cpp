@@ -1,30 +1,22 @@
+#include "dbviewer.h"
 #include "connectiondialog.h"
-#include "mainwindow.h"
 #include "sqlproxymodel.h"
-#include "ui_mainwindow.h"
-#include <QFileDialog>
+#include "ui_dbviewer.h"
+
+#include <QDir>
+#include <QFile>
+#include <QMessageBox>
+#include <QTimer>
 #include <QSqlDatabase>
+#include <QSqlError>
 #include <QSqlTableModel>
 #include <QSqlQuery>
-#include <QAbstractItemModel>
-#include <QSqlError>
-#include <QJsonDocument>
-#include <QJsonArray>
-#include <QJsonObject>
 #include <QSqlRecord>
-#include <QSqlField>
-#include <QMessageBox>
-#include <QSqlQueryModel>
-#include <QTimer>
-#include <QPlainTextDocumentLayout>
 #include <QSqlIndex>
-#include <QSqlResult>
 
-using namespace std;
-
-MainWindow::MainWindow(QWidget *parent)
-    : QMainWindow(parent)
-    , ui(new Ui::MainWindow)
+DBViewer::DBViewer(QWidget *parent)
+    : QWidget(parent)
+    , ui(new Ui::DBViewer)
 {
     ui->setupUi(this);
 
@@ -58,14 +50,19 @@ MainWindow::MainWindow(QWidget *parent)
     connect(ui->tablesList, SIGNAL(currentTextChanged(QString)), this, SLOT(loadTable(QString)));
     connect(ui->databasesList, SIGNAL(currentTextChanged(QString)), this, SLOT(loadTables(QString)));
     connect(ui->connectionsList, SIGNAL(currentTextChanged(QString)), this, SLOT(loadDatabase(QString)));
-    connect(ui->runQueryButton, SIGNAL(clicked(bool)), this, SLOT(runQuery(bool)));
+    // connect(ui->runQueryButton, SIGNAL(clicked(bool)), this, SLOT(runQuery(bool)));
     connect(ui->saveButton, SIGNAL(clicked(bool)), this, SLOT(saveChanges(bool)));
     connect(ui->filterButton, SIGNAL(clicked(bool)), this, SLOT(applyFilter(bool)));
     connect(ui->tableView, SIGNAL(doubleClicked(QModelIndex)), this, SLOT(handleCellEdit(QModelIndex)));
     connect(ui->hideDataViewButton, SIGNAL(clicked(bool)), this, SLOT(hideDataView(bool)));
 }
 
-void MainWindow::addConnection(bool)
+DBViewer::~DBViewer()
+{
+    delete ui;
+}
+
+void DBViewer::addConnection(bool)
 {
     auto dlg = new ConnectionDialog(this);
     if (dlg->exec() == QDialog::Accepted) {
@@ -76,7 +73,8 @@ void MainWindow::addConnection(bool)
     }
 }
 
-void MainWindow::loadDatabase(QString connection)
+
+void DBViewer::loadDatabase(QString connection)
 {
     if (dbOpen) {
         db.close();
@@ -175,7 +173,8 @@ void MainWindow::loadDatabase(QString connection)
     });
 }
 
-void MainWindow::loadTables(QString currentTextChanged)
+
+void DBViewer::loadTables(QString currentTextChanged)
 {
     if (ui->databasesList->currentIndex() == 0) {
         return;
@@ -193,7 +192,7 @@ void MainWindow::loadTables(QString currentTextChanged)
     }
 }
 
-void MainWindow::loadTable(QString currentTextChanged)
+void DBViewer::loadTable(QString currentTextChanged)
 {
     ui->tabWidget->show();
     ui->filterInput->setText("");
@@ -213,7 +212,6 @@ void MainWindow::loadTable(QString currentTextChanged)
                 QString colName = rec.fieldName(i);
                 QVariant value = q.value(i);
 
-
                 auto testing = QString(value.metaType().name());
                 auto vByteArray = QString("QByteArray");
                 auto vString = QString("QString");
@@ -225,15 +223,12 @@ void MainWindow::loadTable(QString currentTextChanged)
                     auto testQuery = QString("SELECT AVG(length(%1)) FROM ( SELECT cast(%1 AS text) as %1 FROM %2 WHERE %1 IS NOT NULL LIMIT 10 ) AS tmp").arg(colName, currentTextChanged);
                     QSqlQuery tempQ(db);
                     tempQ.prepare(testQuery);
-                    // qDebug() << testQuery;
 
                     bool sizeLimitReached = false;
                     if (tempQ.exec(testQuery) && tempQ.next()) {
                         double avgLength = tempQ.value(0).toDouble();
                         sizeLimitReached = avgLength > 1024;
-                        // qDebug() << "Average bytea length:" << avgLength;
                     } else {
-                        // qDebug() << tempQ.lastError().text();
                         auto err = tempQ.lastError().text();
                         if (err != "") {
                             return;
@@ -330,40 +325,13 @@ void MainWindow::loadTable(QString currentTextChanged)
     });
 }
 
-void MainWindow::dataChanged(const QModelIndex&, const QModelIndex&, QList<int>)
+void DBViewer::dataChanged(const QModelIndex&, const QModelIndex&, QList<int>)
 {
     ui->saveButton->setEnabled(true);
     ui->discardButton->setEnabled(true);
 }
 
-void MainWindow::runQuery(bool)
-{
-    auto text = ui->queryEditor->toPlainText();
-
-    QSqlQuery query(db);
-    if (query.exec(text)) {
-        const QSqlResult *res = query.result();
-    } else {
-        auto err = query.lastError().text();
-    }
-
-    temp = new QSqlTableModel(this, this->db);
-    temp->setQuery(text);
-    temp->select();
-
-    while (temp->canFetchMore()) temp->fetchMore();
-    int rowCount = temp->rowCount();
-
-    SQLProxyModel *p = new SQLProxyModel(this);
-    p->setSourceModel(temp);
-
-    ui->queryTableView->setSortingEnabled(true);
-    ui->queryTableView->setModel(p);
-    ui->queryTableView->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeMode::ResizeToContents);
-    ui->queryRowCountLabel->setText(QString("%1 Rows").arg(rowCount));
-}
-
-void MainWindow::applyFilter(bool) {
+void DBViewer::applyFilter(bool) {
     auto table = ui->tablesList->currentItem()->text();
     auto filterText = ui->filterInput->text();
 
@@ -402,27 +370,27 @@ void MainWindow::applyFilter(bool) {
     ui->discardButton->setEnabled(false);
 }
 
-void MainWindow::saveChanges(bool)
+void DBViewer::saveChanges(bool)
 {
     ui->saveButton->setEnabled(false);
     ui->discardButton->setEnabled(false);
     m->submitAll();
 }
 
-void MainWindow::discardChanges(bool)
+void DBViewer::discardChanges(bool)
 {
     ui->saveButton->setEnabled(false);
     ui->discardButton->setEnabled(false);
     m->revertAll();
 }
 
-void MainWindow::disableUI() {
+void DBViewer::disableUI() {
     ui->filterInput->setEnabled(false);
     ui->filterButton->setEnabled(false);
     ui->tabWidget->setEnabled(false);
 }
 
-void MainWindow::enableUI() {
+void DBViewer::enableUI() {
     ui->filterInput->setEnabled(true);
     ui->filterButton->setEnabled(true);
     ui->tabWidget->setEnabled(true);
@@ -430,7 +398,8 @@ void MainWindow::enableUI() {
     ui->discardButton->setEnabled(false);
 }
 
-void MainWindow::loadSettings()
+
+void DBViewer::loadSettings()
 {
     qDebug() << "loading connections settings";
 
@@ -463,7 +432,7 @@ void MainWindow::loadSettings()
     }
 }
 
-void MainWindow::saveSettings()
+void DBViewer::saveSettings()
 {
     QString dirPath = QDir::homePath() + "/.database-app";
     QDir dir;
@@ -481,7 +450,7 @@ void MainWindow::saveSettings()
     }
 }
 
-void MainWindow::handleCellEdit(QModelIndex index)
+void DBViewer::handleCellEdit(QModelIndex index)
 {
     if (!index.isValid()) return;
 
@@ -531,9 +500,6 @@ void MainWindow::handleCellEdit(QModelIndex index)
     {
         ++count;
 
-        // it.key();
-        // it.value();
-
         QString condition;
         if (it.value().isNull())
         {
@@ -543,12 +509,10 @@ void MainWindow::handleCellEdit(QModelIndex index)
                  it.value().type() == QVariant::DateTime ||
                  it.value().type() == QVariant::Date)
         {
-            // Quote string-like types
             condition = QString("%1 = '%2'").arg(it.key(), it.value().toString().replace("'", "''"));
         }
         else
         {
-            // No quotes for numeric or other types
             condition = QString("%1 = %2").arg(it.key()).arg(it.value().toString());
         }
 
@@ -581,68 +545,6 @@ void MainWindow::handleCellEdit(QModelIndex index)
     }
 }
 
-void MainWindow::hideDataView(bool) {
+void DBViewer::hideDataView(bool) {
     ui->dataViewWidget->hide();
 }
-
-MainWindow::~MainWindow()
-{
-    if (db.isOpen()) {
-        db.close();
-        m->deleteLater();
-    }
-
-    saveSettings();
-    delete ui;
-}
-
-// QJsonDocument serializeConnections(const QVector<DatabaseConnection>& connections) {
-//     QJsonArray array;
-
-//     for (const auto& conn : connections) {
-//         QJsonObject obj;
-//         obj["Driver"]   = conn.Driver;
-//         obj["Name"]     = conn.Name;
-//         obj["Path"]     = conn.Path;
-//         obj["Host"]     = conn.Host;
-//         obj["Port"]     = conn.Port;
-//         obj["Username"] = conn.Username;
-//         obj["Password"] = conn.Password;
-//         obj["Database"] = conn.Database;
-
-//         array.append(obj);
-//     }
-
-//     QJsonDocument doc(array);
-//     return doc;
-// }
-
-// QVector<DatabaseConnection>* deserializeConnections(const QJsonDocument& doc) {
-//     auto connections = new QVector<DatabaseConnection>();
-
-//     if (!doc.isArray())
-//         return connections;
-
-//     QJsonArray array = doc.array();
-//     for (auto it = array.begin(); it != array.end(); ++it)
-//     {
-//         auto value = it;
-//         if (!value->isObject())
-//             continue;
-
-//         QJsonObject obj = value->toObject();
-//         DatabaseConnection conn;
-//         conn.Driver   = obj.value("Driver").toString();
-//         conn.Name     = obj.value("Name").toString();
-//         conn.Path     = obj.value("Path").toString();
-//         conn.Host     = obj.value("Host").toString();
-//         conn.Port     = obj.value("Port").toString();
-//         conn.Username = obj.value("Username").toString();
-//         conn.Password = obj.value("Password").toString();
-//         conn.Database = obj.value("Database").toString();
-
-//         connections->append(conn);
-//     }
-
-//     return connections;
-// }
