@@ -24,6 +24,8 @@ QVariant SQLProxyModel::data(const QModelIndex &index, int role) const
         if (strValue.size() >= maxSize) {
             return QString("[BLOB]");
         }
+        if (strValue == QString("[BLOB]")) {
+        }
     }
 
     if (role == Qt::FontRole) {
@@ -33,10 +35,18 @@ QVariant SQLProxyModel::data(const QModelIndex &index, int role) const
             italicFont.setItalic(true);
             return italicFont;
         }
+        if (value.toString() == QString("[BLOB]")) {
+            QFont italicFont;
+            italicFont.setItalic(true);
+            return italicFont;
+        }
     }
 
     if (role == Qt::ForegroundRole) {
         QVariant dataValue = QSortFilterProxyModel::data(index, Qt::DisplayRole);
+        if (dataValue.toString() == QString("[BLOB]")) {
+            return QBrush(QColor(152, 161, 174));  // faded gray
+        }
         if (dataValue.toString().length() >= maxSize) {
             return QBrush(QColor(152, 161, 174));  // faded gray
         }

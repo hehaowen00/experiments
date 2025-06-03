@@ -1,6 +1,7 @@
 #ifndef DBVIEWER_H
 #define DBVIEWER_H
 
+#include "sqlproxymodel.h"
 #include "utils.h"
 
 #include <QSqlDatabase>
@@ -33,6 +34,7 @@ private slots:
     void discardChanges(bool);
     void handleCellEdit(QModelIndex);
     void hideDataView(bool);
+    void submitFilter();
 
 private:
     Ui::DBViewer *ui;
@@ -43,16 +45,14 @@ private:
     void loadSettings();
     void saveSettings();
 
-    QSqlDatabase getDB();
     QStringList tables;
-    QSqlTableModel *m = nullptr, *temp = nullptr;
+    QSqlTableModel *m = nullptr;
+    SQLProxyModel *proxy = nullptr;
     QVector<DatabaseConnection> *conns;
-    DatabaseConnection connectionIndex;
-    int lastConnection = 0;
+    DatabaseConnection currentConn;
 
     bool dbOpen = false;
     bool isEnabled = false;
-    QString driver, path;
 };
 
 #endif // DBVIEWER_H

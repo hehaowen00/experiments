@@ -1,4 +1,5 @@
 #include "dbviewer.h"
+#include "querytab.h"
 #include "connectiondialog.h"
 #include "sqlproxymodel.h"
 #include "ui_dbviewer.h"
@@ -43,25 +44,33 @@ DBViewer::DBViewer(QWidget *parent)
 
     ui->tableView->horizontalHeader()->setFont(headerFont);
     ui->tableView->verticalHeader()->setFont(headerFont);
-    ui->queryTableView->horizontalHeader()->setFont(headerFont);
-    ui->queryTableView->verticalHeader()->setFont(headerFont);
+
+    auto queryTab = new QueryTab(this);
+    ui->consoleTabWidget->addTab(queryTab, "SQL 1");
 
     connect(ui->addButton, SIGNAL(clicked(bool)), this, SLOT(addConnection(bool)));
     connect(ui->tablesList, SIGNAL(currentTextChanged(QString)), this, SLOT(loadTable(QString)));
     connect(ui->databasesList, SIGNAL(currentTextChanged(QString)), this, SLOT(loadTables(QString)));
     connect(ui->connectionsList, SIGNAL(currentTextChanged(QString)), this, SLOT(loadDatabase(QString)));
-    // connect(ui->runQueryButton, SIGNAL(clicked(bool)), this, SLOT(runQuery(bool)));
     connect(ui->saveButton, SIGNAL(clicked(bool)), this, SLOT(saveChanges(bool)));
     connect(ui->filterButton, SIGNAL(clicked(bool)), this, SLOT(applyFilter(bool)));
     connect(ui->tableView, SIGNAL(doubleClicked(QModelIndex)), this, SLOT(handleCellEdit(QModelIndex)));
     connect(ui->hideDataViewButton, SIGNAL(clicked(bool)), this, SLOT(hideDataView(bool)));
+    connect(ui->filterInput, SIGNAL(returnPressed()), this, SLOT(submitFilter()));
 }
 
 DBViewer::~DBViewer()
 {
-    qDebug() << getDB().isOpen();
-    getDB().close();
+    QSqlDatabase::database(name + "tabconn2").close();
+    QSqlDatabase::removeDatabase(name + "tabconn2");
+    ui->tableView->setModel(nullptr);
+    conns->clear();
+    free(conns);
     delete ui;
+}
+
+void DBViewer::submitFilter() {
+    applyFilter(true);
 }
 
 void DBViewer::addConnection(bool)
@@ -77,128 +86,115 @@ void DBViewer::addConnection(bool)
 
 void DBViewer::loadDatabase(QString connection)
 {
-    if (QSqlDatabase::contains(name)) {
-    // auto db0 = getDB();
-    // if (db0.isOpen() || db0.isValid()) {
-    //     QSqlDatabase::removeDatabase(this->name);
-
-    //     if (m) {
-    //         m->deleteLater();
-    //         m = nullptr;
-    //     }
-    //     if (temp) {
-    //         temp->deleteLater();
-    //         temp = nullptr;
-    //     }
-    //     dbOpen = false;
-    // }
+    if (ui->connectionsList->currentIndex() == 0 && connection == "Select Connection") {
+        ui->tablesList->clear();
+        ui->tableView->setModel(nullptr);
+        ui->saveButton->setEnabled(false);
+        ui->discardButton->setEnabled(false);
+        return;
     }
 
-        if (ui->connectionsList->currentIndex() == 0 && connection == "Select Connection") {
-            ui->tablesList->clear();
-            ui->tableView->setModel(nullptr);
-            ui->saveButton->setEnabled(false);
-            ui->discardButton->setEnabled(false);
-            return;
+    for (auto it = conns->begin(); it != conns->end(); ++it) {
+        auto test = (QString("[%2] %1").arg(it->Name, it->Driver));
+        if (test != connection) {
+            continue;
         }
 
-        QSqlDatabase db;
-        qDebug() << "conn" << connection;
+        ui->tablesList->clear();
+        ui->databasesList->clear();
 
-        for (auto it = conns->begin(); it != conns->end(); ++it) {
-            if (it->Name != connection) {
-                continue;
+        if (it->Driver == "SQLite") {
+            auto db = QSqlDatabase::addDatabase("QSQLITE", name);
+            db.setDatabaseName(it->Path);
+
+            if (!db.open()) {
+                // ui->connectionsList->setCurrentIndex(lastConnection);
+
+                auto err = db.lastError().text();
+                qDebug() << err;
+
+                QMessageBox msg;
+                msg.setText(db.lastError().text());
+                msg.exec();
+                return;
             }
+            dbOpen = true;
+            ui->databasesList->hide();
 
-            ui->tablesList->clear();
-            ui->databasesList->clear();
+            auto tables = db.tables(QSql::Tables);
+            tables.sort();
 
-            if (it->Driver == "SQLite") {
-                db = QSqlDatabase::addDatabase("QSQLITE", "test");
-                db.setDatabaseName(it->Path);
-                QString clonedName = it->Path;
-                path = clonedName;
-
-                if (!db.open()) {
-                    ui->connectionsList->setCurrentIndex(lastConnection);
-
-                    auto err = db.lastError().text();
-                    qDebug() << err;
-
-                    QMessageBox msg;
-                    msg.setText(db.lastError().text());
-                    msg.exec();
-                    return;
-                }
-                dbOpen = true;
-                ui->databasesList->hide();
-
-                auto tables = db.tables(QSql::Tables);
-                tables.sort();
-
-                for (const QString& table: tables) {
-                    ui->tablesList->addItem(table);
-                }
-
-                loadTable(tables.first());
-            } else if (it->Driver == "PostgreSQL") {
-                db = QSqlDatabase::addDatabase("QPSQL", this->name);
-                db.setHostName(it->Host);
-                db.setUserName(it->Username);
-                db.setPassword(it->Password);
-                db.setDatabaseName("postgres");
-                db.setPort(it->Port.toInt());
-
-                if (!db.open()) {
-                    ui->connectionsList->setCurrentIndex(lastConnection);
-
-                    auto err = db.lastError().text();
-                    qDebug() << err;
-
-                    QMessageBox msg;
-                    msg.setText(err);
-                    msg.exec();
-                    return;
-                }
-                ui->databasesList->show();
-
-                QSqlQuery query(db);
-                ui->databasesList->addItem("Select Database");
-                if (query.exec("SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname ASC")) {
-                    while (query.next()) {
-                        QString dbName = query.value(0).toString();
-                        ui->databasesList->addItem(dbName);
-                    }
-                } else {
-                    QMessageBox msg;
-                    msg.setText(query.lastError().text());
-                    msg.exec();
-                }
-                query.finish();
-
-                driver = it->Driver;
+            for (const QString& table: tables) {
+                ui->tablesList->addItem(table);
             }
+        } else if (it->Driver == "PostgreSQL") {
+            auto db = QSqlDatabase::addDatabase("QPSQL", name);
+            db.setHostName(it->Host);
+            db.setUserName(it->Username);
+            db.setPassword(it->Password);
+            db.setDatabaseName("postgres");
+            db.setPort(it->Port.toInt());
 
-            if (!isEnabled) {
-                enableUI();
+            if (!db.open()) {
+                // ui->connectionsList->setCurrentIndex(lastConnection);
+
+                auto err = db.lastError().text();
+                qDebug() << err;
+
+                QMessageBox msg;
+                msg.setText(err);
+                msg.exec();
+                return;
             }
+            ui->databasesList->show();
 
-            QWidget *parentWidget = this->parentWidget();
-            while (parentWidget && !qobject_cast<QTabWidget*>(parentWidget)) {
-                parentWidget = parentWidget->parentWidget();
-            }
-
-            QTabWidget *tabWidget = qobject_cast<QTabWidget*>(parentWidget);
-            if (tabWidget) {
-                int index = tabWidget->indexOf(this);
-                if (index != -1) {
-                    tabWidget->setTabText(index, it->Name);
+            QSqlQuery query(db);
+            ui->databasesList->addItem("Select Database");
+            if (query.exec("SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname ASC")) {
+                while (query.next()) {
+                    QString dbName = query.value(0).toString();
+                    ui->databasesList->addItem(dbName);
                 }
+            } else {
+                QMessageBox msg;
+                msg.setText(query.lastError().text());
+                msg.exec();
             }
-
-            lastConnection = ui->connectionsList->currentIndex();
-            break;
+            query.finish();
         }
+
+        if (!isEnabled) {
+            enableUI();
+        }
+
+        QWidget *parentWidget = this->parentWidget();
+        while (parentWidget && !qobject_cast<QTabWidget*>(parentWidget)) {
+            parentWidget = parentWidget->parentWidget();
+        }
+
+        QTabWidget *tabWidget = qobject_cast<QTabWidget*>(parentWidget);
+        if (tabWidget) {
+            int index = tabWidget->indexOf(this);
+            if (index != -1) {
+                tabWidget->setTabText(index, it->Name);
+            }
+        }
+
+        currentConn.Driver= it->Driver;
+        currentConn.Name = it->Name;
+
+        if (currentConn.Driver == "SQLite") {
+            currentConn.Path= it->Path;
+        } else if (currentConn.Driver == "PostgreSQL") {
+            currentConn.Username = it->Username;
+            currentConn.Password = it->Password;
+            currentConn.Host = it->Host;
+            currentConn.Port= it->Port;
+            currentConn.Database= it->Database;
+        }
+
+        break;
+    }
 }
 
 
@@ -208,7 +204,7 @@ void DBViewer::loadTables(QString currentTextChanged)
         return;
     }
 
-    auto db = getDB();
+    auto db = QSqlDatabase::database(name);
     db.setDatabaseName(currentTextChanged);
     db.open();
 
@@ -223,94 +219,79 @@ void DBViewer::loadTables(QString currentTextChanged)
 
 void DBViewer::loadTable(QString currentTextChanged)
 {
+    ui->dataViewWidget->hide();
     ui->tabWidget->show();
     ui->filterInput->setText("");
     ui->tabWidget->setCurrentIndex(1);
     auto filterText = ui->filterInput->text();
 
-        auto dataQueryString = QString("SELECT ");
+    QSqlDatabase db;
+    qDebug() << currentConn.Driver;
+    if (currentConn.Driver == "SQLite") {
+        db = QSqlDatabase::addDatabase("QSQLITE");
+        db.setDatabaseName(currentConn.Path);
+    } else if (currentConn.Driver != "") {
+        db = QSqlDatabase::addDatabase("QPSQL");
+        db.setHostName(currentConn.Host);
+        db.setUserName(currentConn.Username);
+        db.setPassword(currentConn.Password);
+        db.setDatabaseName(ui->databasesList->currentText());
+        db.setPort(currentConn.Port.toInt());
+    } else {
+        qDebug() << "unknown driver" << currentConn.Driver;
+        return;
+    }
 
-        QSqlQuery q(getDB());
-        q.exec(QString("SELECT * FROM %1 LIMIT 1").arg(currentTextChanged));
+    if (!db.open()) {
+        qDebug() << db.lastError().text();
+    }
 
-        if (q.next()) {
-            QSqlRecord rec = q.record();
+    auto dataQueryString = QString("SELECT ");
 
-            qDebug() << "db viewer name" << this->name;
-            for (int i = 0; i < rec.count(); ++i) {
-                QString colName = rec.fieldName(i);
-                QVariant value = q.value(i);
+    QSqlQuery q(db);
+    q.exec(QString("SELECT * FROM %1 LIMIT 1").arg(currentTextChanged));
 
-                auto testing = QString(value.metaType().name());
-                auto vByteArray = QString("QByteArray");
-                auto vString = QString("QString");
-                bool testByteA = (testing == vByteArray);
-                bool testString = (testing == vString);
+    if (q.next()) {
+        QSqlRecord rec = q.record();
 
-                if (testString)
-                {
-                    auto testQuery = QString("SELECT AVG(length(%1)) FROM ( SELECT cast(%1 AS text) as %1 FROM %2 WHERE %1 IS NOT NULL LIMIT 10 ) AS tmp").arg(colName, currentTextChanged);
-                    QSqlQuery tempQ(getDB());
-                    tempQ.prepare(testQuery);
+        qDebug() << "db viewer name" << this->name;
+        for (int i = 0; i < rec.count(); ++i) {
+            QString colName = rec.fieldName(i);
+            QVariant value = q.value(i);
 
-                    bool sizeLimitReached = false;
-                    if (tempQ.exec(testQuery) && tempQ.next()) {
-                        double avgLength = tempQ.value(0).toDouble();
-                        sizeLimitReached = avgLength > 1024;
-                    } else {
-                        auto err = tempQ.lastError().text();
-                        if (err != "") {
-                            return;
-                        }
+            auto testing = QString(value.metaType().name());
+            auto vByteArray = QString("QByteArray");
+            auto vString = QString("QString");
+            bool testByteA = (testing == vByteArray);
+            bool testString = (testing == vString);
 
-                        QMessageBox msg;
-                        msg.setText(err);
-                        msg.exec();
+            if (testString)
+            {
+                auto testQuery = QString("SELECT AVG(length(%1)) FROM ( SELECT cast(%1 AS text) as %1 FROM %2 WHERE %1 IS NOT NULL LIMIT 10 ) AS tmp").arg(colName, currentTextChanged);
+                QSqlQuery tempQ(db);
+                tempQ.prepare(testQuery);
+
+                bool sizeLimitReached = false;
+                if (tempQ.exec(testQuery) && tempQ.next()) {
+                    double avgLength = tempQ.value(0).toDouble();
+                    sizeLimitReached = avgLength > 1024;
+                } else {
+                    auto err = tempQ.lastError().text();
+                    if (err != "") {
                         return;
                     }
-                    tempQ.clear();
 
-                    if (sizeLimitReached) {
-                        dataQueryString.append(QString("'[BLOB]' as %1").arg(colName));
-                        if (i < rec.count() -1) {
-                            dataQueryString.append(",");
-                        }
-                    } else {
-                        dataQueryString.append(colName);
-                        if (i < rec.count() -1) {
-                            dataQueryString.append(",");
-                        }
-                    }
-                } else if (testByteA) {
-                    auto testQuery = QString("SELECT AVG(length(%1)) FROM ( SELECT cast(%1 AS text) as %1 FROM %2 WHERE %1 IS NOT NULL LIMIT 10 ) AS tmp").arg(colName, currentTextChanged);
-                    QSqlQuery tempQ(getDB());
-                    bool sizeLimitReached = false;
-                    if (tempQ.exec(testQuery) && tempQ.next()) {
-                        double avgLength = tempQ.value(0).toDouble();
-                        sizeLimitReached = avgLength > 1024;
-                    } else {
-                        auto err = tempQ.lastError().text();
-                        if (err != "") {
-                            return;
-                        }
+                    QMessageBox msg;
+                    msg.setText(err);
+                    msg.exec();
+                    return;
+                }
+                tempQ.clear();
 
-                        QMessageBox msg;
-                        msg.setText(err);
-                        msg.exec();
-                        return;
-                    }
-                    tempQ.clear();
-
-                    if (sizeLimitReached) {
-                        dataQueryString.append(QString("'[BLOB]' as %1").arg(colName));
-                        if (i < rec.count() -1) {
-                            dataQueryString.append(",");
-                        }
-                    } else {
-                        dataQueryString.append(colName);
-                        if (i < rec.count() -1) {
-                            dataQueryString.append(",");
-                        }
+                if (sizeLimitReached) {
+                    dataQueryString.append(QString("'[BLOB]' as %1").arg(colName));
+                    if (i < rec.count() -1) {
+                        dataQueryString.append(",");
                     }
                 } else {
                     dataQueryString.append(colName);
@@ -318,49 +299,96 @@ void DBViewer::loadTable(QString currentTextChanged)
                         dataQueryString.append(",");
                     }
                 }
-                dataQueryString.append(" ");
+            } else if (testByteA) {
+                auto testQuery = QString("SELECT AVG(length(%1)) FROM ( SELECT cast(%1 AS text) as %1 FROM %2 WHERE %1 IS NOT NULL LIMIT 10 ) AS tmp").arg(colName, currentTextChanged);
+                QSqlQuery tempQ(db);
+                bool sizeLimitReached = false;
+                if (tempQ.exec(testQuery) && tempQ.next()) {
+                    double avgLength = tempQ.value(0).toDouble();
+                    sizeLimitReached = avgLength > 1024;
+                } else {
+                    auto err = tempQ.lastError().text();
+                    if (err != "") {
+                        return;
+                    }
+
+                    QMessageBox msg;
+                    msg.setText(err);
+                    msg.exec();
+                    return;
+                }
+                tempQ.clear();
+
+                if (sizeLimitReached) {
+                    dataQueryString.append(QString("'[BLOB]' as %1").arg(colName));
+                    if (i < rec.count() -1) {
+                        dataQueryString.append(",");
+                    }
+                } else {
+                    dataQueryString.append(colName);
+                    if (i < rec.count() -1) {
+                        dataQueryString.append(",");
+                    }
+                }
+            } else {
+                dataQueryString.append(colName);
+                if (i < rec.count() -1) {
+                    dataQueryString.append(",");
+                }
             }
+            dataQueryString.append(" ");
         }
+    }
 
-        dataQueryString.append(QString(" FROM %1").arg(currentTextChanged));
-        q.finish();
+    dataQueryString.append(QString(" FROM %1").arg(currentTextChanged));
+    q.finish();
 
-        QSqlQuery query = QSqlQuery(getDB());
+    QSqlQuery query = QSqlQuery(db);
 
-        int rowCount = 0;
-        QString sql = QString("SELECT COUNT(*) FROM \"%1\"").arg(currentTextChanged);
-        if (query.exec(sql) && query.next()) {
-            rowCount = query.value(0).toInt();
-            ui->rowCountLabel->setText(QString("%1 Rows").arg(rowCount));
-        }
+    int rowCount = 0;
+    QString sql = QString("SELECT COUNT(*) FROM \"%1\"").arg(currentTextChanged);
+    if (query.exec(sql) && query.next()) {
+        rowCount = query.value(0).toInt();
+        ui->rowCountLabel->setText(QString("%1 Rows").arg(rowCount));
+    }
 
-        // auto v = query.lastError().text();
-        // qDebug() << v;
-        // query.finish();
+    auto v = query.lastError().text();
+    qDebug() << v;
+    query.finish();
+    qDebug() << dataQueryString;
 
-        // auto db = QSqlDatabase::database(name + "tabconn 2", true);
-        // qDebug() << this->path << db.isValid() << db.isOpen() << currentTextChanged;
-        QSqlDatabase::removeDatabase(name + "tabconn 2");
-        auto db = QSqlDatabase::addDatabase("QSQLITE", name + "tabconn 2");
-        db.setDatabaseName(this->path);
-        db.open();
-        m = new QSqlTableModel(this, db);
-        m->setTable(currentTextChanged);
-        // m->setQuery(dataQueryString);
-        m->setFilter(filterText);
-        m->select();
-        m->setEditStrategy(QSqlTableModel::OnManualSubmit);
+    QSqlDatabase::removeDatabase(name + "tabconn 2");
+    QSqlDatabase db0;
+    if (currentConn.Driver == "SQLite") {
+        db0 = QSqlDatabase::addDatabase("QSQLITE", name + "tabconn2");
+        db0.setDatabaseName(currentConn.Path);
+        db0.open();
+    } else {
+        db0 = QSqlDatabase::addDatabase("QPSQL", name + "tabconn2");
+        db0.setHostName(currentConn.Host);
+        db0.setUserName(currentConn.Username);
+        db0.setPassword(currentConn.Password);
+        db0.setDatabaseName(ui->databasesList->currentText());
+        db0.setPort(currentConn.Port.toInt());
+        db0.open();
+    }
 
-        connect(m, SIGNAL(dataChanged(const QModelIndex&, const QModelIndex&, QList<int>)), this, SLOT(dataChanged(const QModelIndex&, const QModelIndex&, QList<int>)));
+    m = new QSqlTableModel(this, db0);
+    m->setQuery(dataQueryString);
+    m->setFilter(filterText);
+    m->select();
+    m->setEditStrategy(QSqlTableModel::OnManualSubmit);
 
-        SQLProxyModel *p = new SQLProxyModel(this);
-        p->setSourceModel(m);
+    connect(m, SIGNAL(dataChanged(const QModelIndex&, const QModelIndex&, QList<int>)), this, SLOT(dataChanged(const QModelIndex&, const QModelIndex&, QList<int>)));
 
-        ui->tableView->setSortingEnabled(true);
-        ui->tableView->setModel(p);
-        ui->tableView->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeMode::ResizeToContents);
-        ui->saveButton->setEnabled(false);
-        ui->discardButton->setEnabled(false);
+    proxy = new SQLProxyModel(this);
+    proxy->setSourceModel(m);
+
+    ui->tableView->setSortingEnabled(true);
+    ui->tableView->setModel(proxy);
+    ui->tableView->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeMode::ResizeToContents);
+    ui->saveButton->setEnabled(false);
+    ui->discardButton->setEnabled(false);
 }
 
 void DBViewer::dataChanged(const QModelIndex&, const QModelIndex&, QList<int>)
@@ -370,45 +398,53 @@ void DBViewer::dataChanged(const QModelIndex&, const QModelIndex&, QList<int>)
 }
 
 void DBViewer::applyFilter(bool) {
-    // auto table = ui->tablesList->currentItem()->text();
-    // auto filterText = ui->filterInput->text();
+    auto table = ui->tablesList->currentItem()->text();
+    auto filterText = ui->filterInput->text();
 
-    // auto query = QSqlQuery(getDB());
-    // QString sql = QString("SELECT COUNT(*) FROM \"%1\"").arg(table);
-    // if (filterText != "") {
-    //     sql.append("WHERE ");
-    //     sql.append(filterText);
-    // }
+    auto temp = QSqlDatabase::database(name);
+    auto query = QSqlQuery(temp);
+    QString sql = QString("SELECT COUNT(*) FROM \"%1\"").arg(table);
+    if (filterText != "") {
+        sql.append("WHERE ");
+        sql.append(filterText);
+    }
 
-    // int rowCount = 0;
-    // if (query.exec(sql) && query.next()) {
-    //     rowCount = query.value(0).toInt();
-    //     ui->rowCountLabel->setText(QString("%1 Rows").arg(rowCount));
-    // }
+    int rowCount = 0;
+    if (query.exec(sql) && query.next()) {
+        rowCount = query.value(0).toInt();
+        ui->rowCountLabel->setText(QString("%1 Rows").arg(rowCount));
+    }
 
-    // auto db = QSqlDatabase::addDatabase("QSQLITE", "tabconn 1");
-    // db.setDatabaseName(this->path);
-    // db.open();
-    // m = new QSqlTableModel(this, db);
-    // m->setTable(table);
-    // m->setFilter(filterText);
-    // m->select();
-    // m->setEditStrategy(QSqlTableModel::OnManualSubmit);
+    QSqlDatabase db;
+    if (currentConn.Driver == "SQLite") {
+        db = QSqlDatabase::addDatabase("QSQLITE", name + "tabconn2");
+        db.setDatabaseName(currentConn.Path);
+        db.open();
+    } else {
+        db = QSqlDatabase::addDatabase("QPSQL", name + "tabconn2");
+        db.setHostName(currentConn.Host);
+        db.setUserName(currentConn.Username);
+        db.setPassword(currentConn.Password);
+        db.setDatabaseName(ui->databasesList->currentText());
+        db.setPort(currentConn.Port.toInt());
+        db.open();
+    }
+    m = new QSqlTableModel(this, db);
+    m->setTable(table);
+    m->setFilter(filterText);
+    m->select();
+    m->setEditStrategy(QSqlTableModel::OnManualSubmit);
 
-    // if (rowCount < 5000) {
-    //     while (m->canFetchMore()) m->fetchMore();
-    // }
+    while (m->canFetchMore()) m->fetchMore();
 
-    // connect(m, SIGNAL(dataChanged(const QModelIndex&, const QModelIndex&, QList<int>)), this, SLOT(dataChanged(const QModelIndex&, const QModelIndex&, QList<int>)));
+    proxy = new SQLProxyModel(this);
+    proxy->setSourceModel(m);
 
-    // SQLProxyModel *p = new SQLProxyModel(this);
-    // p->setSourceModel(m);
-
-    // ui->tableView->setSortingEnabled(true);
-    // ui->tableView->setModel(p);
-    // ui->tableView->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeMode::ResizeToContents);
-    // ui->saveButton->setEnabled(false);
-    // ui->discardButton->setEnabled(false);
+    ui->tableView->setSortingEnabled(true);
+    ui->tableView->setModel(proxy);
+    ui->tableView->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeMode::ResizeToContents);
+    ui->saveButton->setEnabled(false);
+    ui->discardButton->setEnabled(false);
 }
 
 void DBViewer::saveChanges(bool)
@@ -465,11 +501,16 @@ void DBViewer::loadSettings()
         conns = deserializeConnections(doc);
     }
 
+    std::sort(conns->begin(), conns->end(), [](const DatabaseConnection &a, const DatabaseConnection &b) {
+        if (a.Driver == b.Driver) {
+            return a.Name < b.Name;
+        }
+        return a.Driver < b.Driver;
+    });
+
     for (auto it = conns->begin(); it != conns->end(); ++it)
     {
-        qDebug() << it->Name;
-        auto name = QString(it->Name);
-        ui->connectionsList->addItem(name);
+        ui->connectionsList->addItem(QString("[%2] %1").arg(it->Name, it->Driver));
     }
 }
 
@@ -497,33 +538,36 @@ void DBViewer::handleCellEdit(QModelIndex index)
 
     ui->dataViewWidget->show();
 
+    QModelIndex sourceIndex = proxy->mapToSource(index);
+    int row = sourceIndex.row();
+
+    QAbstractItemModel *sourceModel = proxy->sourceModel();
+    QVariant data = sourceModel->data(sourceModel->index(row, index.column()));
+
     QString colName = m->headerData(index.column(), Qt::Horizontal).toString();
     int rowId = m->data(m->index(index.row(), 0)).toInt();
 
-    auto data = m->data(index, Qt::DisplayRole).toString();
-    if (QString::compare(data, "[BLOB]") != 0) {
+    if (data.toString() != "[BLOB]") {
         ui->dataViewTable->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
         ui->dataViewTable->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
-        ui->dataViewTable->document()->setPlainText(data);
+        ui->dataViewTable->document()->setPlainText(data.toString());
         ui->dataViewTable->update();
         ui->dataViewTable->setFocus();
         ui->dataViewTable->selectAll();
         return;
     }
 
-    auto pk2 = getDB().primaryIndex(ui->tablesList->currentItem()->text());
-    for (int i = 0; i < pk2.count(); ++i)
-    {
-        qDebug() << pk2.fieldName(i);
-    }
+    auto db = QSqlDatabase::database(name + "tabconn2");
+    qDebug() << ui->tablesList->currentItem()->text();
+    auto pk2 = db.primaryIndex(ui->tablesList->currentItem()->text());
 
-    auto row = index.row();
     QVariantMap primaryKeyValues;
 
     for (int i = 0; i < pk2.count(); ++i)
     {
         QString pkName = pk2.fieldName(i);
         int colIndex = m->record().indexOf(pkName);
+        qDebug() << pk2 << colIndex;
         if (colIndex != -1)
         {
             QVariant value = m->data(m->index(row, colIndex));
@@ -531,8 +575,14 @@ void DBViewer::handleCellEdit(QModelIndex index)
         }
         else
         {
-            qDebug() << "Primary key column" << pkName << "not found in model";
         }
+    }
+
+    if (primaryKeyValues.empty()) {
+        QMessageBox msg;
+        msg.setText("Unable to fetch data: missing primary key index");
+        msg.exec();
+        return;
     }
 
     auto lookupQuery = QString("SELECT %1 FROM %2 WHERE ").arg(colName, ui->tablesList->currentItem()->text());
@@ -540,6 +590,7 @@ void DBViewer::handleCellEdit(QModelIndex index)
     for (auto it = primaryKeyValues.begin(); it != primaryKeyValues.end(); ++it)
     {
         ++count;
+        qDebug() << it.key();
 
         QString condition;
         if (it.value().isNull())
@@ -566,10 +617,10 @@ void DBViewer::handleCellEdit(QModelIndex index)
         lookupQuery.append(" AND ");
     }
 
-    qDebug() << lookupQuery;
-    QSqlQuery q(getDB());
+    QSqlQuery q(db);
     q.prepare(lookupQuery);
     q.bindValue(":id", rowId);
+
     if (q.exec() && q.next()) {
         QByteArray blobData = q.value(0).toByteArray();
         auto data = QString(blobData);
@@ -580,6 +631,7 @@ void DBViewer::handleCellEdit(QModelIndex index)
         ui->dataViewTable->setFocus();
         ui->dataViewTable->selectAll();
     } else {
+        qDebug() << lookupQuery;
         QMessageBox msg;
         msg.setText(q.lastError().text());
         msg.exec();
@@ -588,9 +640,4 @@ void DBViewer::handleCellEdit(QModelIndex index)
 
 void DBViewer::hideDataView(bool) {
     ui->dataViewWidget->hide();
-}
-
-QSqlDatabase DBViewer::getDB() {
-    QSqlDatabase db;
-    return QSqlDatabase::database();
 }
