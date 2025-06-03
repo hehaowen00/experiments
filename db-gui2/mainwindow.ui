@@ -64,12 +64,17 @@
      <string>File</string>
     </property>
     <addaction name="actionAdd_Connection"/>
+    <addaction name="actionManage_Connections"/>
    </widget>
    <widget class="QMenu" name="menuView">
     <property name="title">
      <string>View</string>
     </property>
     <addaction name="actionNew_Tab"/>
+    <addaction name="actionClose_Tab"/>
+    <addaction name="separator"/>
+    <addaction name="actionPrevious_Tab"/>
+    <addaction name="actionNext_Tab"/>
    </widget>
    <addaction name="menuFile"/>
    <addaction name="menuView"/>
@@ -87,7 +92,30 @@
     <string>New Tab</string>
    </property>
    <property name="shortcut">
-    <string>Ctrl+N</string>
+    <string>Ctrl+T</string>
+   </property>
+  </action>
+  <action name="actionClose_Tab">
+   <property name="text">
+    <string>Close Tab</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+W</string>
+   </property>
+  </action>
+  <action name="actionManage_Connections">
+   <property name="text">
+    <string>Manage Connections</string>
+   </property>
+  </action>
+  <action name="actionPrevious_Tab">
+   <property name="text">
+    <string>Previous Tab</string>
+   </property>
+  </action>
+  <action name="actionNext_Tab">
+   <property name="text">
+    <string>Next Tab</string>
    </property>
   </action>
  </widget>
