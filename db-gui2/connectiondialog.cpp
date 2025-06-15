@@ -26,6 +26,7 @@ ConnectionDialog::ConnectionDialog(QWidget *parent)
     connect(ui->saveButton, SIGNAL(clicked(bool)), this, SLOT(saveState(bool)));
     connect(ui->cancelBtn, SIGNAL(clicked(bool)), this, SLOT(cancel(bool)));
     connect(ui->testButton, SIGNAL(clicked(bool)), this, SLOT(testConn(bool)));
+    connect(ui->checkBox, SIGNAL(), this, SLOT());
 }
 
 void ConnectionDialog::driverChanged(QString currentTextChanged) {

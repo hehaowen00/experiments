@@ -4,6 +4,7 @@
 #include "sqlproxymodel.h"
 #include "utils.h"
 
+#include <QListWidgetItem>
 #include <QSqlDatabase>
 #include <QSqlTableModel>
 #include <QWidget>
@@ -26,9 +27,8 @@ private slots:
     void addConnection(bool);
     void loadDatabase(QString);
     void loadTables(QString);
-    void loadTable(QString);
+    void loadTable(QListWidgetItem*);
     void applyFilter(bool);
-    // void runQuery(bool);
     void dataChanged(const QModelIndex&, const QModelIndex&, QList<int>);
     void saveChanges(bool);
     void discardChanges(bool);
