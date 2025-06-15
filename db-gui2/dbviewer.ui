@@ -51,6 +51,9 @@
        <property name="rightMargin">
         <number>0</number>
        </property>
+       <property name="bottomMargin">
+        <number>8</number>
+       </property>
        <item>
         <layout class="QHBoxLayout" name="horizontalLayout">
          <property name="spacing">
@@ -188,14 +191,44 @@
             <enum>QTabWidget::TabPosition::North</enum>
            </property>
            <property name="currentIndex">
-            <number>2</number>
+            <number>0</number>
            </property>
            <widget class="QWidget" name="information">
+            <property name="enabled">
+             <bool>true</bool>
+            </property>
             <attribute name="title">
              <string>Table Structure</string>
             </attribute>
+            <layout class="QGridLayout" name="gridLayout_5">
+             <property name="leftMargin">
+              <number>0</number>
+             </property>
+             <property name="topMargin">
+              <number>0</number>
+             </property>
+             <property name="rightMargin">
+              <number>0</number>
+             </property>
+             <property name="bottomMargin">
+              <number>0</number>
+             </property>
+             <property name="spacing">
+              <number>0</number>
+             </property>
+             <item row="0" column="0">
+              <layout class="QVBoxLayout" name="verticalLayout_2">
+               <property name="spacing">
+                <number>0</number>
+               </property>
+              </layout>
+             </item>
+            </layout>
            </widget>
            <widget class="QWidget" name="data">
+            <property name="enabled">
+             <bool>true</bool>
+            </property>
             <attribute name="title">
              <string>View Data</string>
             </attribute>

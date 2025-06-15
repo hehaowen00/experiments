@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Regex Tester</title>
+</head>
+
+<body>
+  <div style="width: 500px; display: flex; flex-direction: column;">
+    <h2>Golang Regex Tester</h2>
+    <input id="pattern" type="text" placeholder="Pattern"
+      style="font-family: 'Courier New', Courier, monospace; font-weight: 600; font-size: 0.9rem; width: 500px;" />
+    <p>
+      <textarea id="content" placeholder="Content"
+        style="font-family: 'Courier New', Courier, monospace; font-weight: 600; font-size: 0.9rem; width: 500px;"
+        rows="20"></textarea>
+    </p>
+
+    <div>
+      <button onclick="match()">Match</button>
+      <button onclick="findSubmatch()">Find String Submatch</button>
+    </div>
+
+    <p id="status" class="hidden"></p>
+
+    <div id="results-parent" class="hidden">
+      <p>Matches:</p>
+      <ul id="results">
+      </ul>
+    </div>
+  </div>
+
+  <style>
+    .hidden {
+      display: none;
+    }
+  </style>
+
+  <script type="text/javascript">
+    window.onload = () => {
+      let item = localStorage.getItem("regex-tester-pattern");
+      console.log(item);
+      document.getElementById("pattern").value = item;
+
+      item = localStorage.getItem("regex-tester-content");
+      console.log(item);
+      document.getElementById("content").value = item;
+    };
+
+    const reset = () => {
+      document.getElementById("results").innerHTML = "";
+      document.getElementById("status").innerHTML = "";
+      document.getElementById("status").classList.add("hidden");
+      document.getElementById("results-parent").classList.add("hidden");
+    };
+
+    const save = () => {
+      localStorage.setItem("regex-tester-content", document.getElementById("content").value);
+      localStorage.setItem("regex-tester-pattern", document.getElementById("pattern").value);
+    };
+
+    const match = async () => {
+      reset();
+      save();
+
+      let resp = await fetch('http://localhost:8080/match', {
+        method: 'POST',
+        body: JSON.stringify({
+          Pattern: document.getElementById("pattern").value,
+          Content: document.getElementById("content").value,
+        }),
+      });
+
+      let json = await resp.json();
+      if (json === true) {
+        document.getElementById("status").textContent = "Status: Matched"
+      } else {
+        document.getElementById("status").textContent = "Status: Not Matched"
+      }
+      document.getElementById("status").classList.remove("hidden")
+    };
+
+    const findSubmatch = async () => {
+      reset();
+      save();
+
+      let resp = await fetch('http://localhost:8080/submatch', {
+        method: 'POST',
+        body: JSON.stringify({
+          Pattern: document.getElementById("pattern").value,
+          Content: document.getElementById("content").value,
+        }),
+      });
+
+      let json = await resp.json();
+
+      let res = document.getElementById("results");
+      for (let item of json) {
+        let el = document.createElement("li");
+        el.textContent = item;
+        res.appendChild(el);
+      }
+      document.getElementById("results-parent").classList.remove("hidden");
+    };
+  </script>
+</body>
+
+</html>
