@@ -1,16 +1,15 @@
-package main
+package scheduling
 
 import (
 	"context"
+	"fmt"
 	"log"
-	"os"
-	"os/signal"
 	"sync"
 	"sync/atomic"
 	"time"
 )
 
-type Scheduling struct {
+type TimeScheduler struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	once   sync.Once
@@ -27,23 +26,36 @@ type Scheduling struct {
 	mu    sync.Mutex
 }
 
-func NewScheduling(tz string, reset, onStart, onEnd func()) *Scheduling {
+// Creates a new TimeScheduler instance.
+func NewTimeScheduler(
+	tz string,
+	reset, onStart, onEnd func(),
+) (*TimeScheduler, error) {
 	loc, err := time.LoadLocation(tz)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
-	sch := &Scheduling{
+	sch := &TimeScheduler{
 		reset:   reset,
 		onStart: onStart,
 		onEnd:   onEnd,
 		loc:     loc,
 	}
 
-	return sch
+	return sch, err
 }
 
-func (w *Scheduling) Set(start, end string) {
+// Set does the following:
+//
+// - Stops the current scheduling routine if any.
+//
+// - Sets the new time range.
+//
+// - Starts up a new scheduling routine.
+//
+// Can be called more than once.
+func (w *TimeScheduler) Set(start, end string) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -53,12 +65,12 @@ func (w *Scheduling) Set(start, end string) {
 
 	startTime, err := time.Parse("15:04", start)
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("failed to parse start time - %w", err)
 	}
 
 	endTime, err := time.Parse("15:04", end)
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("failed to parse end time - %w", err)
 	}
 
 	w.start = startTime
@@ -70,10 +82,22 @@ func (w *Scheduling) Set(start, end string) {
 	w.once = sync.Once{}
 
 	time.Sleep(time.Second)
-	go w.Run()
+	go w.run()
+
+	return nil
 }
 
-func (w *Scheduling) Run() {
+func (w *TimeScheduler) Stop() {
+	w.once.Do(func() {
+		w.cancel()
+		w.started.Store(false)
+	})
+
+	time.Sleep(time.Second * 5)
+}
+
+// should not be called directly
+func (w *TimeScheduler) run() {
 	w.started.Store(true)
 	call(w.reset)
 
@@ -103,14 +127,6 @@ func (w *Scheduling) Run() {
 			break
 		}
 	}
-}
-
-func (w *Scheduling) Stop() {
-	w.once.Do(func() {
-		w.cancel()
-		w.started.Store(false)
-		time.Sleep(time.Second * 5)
-	})
 }
 
 func makeTime(
@@ -143,8 +159,6 @@ func calculateTimeRange(
 		diff = endTime.Sub(startTime)
 	}
 
-	log.Println("range difference", diff)
-
 	nowAdj := now.Add(time.Hour * -24)
 
 	actualStart := makeTime(nowAdj, startTime, loc)
@@ -164,32 +178,4 @@ func calculateTimeRange(
 	}
 
 	return actualStart, actualEnd
-}
-
-func main() {
-	w := NewScheduling(
-		"Australia/Brisbane",
-		func() {
-			log.Println("reset")
-		},
-		func() {
-			log.Println("time range start")
-		},
-		func() {
-			log.Println("time range end")
-		},
-	)
-	w.Set("20:52", "10:53")
-
-	time.Sleep(time.Second * 10)
-
-	w.Set("00:31", "07:00")
-
-	time.Sleep(time.Second * 10)
-
-	w.Set("00:36", "07:00")
-
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, os.Interrupt)
-	<-sig
 }
