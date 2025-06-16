@@ -10,50 +10,6 @@ import (
 	"time"
 )
 
-func makeTime(ts time.Time, t time.Time, loc *time.Location) time.Time {
-	return time.Date(ts.Year(), ts.Month(), ts.Day(), t.Hour(), t.Minute(), 0, 0, loc)
-}
-
-func call(fn func()) {
-	if fn != nil {
-		fn()
-	}
-}
-
-func calculateTime(
-	loc *time.Location,
-	now, startTime, endTime time.Time,
-) (time.Time, time.Time) {
-	var diff time.Duration
-
-	if endTime.Before(startTime) {
-		diff = 24*time.Hour - startTime.Sub(endTime)
-		log.Println(startTime.Add(diff), diff)
-	} else {
-		diff = endTime.Sub(startTime)
-	}
-
-	nowAdj := now.Add(time.Hour * -24)
-
-	actualStart := makeTime(nowAdj, startTime, loc)
-	actualEnd := actualStart.Add(diff)
-
-	if actualEnd.Before(now) {
-		actualStart = makeTime(now, startTime, loc)
-		actualEnd = actualStart.Add(diff)
-	}
-
-	if actualStart.Before(now) && actualEnd.Before(now) {
-		actualStart = actualStart.Add(24 * time.Hour)
-	}
-
-	if actualEnd.Before(now) {
-		actualEnd = actualEnd.Add(24 * time.Hour)
-	}
-
-	return actualStart, actualEnd
-}
-
 type Scheduling struct {
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -72,36 +28,28 @@ type Scheduling struct {
 }
 
 func NewScheduling(tz string, reset, onStart, onEnd func()) *Scheduling {
-	ctx, cancel := context.WithCancel(context.Background())
-
 	loc, err := time.LoadLocation(tz)
 	if err != nil {
 		panic(err)
 	}
 
 	sch := &Scheduling{
-		ctx:    ctx,
-		cancel: cancel,
-		once:   sync.Once{},
-
 		reset:   reset,
 		onStart: onStart,
 		onEnd:   onEnd,
 		loc:     loc,
 	}
 
-	go sch.Run()
-
 	return sch
 }
 
 func (w *Scheduling) Set(start, end string) {
-	if w.started.Load() {
-		w.mu.Lock()
-		defer w.mu.Unlock()
-	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
 
-	w.Stop()
+	if w.started.Load() {
+		w.Stop()
+	}
 
 	startTime, err := time.Parse("15:04", start)
 	if err != nil {
@@ -116,8 +64,12 @@ func (w *Scheduling) Set(start, end string) {
 	w.start = startTime
 	w.end = endTime
 
-	time.Sleep(time.Second)
+	ctx, cancel := context.WithCancel(context.Background())
+	w.ctx = ctx
+	w.cancel = cancel
+	w.once = sync.Once{}
 
+	time.Sleep(time.Second)
 	go w.Run()
 }
 
@@ -126,8 +78,11 @@ func (w *Scheduling) Run() {
 	call(w.reset)
 
 	w.mu.Lock()
-	actualStart, actualEnd := calculateTime(w.loc, time.Now(), w.start, w.end)
+	now := time.Now()
+	actualStart, actualEnd := calculateTimeRange(w.loc, now, w.start, w.end)
 	w.mu.Unlock()
+
+	log.Println("started scheduling", actualStart, actualEnd)
 
 	for {
 		startDiff := time.Until(actualStart)
@@ -154,7 +109,61 @@ func (w *Scheduling) Stop() {
 	w.once.Do(func() {
 		w.cancel()
 		w.started.Store(false)
+		time.Sleep(time.Second * 5)
 	})
+}
+
+func makeTime(
+	oldTime time.Time,
+	newTime time.Time,
+	loc *time.Location,
+) time.Time {
+	return time.Date(
+		oldTime.Year(), oldTime.Month(), oldTime.Day(),
+		newTime.Hour(), newTime.Minute(),
+		0, 0, loc,
+	)
+}
+
+func call(fn func()) {
+	if fn != nil {
+		fn()
+	}
+}
+
+func calculateTimeRange(
+	loc *time.Location,
+	now, startTime, endTime time.Time,
+) (time.Time, time.Time) {
+	var diff time.Duration
+
+	if endTime.Before(startTime) {
+		diff = 24*time.Hour - startTime.Sub(endTime)
+	} else {
+		diff = endTime.Sub(startTime)
+	}
+
+	log.Println("range difference", diff)
+
+	nowAdj := now.Add(time.Hour * -24)
+
+	actualStart := makeTime(nowAdj, startTime, loc)
+	actualEnd := actualStart.Add(diff)
+
+	if actualEnd.Before(now) {
+		actualStart = makeTime(now, startTime, loc)
+		actualEnd = actualStart.Add(diff)
+	}
+
+	if actualStart.Before(now) && actualEnd.Before(now) {
+		actualStart = actualStart.Add(24 * time.Hour)
+	}
+
+	if actualEnd.Before(now) {
+		actualEnd = actualEnd.Add(24 * time.Hour)
+	}
+
+	return actualStart, actualEnd
 }
 
 func main() {
