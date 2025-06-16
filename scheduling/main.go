@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -13,38 +14,33 @@ func makeTime(ts time.Time, t time.Time, loc *time.Location) time.Time {
 	return time.Date(ts.Year(), ts.Month(), ts.Day(), t.Hour(), t.Minute(), 0, 0, loc)
 }
 
-func calculateTime(loc *time.Location, start, end time.Time) (time.Time, time.Time) {
-	startTime := start
-	endTime := end
-	// log.Println(startTime)
-	// log.Println(endTime)
-	// log.Println(startTime.Add(10 * time.Hour))
+func call(fn func()) {
+	if fn != nil {
+		fn()
+	}
+}
 
+func calculateTime(
+	loc *time.Location,
+	now, startTime, endTime time.Time,
+) (time.Time, time.Time) {
 	var diff time.Duration
 
 	if endTime.Before(startTime) {
-		// log.Println("before")
 		diff = 24*time.Hour - startTime.Sub(endTime)
 		log.Println(startTime.Add(diff), diff)
 	} else {
 		diff = endTime.Sub(startTime)
 	}
 
-	// log.Println("DIFF", diff)
-
-	// log.Println(w.start.Sub(endTime))
-	now := time.Now()
-	// log.Println("NOW", now)
 	nowAdj := now.Add(time.Hour * -24)
 
 	actualStart := makeTime(nowAdj, startTime, loc)
 	actualEnd := actualStart.Add(diff)
-	// log.Println("initial", actualStart, actualEnd)
 
 	if actualEnd.Before(now) {
 		actualStart = makeTime(now, startTime, loc)
 		actualEnd = actualStart.Add(diff)
-		// log.Println("new", actualStart, actualEnd)
 	}
 
 	if actualStart.Before(now) && actualEnd.Before(now) {
@@ -63,15 +59,19 @@ type Scheduling struct {
 	cancel context.CancelFunc
 	once   sync.Once
 
+	reset   func()
 	onStart func()
 	onEnd   func()
-	loc     *time.Location
-	start   time.Time
-	end     time.Time
-	mu      sync.Mutex
+
+	started atomic.Bool
+
+	loc   *time.Location
+	start time.Time
+	end   time.Time
+	mu    sync.Mutex
 }
 
-func NewScheduling(tz string, onStart, onEnd func()) *Scheduling {
+func NewScheduling(tz string, reset, onStart, onEnd func()) *Scheduling {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	loc, err := time.LoadLocation(tz)
@@ -79,18 +79,30 @@ func NewScheduling(tz string, onStart, onEnd func()) *Scheduling {
 		panic(err)
 	}
 
-	return &Scheduling{
+	sch := &Scheduling{
 		ctx:    ctx,
 		cancel: cancel,
 		once:   sync.Once{},
 
+		reset:   reset,
 		onStart: onStart,
 		onEnd:   onEnd,
 		loc:     loc,
 	}
+
+	go sch.Run()
+
+	return sch
 }
 
 func (w *Scheduling) Set(start, end string) {
+	if w.started.Load() {
+		w.mu.Lock()
+		defer w.mu.Unlock()
+	}
+
+	w.Stop()
+
 	startTime, err := time.Parse("15:04", start)
 	if err != nil {
 		panic(err)
@@ -103,49 +115,54 @@ func (w *Scheduling) Set(start, end string) {
 
 	w.start = startTime
 	w.end = endTime
+
+	time.Sleep(time.Second)
+
+	go w.Run()
 }
 
 func (w *Scheduling) Run() {
-	actualStart, actualEnd := calculateTime(w.loc, w.start, w.end)
+	w.started.Store(true)
+	call(w.reset)
 
-	// log.Println("next", actualStart, actualEnd)
-
-	ticker := time.NewTicker(time.Minute * 10)
+	w.mu.Lock()
+	actualStart, actualEnd := calculateTime(w.loc, time.Now(), w.start, w.end)
+	w.mu.Unlock()
 
 	for {
+		startDiff := time.Until(actualStart)
+		endDiff := time.Until(actualEnd)
+
 		select {
 		case <-w.ctx.Done():
 			return
-			break
-		case <-ticker.C:
-			w.mu.Lock()
-			actualStart, actualEnd = calculateTime(w.loc, w.start, w.end)
-			w.mu.Unlock()
-			continue
-			break
-		case <-time.After(time.Until(actualStart)):
-			w.onStart()
+
+		case <-time.After(startDiff):
+			call(w.onStart)
 			actualStart = actualStart.Add(time.Hour * 24)
 			break
-		case <-time.After(time.Until(actualEnd)):
-			w.onEnd()
+
+		case <-time.After(endDiff):
+			call(w.onEnd)
 			actualEnd = actualEnd.Add(time.Hour * 24)
 			break
 		}
-
-		log.Println("new", actualStart, actualEnd)
 	}
 }
 
 func (w *Scheduling) Stop() {
 	w.once.Do(func() {
 		w.cancel()
+		w.started.Store(false)
 	})
 }
 
 func main() {
 	w := NewScheduling(
 		"Australia/Brisbane",
+		func() {
+			log.Println("reset")
+		},
 		func() {
 			log.Println("time range start")
 		},
@@ -154,7 +171,14 @@ func main() {
 		},
 	)
 	w.Set("20:52", "10:53")
-	w.Run()
+
+	time.Sleep(time.Second * 10)
+
+	w.Set("00:31", "07:00")
+
+	time.Sleep(time.Second * 10)
+
+	w.Set("00:36", "07:00")
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt)
