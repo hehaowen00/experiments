@@ -13,6 +13,51 @@ func makeTime(ts time.Time, t time.Time, loc *time.Location) time.Time {
 	return time.Date(ts.Year(), ts.Month(), ts.Day(), t.Hour(), t.Minute(), 0, 0, loc)
 }
 
+func calculateTime(loc *time.Location, start, end time.Time) (time.Time, time.Time) {
+	startTime := start
+	endTime := end
+	// log.Println(startTime)
+	// log.Println(endTime)
+	// log.Println(startTime.Add(10 * time.Hour))
+
+	var diff time.Duration
+
+	if endTime.Before(startTime) {
+		// log.Println("before")
+		diff = 24*time.Hour - startTime.Sub(endTime)
+		log.Println(startTime.Add(diff), diff)
+	} else {
+		diff = endTime.Sub(startTime)
+	}
+
+	// log.Println("DIFF", diff)
+
+	// log.Println(w.start.Sub(endTime))
+	now := time.Now()
+	// log.Println("NOW", now)
+	nowAdj := now.Add(time.Hour * -24)
+
+	actualStart := makeTime(nowAdj, startTime, loc)
+	actualEnd := actualStart.Add(diff)
+	// log.Println("initial", actualStart, actualEnd)
+
+	if actualEnd.Before(now) {
+		actualStart = makeTime(now, startTime, loc)
+		actualEnd = actualStart.Add(diff)
+		// log.Println("new", actualStart, actualEnd)
+	}
+
+	if actualStart.Before(now) && actualEnd.Before(now) {
+		actualStart = actualStart.Add(24 * time.Hour)
+	}
+
+	if actualEnd.Before(now) {
+		actualEnd = actualEnd.Add(24 * time.Hour)
+	}
+
+	return actualStart, actualEnd
+}
+
 type Scheduling struct {
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -58,49 +103,10 @@ func (w *Scheduling) Set(start, end string) {
 
 	w.start = startTime
 	w.end = endTime
-
 }
 
 func (w *Scheduling) Run() {
-	startTime := w.start
-	endTime := w.end
-	// log.Println(startTime)
-	// log.Println(endTime)
-	// log.Println(startTime.Add(10 * time.Hour))
-
-	var diff time.Duration
-
-	if endTime.Before(startTime) {
-		// log.Println("before")
-		diff = 24*time.Hour - startTime.Sub(endTime)
-		log.Println(startTime.Add(diff), diff)
-	} else {
-		diff = endTime.Sub(startTime)
-	}
-
-	// log.Println("DIFF", diff)
-
-	// log.Println(w.start.Sub(endTime))
-	now := time.Now()
-	// log.Println("NOW", now)
-	nowAdj := now.Add(time.Hour * -24)
-
-	actualStart := makeTime(nowAdj, startTime, w.loc)
-	actualEnd := actualStart.Add(diff)
-	// log.Println("initial", actualStart, actualEnd)
-
-	if actualEnd.Before(now) {
-		actualStart = makeTime(now, startTime, w.loc)
-		actualEnd = actualStart.Add(diff)
-		// log.Println("new", actualStart, actualEnd)
-	}
-
-	if actualStart.Before(now) && actualEnd.Before(now) {
-		actualStart = actualStart.Add(24 * time.Hour)
-	}
-	if actualEnd.Before(now) {
-		actualEnd = actualEnd.Add(24 * time.Hour)
-	}
+	actualStart, actualEnd := calculateTime(w.loc, w.start, w.end)
 
 	// log.Println("next", actualStart, actualEnd)
 
@@ -113,45 +119,7 @@ func (w *Scheduling) Run() {
 			break
 		case <-ticker.C:
 			w.mu.Lock()
-			startTime := w.start
-			endTime := w.end
-			// log.Println(startTime)
-			// log.Println(endTime)
-			// log.Println(startTime.Add(10 * time.Hour))
-
-			var diff time.Duration
-
-			if endTime.Before(startTime) {
-				// log.Println("before")
-				diff = 24*time.Hour - startTime.Sub(endTime)
-				log.Println(startTime.Add(diff), diff)
-			} else {
-				diff = endTime.Sub(startTime)
-			}
-
-			// log.Println("DIFF", diff)
-
-			// log.Println(w.start.Sub(endTime))
-			now := time.Now()
-			// log.Println("NOW", now)
-			nowAdj := now.Add(time.Hour * -24)
-
-			actualStart := makeTime(nowAdj, startTime, w.loc)
-			actualEnd := actualStart.Add(diff)
-			// log.Println("initial", actualStart, actualEnd)
-
-			if actualEnd.Before(now) {
-				actualStart = makeTime(now, startTime, w.loc)
-				actualEnd = actualStart.Add(diff)
-				// log.Println("new", actualStart, actualEnd)
-			}
-
-			if actualStart.Before(now) && actualEnd.Before(now) {
-				actualStart = actualStart.Add(24 * time.Hour)
-			}
-			if actualEnd.Before(now) {
-				actualEnd = actualEnd.Add(24 * time.Hour)
-			}
+			actualStart, actualEnd = calculateTime(w.loc, w.start, w.end)
 			w.mu.Unlock()
 			continue
 			break
@@ -187,6 +155,7 @@ func main() {
 	)
 	w.Set("20:52", "10:53")
 	w.Run()
+
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt)
 	<-sig
