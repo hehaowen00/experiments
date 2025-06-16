@@ -26,10 +26,10 @@ type Scheduling struct {
 	mu      sync.Mutex
 }
 
-func NewScheduling(onStart, onEnd func()) *Scheduling {
+func NewScheduling(tz string, onStart, onEnd func()) *Scheduling {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	loc, err := time.LoadLocation("Australia/Brisbane")
+	loc, err := time.LoadLocation(tz)
 	if err != nil {
 		panic(err)
 	}
@@ -177,6 +177,7 @@ func (w *Scheduling) Stop() {
 
 func main() {
 	w := NewScheduling(
+		"Australia/Brisbane",
 		func() {
 			log.Println("time range start")
 		},
