@@ -28,22 +28,15 @@ type TimeScheduler struct {
 
 // Creates a new TimeScheduler instance.
 func NewTimeScheduler(
-	tz string,
 	reset, onStart, onEnd func(),
-) (*TimeScheduler, error) {
-	loc, err := time.LoadLocation(tz)
-	if err != nil {
-		return nil, err
-	}
-
+) *TimeScheduler {
 	sch := &TimeScheduler{
 		reset:   reset,
 		onStart: onStart,
 		onEnd:   onEnd,
-		loc:     loc,
 	}
 
-	return sch, err
+	return sch
 }
 
 // Set does the following:
@@ -55,7 +48,7 @@ func NewTimeScheduler(
 // - Starts up a new scheduling routine.
 //
 // Can be called more than once.
-func (w *TimeScheduler) Set(start, end string) error {
+func (w *TimeScheduler) Set(tz, start, end string) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -73,8 +66,14 @@ func (w *TimeScheduler) Set(start, end string) error {
 		return fmt.Errorf("failed to parse end time - %w", err)
 	}
 
+	loc, err := time.LoadLocation(tz)
+	if err != nil {
+		return err
+	}
+
 	w.start = startTime
 	w.end = endTime
+	w.loc = loc
 
 	ctx, cancel := context.WithCancel(context.Background())
 	w.ctx = ctx

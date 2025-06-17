@@ -9,8 +9,7 @@ import (
 )
 
 func TestScheduler(t *testing.T) {
-	w, err := NewTimeScheduler(
-		"Australia/Brisbane",
+	w := NewTimeScheduler(
 		func() {
 			log.Println("reset")
 		},
@@ -21,19 +20,27 @@ func TestScheduler(t *testing.T) {
 			log.Println("time range end")
 		},
 	)
+
+	timezone := "Australia/Brisbane"
+
+	err := w.Set(timezone, "20:52", "10:53")
 	if err != nil {
 		panic(err)
 	}
 
-	w.Set("20:52", "10:53")
-
 	time.Sleep(time.Second * 10)
 
-	w.Set("00:31", "07:00")
+	err = w.Set(timezone, "00:31", "07:00")
+	if err != nil {
+		panic(err)
+	}
 
 	time.Sleep(time.Second * 10)
+	if err != nil {
+		panic(err)
+	}
 
-	w.Set("00:36", "07:00")
+	err = w.Set(timezone, "00:36", "07:00")
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt)
