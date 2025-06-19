@@ -49,25 +49,27 @@ func NewTimeScheduler(
 //
 // Can be called more than once.
 func (w *TimeScheduler) Set(tz, start, end string) error {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
 	if w.started.Load() {
 		w.Stop()
 	}
 
+	w.mu.Lock()
+
 	startTime, err := time.Parse("15:04", start)
 	if err != nil {
+		w.mu.Unlock()
 		return fmt.Errorf("failed to parse start time - %w", err)
 	}
 
 	endTime, err := time.Parse("15:04", end)
 	if err != nil {
+		w.mu.Unlock()
 		return fmt.Errorf("failed to parse end time - %w", err)
 	}
 
 	loc, err := time.LoadLocation(tz)
 	if err != nil {
+		w.mu.Unlock()
 		return err
 	}
 
@@ -80,7 +82,10 @@ func (w *TimeScheduler) Set(tz, start, end string) error {
 	w.cancel = cancel
 	w.once = sync.Once{}
 
+	w.mu.Unlock()
+
 	time.Sleep(time.Second)
+
 	go w.run()
 
 	return nil
