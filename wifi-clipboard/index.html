@@ -5,14 +5,24 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title></title>
-  <link href="css/style.css" rel="stylesheet">
+  <!-- <link href="css/style.css" rel="stylesheet"> -->
 </head>
 
-<body>
-  <form action="/api" method="post">
-    <input type="text" name="input" />
-    <button type="submit" formmethod="post" formaction="/api">Send</button>
+<body style="padding: 0; margin: 0;">
+  <img class="hide-on-mobile" src="/addr.png"></img>
+  <form action="/api" method="get" style="padding: 0; margin: 0;">
+    <input type="text" name="input" style="width: 100%; font-size: 1.5rem;" />
+    <p></p>
+    <button type="submit" formmethod="post" formaction="/api" style="width: 100%; font-size: 1.5rem;">Send</button>
   </form>
+
+  <style>
+    @media (max-width: 768px) {
+      img.hide-on-mobile {
+        display: none;
+      }
+    }
+  </style>
 </body>
 
 </html>
