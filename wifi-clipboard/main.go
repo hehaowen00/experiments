@@ -4,6 +4,10 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strings"
+
+	"github.com/skip2/go-qrcode"
+	"golang.design/x/clipboard"
 )
 
 func GetOutboundIP() net.IP {
@@ -21,8 +25,18 @@ func GetOutboundIP() net.IP {
 func main() {
 	mux := http.NewServeMux()
 
+	port := ":8080"
+	ip := GetOutboundIP()
+	png, err := qrcode.Encode("http://"+ip.String()+port, qrcode.High, 400)
+	_ = err
+
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "index.html")
+	})
+
+	mux.HandleFunc("GET /addr.png", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Add("Content-Type", "image/png")
+		w.Write(png)
 	})
 
 	mux.HandleFunc("POST /api", func(w http.ResponseWriter, r *http.Request) {
@@ -30,21 +44,11 @@ func main() {
 		r.ParseForm()
 		r.ParseMultipartForm(1024 * 1024)
 
-		log.Println(r.Form)
-
+		log.Println(strings.TrimSpace(r.FormValue("input")))
+		clipboard.Write(clipboard.FmtText, []byte(r.FormValue("input")))
 		http.Redirect(w, r, "/", http.StatusPermanentRedirect)
-
-		// data, err := io.ReadAll(r.Body)
-		// if err != nil {
-		// 	panic(err)
-		// }
-		// val := strings.TrimPrefix(string(data), "input=")
-		// if len(val) == 1 {
-		// 	log.Println(val[0])
-		// }
 	})
 
-	ip := GetOutboundIP()
 	log.Println("serving on http://" + ip.String() + ":8080")
 
 	http.ListenAndServe(":8080", mux)
