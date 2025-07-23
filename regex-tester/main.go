@@ -28,11 +28,31 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, "index.html")
-	})
+	corsMiddleware := func(next func(w http.ResponseWriter, r *http.Request)) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Set common CORS headers for all requests
+			w.Header().Set("Access-Control-Allow-Origin", "http://localhost:8888")
+			w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, DELETE, PUT")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+			w.Header().Set("Access-Control-Max-Age", "86400")
+			w.Header().Set("Connection", "keep-alive") //
 
-	mux.HandleFunc("POST /match", func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == "OPTIONS" {
+				w.WriteHeader(http.StatusOK) // Respond with 200 OK for OPTIONS requests
+				return
+			}
+
+			// Pass control to the next handler
+			next(w, r)
+		})
+	}
+
+	mux.Handle("/", corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		http.ServeFile(w, r, "index.html")
+	}))
+
+	mux.Handle("/match", corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		req := Request{}
 
 		err := json.NewDecoder(r.Body).Decode(&req)
@@ -43,10 +63,11 @@ func main() {
 		re := regexp.MustCompile(req.Pattern)
 		matched := re.MatchString(req.Content)
 
+		w.Header().Set("Access-Control-Allow-Origin", "*")
 		json.NewEncoder(w).Encode(matched)
-	})
+	}))
 
-	mux.HandleFunc("POST /submatch", func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle("/submatch", corsMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		req := Request{}
 
 		err := json.NewDecoder(r.Body).Decode(&req)
@@ -56,8 +77,10 @@ func main() {
 
 		re := regexp.MustCompile(req.Pattern)
 		results := re.FindStringSubmatch(req.Content)
+
+		w.Header().Set("Access-Control-Allow-Origin", "*")
 		json.NewEncoder(w).Encode(results)
-	})
+	}))
 
 	http.ListenAndServe(":8888", mux)
 }
