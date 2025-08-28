@@ -2,269 +2,358 @@ package repo
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
+	"slices"
 	"strings"
 
+	"github.com/jackc/pgconn"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
 )
 
-type SQL interface {
-	ID_() []string
-	Cols() []string
+type DBInterface interface {
+	// QueryContext(ctx context.Context, stmt string, args ...any) (*sql.Rows, error)
+	// QueryRowContext(ctx context.Context, stmt string, args ...any) *sql.Row
+	// ExecContext(ctx context.Context, stmt string, args ...any) (sql.Result, error)
+
+	Query(c context.Context, stmt string, args ...any) (pgx.Rows, error)
+	QueryRow(c context.Context, stmt string, args ...any) pgx.Row
+	Exec(c context.Context, stmt string, args ...any) (pgconn.CommandTag, error)
 }
 
-type Repo[T SQL] struct {
-	pool    *pgxpool.Pool
-	stmts   []string
-	table   string
-	scanner Accessor[T]
-	id      []string
+type Accessor[T any] func(*T) any
+
+type SQLMap[T any] map[string]Accessor[T]
+
+type IMapper[T any] interface {
+	Mapper() SQLMap[T]
 }
 
-type Mapper[T SQL] interface {
-	SQL
-	Scan(*T) []interface{}
+type SQLRepo[T any] struct {
+	db        *pgxpool.Pool
+	table     string
+	pks       []string
+	keys      []string
+	accessors []Accessor[T]
 }
 
-type Accessor[T SQL] func(*T) []interface{}
+func NewSQLRepo[T IMapper[T]](
+	table string,
+	pks []string,
+) *SQLRepo[T] {
+	var empty T
+	mapper := empty.Mapper()
 
-func NewRepo[T Mapper[T]](pool *pgxpool.Pool, table string) *Repo[T] {
-	var payload T
-
-	ids := payload.ID_()
-	cols := payload.Cols()
-	interfaces := payload.Scan(&payload)
-
-	if len(ids) > 0 && len(ids) >= len(cols) ||
-		len(cols) != len(interfaces) {
-		panic("number of columns does not match number of params")
+	if len(pks) == 0 {
+		panic("missing primary keys")
 	}
 
-	acc := []string{}
-	setParams := []string{}
-	idParams := []string{}
-
-	for i, s := range payload.ID_() {
-		idParams = append(idParams, fmt.Sprintf("%s = $%d", s, i+1))
+	if len(mapper) == 0 {
+		panic("invalid mapper returned - no entries")
 	}
 
-	upsertCols := []string{}
-	cleanedCols := []string{}
+	keys := []string{}
+	accessors := []Accessor[T]{}
 
-	for i := range len(cols[len(idParams):]) {
-		if !strings.HasPrefix(cols[i+len(idParams)], "!") {
-			upsertCols = append(upsertCols,
-				fmt.Sprintf("%s = $%d", clean(cols[i+len(idParams)]),
-					i+1+len(idParams)))
-		}
-
-		col := clean(cols[i+len(idParams)])
-		setParams = append(setParams,
-			fmt.Sprintf("%s = $%d", col, i+1+len(idParams)))
-		cleanedCols = append(cleanedCols, col)
+	for k, v := range mapper {
+		keys = append(keys, k)
+		accessors = append(accessors, v)
 	}
 
-	for i := range len(cols) {
-		cols[i] = clean(cols[i])
-		acc = append(acc, fmt.Sprintf("$%d", i+1))
-	}
-
-	upsertParams := strings.Join(upsertCols, ", ")
-	params := strings.Join(acc, ", ")
-	setParamsStr := strings.Join(setParams, ", ")
-	idParamsStr := strings.Join(idParams, ", ")
-
-	return &Repo[T]{
-		pool: pool,
-		stmts: []string{
-			fmt.Sprintf("select %s from %s",
-				strings.Join(cols, ", "), table,
-			),
-			fmt.Sprintf("insert into %s (%s) values (%s)",
-				table, strings.Join(cleanedCols, ", "), params,
-			),
-			fmt.Sprintf("update %s set %s where %s",
-				table, setParamsStr, idParamsStr,
-			),
-			fmt.Sprintf("delete from %s where %s",
-				table, idParamsStr,
-			),
-			fmt.Sprintf("insert into %s (%s) values (%s) on conflict (%s) do update set %s",
-				table, strings.Join(cols, ", "), params,
-				strings.Join(ids, ", "), upsertParams,
-			),
-		},
-		scanner: payload.Scan,
-		id:      ids,
+	return &SQLRepo[T]{
+		table:     table,
+		keys:      keys,
+		pks:       pks,
+		accessors: accessors,
 	}
 }
 
-func (repo *Repo[T]) Table() string {
-	return repo.table
+func (r *SQLRepo[T]) SetDB(pool *pgxpool.Pool) {
+	r.db = pool
 }
 
-func (repo *Repo[T]) Log() {
-	s, _ := json.MarshalIndent(repo.stmts, "", "  ")
-	log.Println(string(s))
-}
-
-func (repo *Repo[T]) Select(filter string, args ...any) ([]*T, error) {
-	stmt := repo.stmts[0]
-	if filter != "" {
-		stmt = fmt.Sprintf("%s %s", stmt, filter)
+func (r *SQLRepo[T]) DB() *pgxpool.Pool {
+	if (r.db) == nil {
+		panic("error - nil pointer for SQLRepo DB()")
 	}
 
-	rows, err := query(repo.pool, stmt, args)
+	return r.db
+}
+
+func (r *SQLRepo[T]) Count(db DBInterface, stmt string, args ...any) (int, error) {
+	params := WrapParams(args...)
+	count := 0
+
+	err := db.QueryRow(context.Background(), fmt.Sprintf("SELECT COUNT(*) FROM %s %s", r.table, stmt), params...).Scan(&count)
 	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var items []*T
-
-	for rows.Next() {
-		var item T
-
-		err = rows.Scan(repo.scanner(&item)...)
-		if err != nil {
-			return nil, err
-		}
-
-		items = append(items, &item)
+		return 0, err
 	}
 
-	return items, nil
+	return count, nil
 }
 
-func (repo *Repo[T]) SelectOne(filter string, args ...any) (*T, error) {
-	stmt := repo.stmts[0]
-	if filter != "" {
-		stmt = fmt.Sprintf("%s %s", stmt, filter)
+func (r *SQLRepo[T]) Select(
+	db DBInterface,
+	suffix string,
+	args ...any,
+) ([]*T, error) {
+	params := WrapParams(args...)
+
+	joinKeys := slices.Clone(r.keys)
+	for i := range joinKeys {
+		joinKeys[i] = string(r.table[0]) + "." + joinKeys[i]
 	}
 
-	var item T
+	sql := fmt.Sprintf("SELECT %s FROM %s %s %s", strings.Join(r.keys, ", "), r.table, string(r.table[0]), suffix)
+	log.Println(sql)
 
-	err := repo.pool.QueryRow(context.Background(),
-		stmt+" LIMIT 1", args...).Scan(repo.scanner(&item)...)
-	if err != nil {
-		return nil, err
-	}
-
-	return &item, nil
-}
-
-func (repo *Repo[T]) Insert(resp T) error {
-	_, err := repo.pool.Exec(context.Background(),
-		repo.stmts[1], repo.scanner(&resp)...)
-	return err
-}
-
-func (repo *Repo[T]) Upsert(resp T) error {
-	_, err := repo.pool.Exec(context.Background(),
-		repo.stmts[4], repo.scanner(&resp)...)
-	return err
-}
-
-func (repo *Repo[T]) Update(resp T) error {
-	_, err := repo.pool.Exec(context.Background(),
-		repo.stmts[2], repo.scanner(&resp)...)
-	return err
-}
-
-func (repo *Repo[T]) Delete(resp T) error {
-	_, err := repo.pool.Exec(
-		context.Background(),
-		repo.stmts[3],
-		repo.scanner(&resp)[:len(repo.id)]...,
+	rows, err := query(
+		db,
+		sql,
+		params...,
 	)
-	return err
-}
-
-func (repo *Repo[T]) Each(filter string, args []any, handler func(*T) error) error {
-	stmt := repo.stmts[0]
-	if filter != "" {
-		stmt = fmt.Sprintf("%s %s", stmt, filter)
-	}
-
-	rows, err := query(repo.pool, stmt, args)
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("query error - %w", err)
 	}
 	defer rows.Close()
+
+	res := []*T{}
 
 	for rows.Next() {
 		var item T
 
-		err = rows.Scan(repo.scanner(&item)...)
-		if err != nil {
-			return err
+		values := []any{}
+		for _, f := range r.accessors {
+			values = append(values, f(&item))
 		}
 
-		err = handler(&item)
+		err = rows.Scan(values...)
 		if err != nil {
-			return err
+			return nil, fmt.Errorf("scan error - %w", err)
 		}
+
+		res = append(res, &item)
 	}
 
-	return nil
+	return res, nil
 }
 
-func (repo *Repo[T]) Values(filter string, args ...any) ([][]any, error) {
-	stmt := repo.stmts[0]
-	if filter != "" {
-		stmt = fmt.Sprintf("%s %s", stmt, filter)
+// This function is designed to be used for joins
+// The table the repo is mapped to uses the first letter of the table name
+// e.g. table name = matches, sql is select <cols> from matches m
+func (r *SQLRepo[T]) SelectJoin(
+	db DBInterface,
+	suffix string,
+	args ...any,
+) ([]*T, error) {
+	params := WrapParams(args...)
+
+	joinKeys := slices.Clone(r.keys)
+	for i := range joinKeys {
+		joinKeys[i] = string(r.table[0]) + "." + joinKeys[i]
 	}
 
-	rows, err := query(repo.pool, stmt, args)
+	rows, err := query(
+		db,
+		fmt.Sprintf("SELECT %s FROM %s %s %s", strings.Join(joinKeys, ", "), r.table, string(r.table[0]), suffix),
+		params...,
+	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var items [][]any
-
-	var payload T
-	cols := payload.Cols()
-	items = append(items, toAny(cols))
+	res := []*T{}
 
 	for rows.Next() {
-		vals, err := rows.Values()
-		if err != nil {
-			return nil, fmt.Errorf("values err - %w", err)
+		var item T
+
+		values := []any{}
+		for _, f := range r.accessors {
+			values = append(values, f(&item))
 		}
-		items = append(items, vals)
+
+		err = rows.Scan(values...)
+		if err != nil {
+			panic(err)
+		}
+
+		res = append(res, &item)
 	}
 
-	return items, nil
+	return res, nil
 }
 
-func query(
-	pool *pgxpool.Pool,
-	query string,
-	args []any,
-) (pgx.Rows, error) {
-	if len(args) == 0 {
-		return pool.Query(context.Background(), query)
+func (r *SQLRepo[T]) SelectOne(
+	db DBInterface,
+	suffix string,
+	args ...any,
+) (*T, error) {
+	var res T
+	params := WrapParams(args...)
+
+	dest := []any{}
+	for _, f := range r.accessors {
+		dest = append(dest, f(&res))
 	}
-	return pool.Query(context.Background(), query, args...)
-}
 
-func toAny(xs []string) []any {
-	res := make([]any, len(xs))
-	for i := range xs {
-		res[i] = xs[i]
+	err := queryRow(
+		db,
+		fmt.Sprintf("SELECT %s FROM %s %s LIMIT 1", strings.Join(r.keys, ", "), r.table, suffix), params...).Scan(dest...)
+	if err != nil {
+		return nil, err
 	}
-	return res
+
+	return &res, nil
 }
 
-func clean(s string) string {
-	return strings.TrimPrefix(s, "!")
+func (r *SQLRepo[T]) Insert(
+	db DBInterface,
+	item *T,
+	suffix ...string,
+) error {
+	values := []any{}
+	placeholders := []string{}
+
+	for i, f := range r.accessors {
+		values = append(values, f(item))
+		placeholders = append(placeholders, fmt.Sprintf("$%d", i+1))
+	}
+
+	suffixS := ""
+	if len(suffix) == 1 {
+		suffixS = suffix[0]
+	}
+
+	_, err := db.Exec(
+		context.Background(),
+		fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s) %s", r.table, strings.Join(r.keys, ", "), strings.Join(placeholders, ", "), suffixS),
+		values...,
+	)
+
+	return err
+}
+
+func (r *SQLRepo[T]) Update(
+	db DBInterface,
+	stmt string,
+	args ...any,
+) error {
+	values := WrapParams(args...)
+	// placeholders := []string{}
+	// setters := []string{}
+	// pks := []string{}
+
+	// for i, f := range r.accessors {
+	// 	values = append(values, f(item))
+	// 	placeholders = append(placeholders, strconv.Itoa(i))
+	// }
+
+	// for i, k := range r.keys {
+	// 	if slices.Contains(r.pks, k) {
+	// 		pks = append(pks, fmt.Sprintf("%s = $c%d", k, i+1))
+	// 	}
+	// 	setters = append(setters, fmt.Sprintf("%s = $c%d", k, i+1))
+	// }
+	//
+	// _, err := db.Exec(fmt.Sprintf("UPDATE %s SET %s WHERE %s", r.table, strings.Join(setters, ", "), strings.Join(pks, ", ")), values...)
+
+	_, err := db.Exec(context.Background(), fmt.Sprintf("UPDATE %s %s", r.table, stmt), values...)
+
+	return err
+}
+
+func (r *SQLRepo[T]) Upsert(
+	db DBInterface,
+	item *T,
+	ignored []string,
+	conflict []string,
+) error {
+	values := []any{}
+	placeholders := []string{}
+
+	defaultKeys := []string{}
+	if len(conflict) > 0 {
+		defaultKeys = conflict
+	} else {
+		defaultKeys = r.pks
+	}
+
+	for i, f := range r.accessors {
+		values = append(values, f(item))
+		placeholders = append(placeholders, fmt.Sprintf("$%d", i+1))
+	}
+
+	setters := []string{}
+	for i, k := range r.keys {
+		if slices.Contains(r.pks, k) {
+			continue
+		}
+
+		if slices.Contains(ignored, k) {
+			continue
+		}
+
+		setters = append(setters, fmt.Sprintf("%s = $%d", k, i+1))
+	}
+
+	stmt :=
+		fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s) ON CONFLICT (%s) DO UPDATE SET %s",
+			r.table,
+			strings.Join(r.keys, ", "),
+			strings.Join(placeholders, ", "),
+			strings.Join(defaultKeys, ", "),
+			strings.Join(setters, ", "),
+		)
+
+	// log.Println("stmt", stmt)
+
+	err := exec(
+		db,
+		stmt,
+		values...,
+	)
+
+	return err
+}
+
+func (r *SQLRepo[T]) Delete(
+	db DBInterface,
+	suffix string,
+	args ...any,
+) error {
+	_, err := db.Exec(context.Background(), fmt.Sprintf("DELETE FROM %s %s", r.table, suffix), args...)
+	return err
+}
+
+func WrapParams(args ...any) []any {
+	return args
+}
+
+func query(db DBInterface, stmt string, args ...any) (pgx.Rows, error) {
+	if len(args) > 0 {
+		return db.Query(
+			context.Background(),
+			stmt,
+			args...,
+		)
+	}
+	return db.Query(
+		context.Background(),
+		stmt,
+	)
+}
+
+func queryRow(db DBInterface, stmt string, args ...any) pgx.Row {
+	if len(args) > 0 {
+		return db.QueryRow(context.Background(), stmt, args...)
+	}
+
+	return db.QueryRow(context.Background(), stmt)
+}
+func exec(db DBInterface, stmt string, args ...any) error {
+	// log.Println(stmt)
+	_, err := db.Exec(context.Background(), stmt, args...)
+	return err
 }
