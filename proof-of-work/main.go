@@ -15,7 +15,7 @@ func main() {
 	data := fmt.Sprintf("%d%d", rand.Int64(), rand.Int64())
 
 	startTime := time.Now()
-	target := "0000"
+	target := "000000"
 
 	fmt.Println("data", data)
 	fmt.Println("target", target)
