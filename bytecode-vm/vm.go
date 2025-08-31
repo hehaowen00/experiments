@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"strconv"
 )
 
@@ -9,15 +10,7 @@ type VM struct {
 	prog   Program
 	stack  []any
 	pc     int
-	stores map[string]*DataStore
-}
-
-type DataStore struct {
-	name    string
-	data    [][]any
-	fields  []string
-	types   []int
-	indexes map[string][]int
+	stores map[string]*Table
 }
 
 func NewVM(p Program) *VM {
@@ -25,7 +18,7 @@ func NewVM(p Program) *VM {
 		prog:   p,
 		stack:  make([]any, 0, 64),
 		pc:     0,
-		stores: map[string]*DataStore{},
+		stores: map[string]*Table{},
 	}
 }
 
@@ -45,7 +38,7 @@ func (vm *VM) pop() any {
 	return v
 }
 
-func parseByType(s string, typ int) any {
+func parseByType(s string, typ byte) any {
 	switch typ {
 	case TYPE_INT:
 		val, _ := strconv.ParseInt(s, 10, 64)
@@ -97,6 +90,7 @@ func (vm *VM) execute(row []string) (bool, error) {
 		case OP_EQ, OP_NEQ, OP_LT, OP_GT:
 			b := vm.pop()
 			a := vm.pop()
+			log.Println("EQ", a, b)
 			vm.push(compare(a, b, ins.Op))
 			vm.pc++
 		case OP_LTE:
@@ -115,23 +109,31 @@ func (vm *VM) execute(row []string) (bool, error) {
 			a := vm.pop().(bool)
 			vm.push(!a)
 			vm.pc++
-		case OP_SUBSTR_EQ:
+		case OP_STR_SUBSTR:
 			prefixLen := ins.A
-			prefix := vm.pop().(string)
+			// prefix := vm.pop().(string)
 			val := vm.pop().(string)
-			if len(val) < prefixLen || len(prefix) < prefixLen {
-				vm.push(false)
+			log.Println("SUBSTR", val)
+			if len(val) < prefixLen {
+				vm.push(val)
 			} else {
-				vm.push(val[:prefixLen] == prefix[:prefixLen])
+				vm.push(val[:prefixLen])
 			}
+			// if len(val) < prefixLen || len(prefix) < prefixLen {
+			// 	vm.push(false)
+			// } else {
+			// 	vm.push(val[:prefixLen] == prefix[:prefixLen])
+			// }
 			vm.pc++
-		case OP_NEW_DATASTORE:
+		case OP_CREATE_TABLE:
+			// schema := vm.pop().(Schema)
+
 			name := vm.pop().(string)
 			if name == "" {
 				vm.pc++
 				continue
 			}
-			vm.stores[name] = &DataStore{
+			vm.stores[name] = &Table{
 				name: name,
 			}
 			vm.pc++

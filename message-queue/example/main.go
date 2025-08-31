@@ -4,7 +4,8 @@ import (
 	"fmt"
 	"log"
 	messagequeue "message-queue"
-	"time"
+	"os"
+	"os/signal"
 )
 
 func main() {
@@ -12,9 +13,11 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	defer ex.Stop()
+	// defer ex.Stop()
 
 	ex.Run()
+
+	log.Println("starting message queue")
 
 	err = ex.CreateTopic("test")
 	if err != nil {
@@ -32,7 +35,7 @@ func main() {
 		"test",
 		"testing",
 		func(id string, b []byte) error {
-			log.Println(count, id, string(b))
+			log.Println("testing", count, id, string(b))
 			count++
 			return nil
 		},
@@ -42,38 +45,50 @@ func main() {
 	}
 	defer c.Stop()
 
+	c2, err := ex.NewConsumer(
+		"test",
+		"testing2",
+		func(id string, b []byte) error {
+			log.Println("testing2", count, id, string(b))
+			count++
+			return nil
+		},
+	)
+	if err != nil {
+		panic(err)
+	}
+	defer c2.Stop()
+
 	log.Println("publishing message...")
 
 	pub, err := ex.NewPublisher("test")
 	if err != nil {
 		panic(err)
 	}
-
 	_ = pub
 
-	for i := range 1000 {
-		id, err := pub.Publish("test", []byte("hello world!"))
-		if err != nil {
-			panic(err)
-		}
+	// for i := range 10 {
+	// 	id, err := pub.Publish("test", []byte("hello world!"))
+	// 	if err != nil {
+	// 		panic(err)
+	// 	}
+	//
+	// 	fmt.Println("publish", i, id)
+	// }
 
-		fmt.Println("publish", i, id)
+	fmt.Println("hello world")
+	ch := make(chan os.Signal, 1)
+	signal.Notify(ch, os.Interrupt)
+	<-ch
 
-		// id, err = pub.Publish("testing", []byte("hello world!"))
-		// if err != nil {
-		// 	panic(err)
-		// }
-
-		break
-	}
-
-	t, err := ex.GetTopic("testing")
+	t, err := ex.GetTopic("test")
 	if err != nil {
 		panic(err)
 	}
 
-	metrics := t.Metrics()
+	metrics, err := t.Metrics()
+	if err != nil {
+		panic(err)
+	}
 	log.Println("metrics:", metrics.TotalMessages, metrics.TotalChannels)
-
-	time.Sleep(time.Second * 100)
 }
