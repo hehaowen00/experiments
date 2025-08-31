@@ -64,6 +64,7 @@ func NewExchange(opts ...*ExchangeOpts) (*Exchange, error) {
 		maxRetries: opts[0].MaxRetries,
 	}
 
+	// DEPRECATED:
 	// for rows.Next() {
 	// 	id := ""
 	// 	name := ""
@@ -117,7 +118,11 @@ func (ex *Exchange) CreateTopic(topic string) error {
 		return nil
 	}
 
-	_, err := ex.metadata.Exec(`insert into topics (id, name) values (?, ?)`, 0, topic)
+	_, err := ex.metadata.Exec(
+		`INSERT INTO TOPICS (id, name)
+		VALUES (?, ?)`,
+		0, topic,
+	)
 	if err != nil {
 		err = nil
 		// return err
@@ -237,7 +242,7 @@ func (ex *Exchange) NewConsumer(
 
 			err = t.markRead(channel, id)
 			if err != nil {
-				log.Println(err)
+				log.Panic(err)
 				break
 			}
 		}

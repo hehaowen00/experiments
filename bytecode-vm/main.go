@@ -35,11 +35,6 @@ func main() {
 		{"Charlie", "35", "false", "Brisbane"},
 	}
 
-	// c1 := NewCompiler(nil)
-	// prog = c1.PushConst("people").
-	// 	NewDataStore().
-	// 	Program()
-
 	vm := NewVM(Program{})
 	vm.LoadProgram(prog)
 	vm.execute(nil)
@@ -61,10 +56,10 @@ func main() {
 	}
 
 	cCity := NewCompiler(&prog)
-	cCity.PushIndexed(3).PushConst("Mel").SubstrEq(3).Halt()
+	cCity.PushConst("Mel").PushIndexed(3).Substr(3).Eq().Halt()
 
 	resCity, _ := Accumulate(data, cCity.Program())
-	fmt.Println("Filtered City prefix 'Mel':")
+	fmt.Println("Filtered City prefix 'Mel':", len(resCity))
 	for _, r := range resCity {
 		fmt.Println(r)
 	}
@@ -73,7 +68,7 @@ func main() {
 	cGender.PushConst("Gender").LoadField().PushConst(true).Eq().Halt()
 
 	resGender, _ := Accumulate(data, cGender.Program())
-	fmt.Println("Filtered Gender is Female")
+	fmt.Println("Filtered Gender is Female", len(resGender))
 	for _, r := range resGender {
 		fmt.Println(r)
 	}

@@ -1,46 +1,5 @@
 package main
 
-type OpCode byte
-
-const (
-	OP_NOP OpCode = iota
-	OP_PUSH_CONST
-	OP_PUSH_INDEXED
-	OP_LOAD_FIELD
-	OP_ADD
-	OP_SUB
-	OP_MUL
-	OP_DIV
-	OP_MOD
-	OP_EQ
-	OP_NEQ
-	OP_LT
-	OP_LTE
-	OP_GT
-	OP_GTE
-	OP_AND
-	OP_OR
-	OP_NOT
-	OP_JMP_IF_FALSE
-	OP_JMP
-	OP_RETURN
-	OP_HALT
-	OP_SUBSTR_EQ
-	OP_NEW_DATASTORE
-	OP_LOAD_SCHEMA
-	OP_LOAD_ROW
-	OP_NEW_INDEX
-)
-
-const (
-	TYPE_STRING = iota
-	TYPE_INT
-	TYPE_FLOAT
-	TYPE_BOOL
-	TYPE_JSON
-	TYPE_BYTES
-)
-
 type Instruction struct {
 	Op OpCode
 	A  int
@@ -50,7 +9,7 @@ type Program struct {
 	Instrs []Instruction
 	Consts []any
 	Fields []string
-	Types  []int
+	Types  []byte
 }
 
 type Compiler struct {
@@ -65,12 +24,7 @@ func NewCompiler(existingProg *Program) *Compiler {
 	}
 
 	return &Compiler{
-		prog: Program{
-			Instrs: []Instruction{},
-			Consts: []any{},
-			Fields: []string{},
-			Types:  []int{},
-		},
+		prog: Program{},
 	}
 }
 
@@ -89,7 +43,7 @@ func (c *Compiler) addConst(v any) int {
 	return len(c.prog.Consts) - 1
 }
 
-func (c *Compiler) Field(name string, typ int) int {
+func (c *Compiler) Field(name string, typ byte) int {
 	for i, f := range c.prog.Fields {
 		if f == name {
 			return i
@@ -117,8 +71,8 @@ func (c *Compiler) LoadField() *Compiler {
 	return c
 }
 
-func (c *Compiler) SubstrEq(prefixLen int) *Compiler {
-	c.emit(OP_SUBSTR_EQ, prefixLen)
+func (c *Compiler) Substr(prefixLen int) *Compiler {
+	c.emit(OP_STR_SUBSTR, prefixLen)
 	return c
 }
 
@@ -163,7 +117,7 @@ func (c *Compiler) Halt() *Compiler {
 }
 
 func (c *Compiler) NewDataStore() *Compiler {
-	c.emit(OP_NEW_DATASTORE, 0)
+	c.emit(OP_CREATE_TABLE, 0)
 	return c
 }
 

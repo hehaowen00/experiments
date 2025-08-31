@@ -5,13 +5,12 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 var ErrStopped = errors.New("stopped")
@@ -43,23 +42,40 @@ func newTopic(name string) (*topic, error) {
 		go t.gc()
 	}
 
-	db, err := sql.Open("sqlite3", "./_msq_/"+name+".db")
+	db, err := sql.Open("sqlite", "./_msq_/"+name+".db")
 	if err != nil {
 		return nil, err
 	}
 
-	_, err = db.Exec(`create table if not exists messages (id text not null, timestamp int not null, msg blob not null, primary key (id))`)
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS messages (
+		id text not null,
+		timestamp int not null,
+		msg blob not null,
+		primary key (id)
+	)`)
 	if err != nil {
 		return nil, err
 	}
 
-	_, err = db.Exec(`create table if not exists channels (id text not null, last_read text not null, primary key (id))`)
+	_, err = db.Exec(`
+		CREATE TABLE IF NOT EXISTS channels (
+		id text not null,
+		last_read text not null,
+		primary key (id)
+	)`)
 	if err != nil {
 		return nil, err
 	}
 
 	last := ""
-	err = db.QueryRow(`select last_read from channels order by last_read desc limit 1`).Scan(&last)
+	err = db.QueryRow(
+		`SELECT last_read
+		FROM channels
+		ORDER BY last_read DESC
+		LIMIT 1`,
+	).
+		Scan(&last)
 	if err != sql.ErrNoRows && err != nil {
 		return nil, err
 	}
@@ -81,28 +97,34 @@ func newTopic(name string) (*topic, error) {
 	return t, nil
 }
 
-type metrics struct {
+func (t *topic) Name() string {
+	return t.name
+}
+
+type Metrics struct {
 	TotalMessages int64
 	TotalChannels int64
 }
 
-func (t *topic) Metrics() *metrics {
+func (t *topic) Metrics() (*Metrics, error) {
 	var totalMessages, totalChannels int64
 
-	err := t.db.QueryRow(`select count(*) from messages`).Scan(&totalMessages)
+	err := t.db.QueryRow(`SELECT COUNT(*) FROM messages`).
+		Scan(&totalMessages)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
-	err = t.db.QueryRow(`select count(*) from channels`).Scan(&totalChannels)
+	err = t.db.QueryRow(`SELECT COUNT(*) FROM channels`).
+		Scan(&totalChannels)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
-	return &metrics{
+	return &Metrics{
 		TotalMessages: totalMessages,
 		TotalChannels: totalChannels,
-	}
+	}, nil
 }
 
 func (t *topic) run() {
@@ -122,7 +144,12 @@ out:
 			last := ""
 			instant = time.After(5 * time.Minute)
 
-			err := t.db.QueryRow(`select last_read from channels order by last_read desc limit 1`).Scan(&last)
+			err := t.db.QueryRow(
+				`SELECT last_read
+				FROM channels
+				ORDER BY last_read
+				DESC LIMIT 1`,
+			).Scan(&last)
 			if err == sql.ErrNoRows {
 				continue
 			}
@@ -131,7 +158,7 @@ out:
 				panic(err)
 			}
 
-			_, err = t.db.Exec(`delete from messages where id <= ?`, last)
+			_, err = t.db.Exec(`DELETE FROM messages WHERE id <= ?`, last)
 			if err != nil {
 				panic(err)
 			}
@@ -157,10 +184,9 @@ func (t *topic) Send(msg []byte) (string, error) {
 	id := EncodeTimestamp(now)
 
 	_, err := t.db.Exec(
-		`insert into messages (id, timestamp, msg) values (?, ?, ?)`,
-		id,
-		now,
-		msg,
+		`INSERT INTO messages (id, timestamp, msg)
+		VALUES (?, ?, ?)`,
+		id, now, msg,
 	)
 	if err != nil {
 		panic(err)
@@ -180,7 +206,10 @@ func (t *topic) Send(msg []byte) (string, error) {
 func (t *topic) readNext(channel string) (string, []byte, error) {
 	last := ""
 
-	err := t.db.QueryRow(`select last_read from channels where id = ?`, channel).Scan(&last)
+	err := t.db.QueryRow(
+		`SELECT LAST_READ FROM channels WHERE id = ?`,
+		channel,
+	).Scan(&last)
 	if err == sql.ErrNoRows {
 		err = nil
 		if last == "" && t.last != "" {
@@ -201,10 +230,15 @@ func (t *topic) readNext(channel string) (string, []byte, error) {
 		id := ""
 		msg := []byte{}
 
-		err := t.db.QueryRow(`select id, msg from messages where id > ? order by id ASC limit 1`, last).
+		err := t.db.QueryRow(
+			`SELECT id, msg
+			FROM messages
+			WHERE id > ? ORDER BY id ASC LIMIT 1`,
+			last,
+		).
 			Scan(&id, &msg)
 
-		log.Println("get next", channel, id, last)
+		// log.Println("get next", channel, id, last)
 
 		if err == sql.ErrNoRows {
 			err = nil
@@ -227,8 +261,19 @@ func (t *topic) readNext(channel string) (string, []byte, error) {
 }
 
 func (t *topic) markRead(channel string, id string) error {
-	_, err := t.db.Exec(`insert into channels (id, last_read) values (?, ?) on conflict(id) do update set last_read = ?`, channel, id, id)
-	return err
+	tx, err := t.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	_, err = tx.Exec(`
+		INSERT INTO CHANNELS (id, last_read) values (?, ?)
+		ON CONFLICT(id)
+		DO UPDATE SET last_read = ?;`,
+		channel, id, id,
+	)
+	return tx.Commit()
 }
 
 func (t *topic) Clear() error {
@@ -238,12 +283,12 @@ func (t *topic) Clear() error {
 	}
 	defer tx.Rollback()
 
-	_, err = tx.Exec(`delete from messages`)
+	_, err = tx.Exec(`DELETE FROM messages`)
 	if err != nil {
 		return err
 	}
 
-	_, err = tx.Exec(`delete from channels`)
+	_, err = tx.Exec(`DELETE FROM channels`)
 	if err != nil {
 		return err
 	}
@@ -266,12 +311,20 @@ func (t *topic) Stop() {
 
 	last := ""
 
-	err := t.db.QueryRow(`select last_read from channels order by last_read desc limit 1`).Scan(&last)
+	err := t.db.QueryRow(
+		`SELECT last_read
+		FROM channels
+		ORDER BY last_read DESC 
+		LIMIT 1`,
+	).Scan(&last)
 	if err != nil {
-		panic(err)
 	}
 
-	_, err = t.db.Exec(`delete from messages where id <= ?`, last)
+	_, err = t.db.Exec(
+		`DELETE FROM messages
+		WHERE id <= ?`,
+		last,
+	)
 	if err != nil {
 		panic(err)
 	}
