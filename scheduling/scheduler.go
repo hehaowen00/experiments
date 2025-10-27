@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-type TimeScheduler struct {
+type Scheduler struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	once   sync.Once
@@ -29,8 +29,8 @@ type TimeScheduler struct {
 // Creates a new TimeScheduler instance.
 func NewTimeScheduler(
 	reset, onStart, onEnd func(),
-) *TimeScheduler {
-	sch := &TimeScheduler{
+) *Scheduler {
+	sch := &Scheduler{
 		reset:   reset,
 		onStart: onStart,
 		onEnd:   onEnd,
@@ -48,12 +48,14 @@ func NewTimeScheduler(
 // - Starts up a new scheduling routine.
 //
 // Can be called more than once.
-func (w *TimeScheduler) Set(tz, start, end string) error {
+func (w *Scheduler) Set(tz, start, end string) error {
+	log.Println("start new scheduler", tz, start, end)
+
+	w.mu.Lock()
+
 	if w.started.Load() {
 		w.Stop()
 	}
-
-	w.mu.Lock()
 
 	startTime, err := time.Parse("15:04", start)
 	if err != nil {
@@ -84,53 +86,53 @@ func (w *TimeScheduler) Set(tz, start, end string) error {
 
 	w.mu.Unlock()
 
-	time.Sleep(time.Second)
-
 	go w.run()
 
 	return nil
 }
 
-func (w *TimeScheduler) Stop() {
+func (w *Scheduler) Stop() {
 	w.once.Do(func() {
-		w.cancel()
-		w.started.Store(false)
+		if w.started.Load() {
+			w.cancel()
+			w.started.Store(false)
+		}
 	})
-
-	time.Sleep(time.Second * 5)
 }
 
 // should not be called directly
-func (w *TimeScheduler) run() {
+func (w *Scheduler) run() {
 	w.started.Store(true)
 	call(w.reset)
 
 	w.mu.Lock()
 	now := time.Now()
-	actualStart, actualEnd := calculateTimeRange(w.loc, now, w.start, w.end)
+	actualStart, actualEnd := calculateTimeRangeV2(w.loc, now, w.start, w.end)
 	w.mu.Unlock()
+	log.Println("started scheduling", actualStart, actualEnd, w.loc.String())
 
-	log.Println("started scheduling", actualStart, actualEnd)
-
+out:
 	for {
 		startDiff := time.Until(actualStart)
 		endDiff := time.Until(actualEnd)
+		log.Println("scheduling time until", startDiff, endDiff)
 
 		select {
 		case <-w.ctx.Done():
-			return
-
+			log.Println("scheduler exited - reason: context")
+			break out
 		case <-time.After(startDiff):
 			call(w.onStart)
-			actualStart = actualStart.Add(time.Hour * 24)
-			break
-
+			actualStart = actualStart.AddDate(0, 0, 1)
+			// actualStart = actualStart.Add(time.Hour * 24)
 		case <-time.After(endDiff):
 			call(w.onEnd)
-			actualEnd = actualEnd.Add(time.Hour * 24)
-			break
+			// actualEnd = actualEnd.Add(time.Hour * 24)
+			actualEnd = actualEnd.AddDate(0, 0, 1)
 		}
 	}
+
+	log.Println("scheduler exited")
 }
 
 func makeTime(
@@ -151,35 +153,66 @@ func call(fn func()) {
 	}
 }
 
-func calculateTimeRange(
+// func calculateTimeRange(
+// 	loc *time.Location,
+// 	now, startTime, endTime time.Time,
+// ) (time.Time, time.Time) {
+// 	var diff time.Duration
+//
+// 	if endTime.Before(startTime) {
+// 		diff = 24*time.Hour - startTime.Sub(endTime)
+// 	} else {
+// 		diff = endTime.Sub(startTime)
+// 	}
+//
+// 	// nowAdj := now.Add(time.Hour * -24)
+// 	nowAdj := now.AddDate(0, 0, 1)
+//
+// 	actualStart := makeTime(nowAdj, startTime, loc)
+// 	actualEnd := actualStart.Add(diff)
+//
+// 	if actualEnd.Before(now) {
+// 		actualStart = makeTime(now, startTime, loc)
+// 		actualEnd = actualStart.Add(diff)
+// 	}
+//
+// 	if actualStart.Before(now) && actualEnd.Before(now) {
+// 		// actualStart = actualStart.Add(24 * time.Hour)
+// 		actualStart = actualStart.AddDate(0, 0, 1)
+// 	}
+//
+// 	if actualEnd.Before(now) {
+// 		// actualEnd = actualEnd.Add(24 * time.Hour)
+// 		actualEnd = actualEnd.AddDate(0, 0, 1)
+// 	}
+//
+// 	return actualStart, actualEnd
+// }
+
+func calculateTimeRangeV2(
 	loc *time.Location,
-	now, startTime, endTime time.Time,
+	now time.Time,
+	startTime, endTime time.Time,
 ) (time.Time, time.Time) {
-	var diff time.Duration
+	start := time.Date(now.Year(), now.Month(), now.Day(),
+		startTime.Hour(), startTime.Minute(), 0, 0, loc)
 
-	if endTime.Before(startTime) {
-		diff = 24*time.Hour - startTime.Sub(endTime)
-	} else {
-		diff = endTime.Sub(startTime)
+	end := time.Date(now.Year(), now.Month(), now.Day(),
+		endTime.Hour(), endTime.Minute(), 0, 0, loc)
+
+	if end.Before(start) || end.Equal(start) {
+		end = end.AddDate(0, 0, 1)
 	}
 
-	nowAdj := now.Add(time.Hour * -24)
-
-	actualStart := makeTime(nowAdj, startTime, loc)
-	actualEnd := actualStart.Add(diff)
-
-	if actualEnd.Before(now) {
-		actualStart = makeTime(now, startTime, loc)
-		actualEnd = actualStart.Add(diff)
+	if now.After(end) {
+		start = start.AddDate(0, 0, 1)
+		end = end.AddDate(0, 0, 1)
 	}
 
-	if actualStart.Before(now) && actualEnd.Before(now) {
-		actualStart = actualStart.Add(24 * time.Hour)
+	if now.Before(start) && now.Before(end) && end.Sub(start) > 12*time.Hour {
+		start = start.AddDate(0, 0, -1)
+		end = end.AddDate(0, 0, -1)
 	}
 
-	if actualEnd.Before(now) {
-		actualEnd = actualEnd.Add(24 * time.Hour)
-	}
-
-	return actualStart, actualEnd
+	return start, end
 }
