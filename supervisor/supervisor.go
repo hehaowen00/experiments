@@ -4,156 +4,218 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"runtime"
+	"runtime/debug"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
-type Supervisor struct {
-	ctx    context.Context
-	cancel context.CancelFunc
-	once   sync.Once
-
-	retryJobs    []*Job
-	jobsChan     chan *Job
+type SupervisorGroup struct {
+	workers      map[string]context.CancelFunc
+	channels     map[string]chan any
+	errorHandler func(err error)
+	wg           sync.WaitGroup
 	mu           sync.Mutex
-	eventHandler func(*Event)
+	running      atomic.Bool
 }
 
-func New(bufferSize ...int) *Supervisor {
-	chanSize := 32
-	if len(bufferSize) == 1 {
-		chanSize = bufferSize[0]
+func NewSupervisorGroup() *SupervisorGroup {
+	sup := &SupervisorGroup{
+		workers:  map[string]context.CancelFunc{},
+		channels: map[string]chan any{},
+	}
+
+	sup.running.Store(true)
+
+	return sup
+}
+
+type WorkerConfig struct {
+	Key           string
+	Worker        func(ctx context.Context, ch chan any)
+	LogStackTrace bool
+	RestartPolicy RestartPolicy
+	RestartCount  int
+}
+
+func (g *SupervisorGroup) AddWorkerConfig(
+	config WorkerConfig,
+) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	cancel_, ok := g.workers[config.Key]
+	if ok {
+		cancel_()
+	}
+
+	ch_, ok := g.channels[config.Key]
+	if ok {
+		close(ch_)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
+	ch := make(chan any, 1)
 
-	return &Supervisor{
-		ctx:    ctx,
-		cancel: cancel,
+	g.workers[config.Key] = cancel
+	g.channels[config.Key] = ch
+	g.wg.Add(1)
 
-		jobsChan: make(chan *Job, chanSize),
-		eventHandler: func(e *Event) {
-		},
-	}
-}
+	log.Printf("supervisor: add worker %s - %v - %v \n", config.Key, config.RestartPolicy, config.RestartCount)
 
-func (s *Supervisor) UseEventHandler(handler func(*Event)) {
-	s.eventHandler = handler
-}
+	go func(key string) {
+		defer g.done(key)
 
-func (s *Supervisor) Ctx() context.Context {
-	return s.ctx
-}
+		restartCount := 0
 
-func (s *Supervisor) Stop() {
-	s.once.Do(func() {
-		s.cancel()
-	})
-}
+		for {
+			err := func() (err error) {
+				defer func() {
+					r := recover()
+					if r != nil {
+						log.Println("supervisor: worker quit", r)
 
-func (s *Supervisor) Push(job *Job) {
-	s.jobsChan <- job
-}
+						if config.LogStackTrace {
+							stackTrace := debug.Stack()
+							log.Printf("%s stack trace:\n%s\n", key, stackTrace)
+						}
 
-func (s *Supervisor) Run() {
-	ticker := time.NewTimer(time.Second * 5)
-
-	for {
-		select {
-		case <-s.ctx.Done():
-			return
-		case <-ticker.C:
-			s.mu.Lock()
-
-			if len(s.retryJobs) > 0 {
-				log.Println("[supervisor] retrying jobs")
-
-				go func() {
-					jobs := s.retryJobs
-					s.retryJobs = nil
-
-					for _, job := range jobs {
-						s.jobsChan <- job
+						err = fmt.Errorf("%v", r)
+						return
 					}
-					s.mu.Unlock()
+
+					log.Println("worker stopped", key)
 				}()
-			}
-		case job, ok := <-s.jobsChan:
-			if !ok {
+
+				config.Worker(ctx, ch)
+
 				return
+			}()
+			if err != nil {
+				log.Println("supervisor: worker panicked", err)
 			}
 
-			s.handleJob(job)
-		}
-	}
-}
+			if ctx.Err() != nil {
+				log.Println("supervisor: worker cancelled")
+				break
+			}
 
-func (s *Supervisor) handleJob(job *Job) {
-	err := s.runJob(job)
+			shouldRestart := false
 
-	evt := &Event{
-		Name:      job.Name,
-		Status:    "finished",
-		Err:       err,
-		Retry:     job.Retries,
-		Timestamp: time.Now(),
-	}
-
-	if err != nil {
-		evt.Status = "error"
-
-		if je, ok := err.(jobError); ok {
-			evt.Status = "panic"
-			evt.StackTrace = je.stacktrace
-			evt.Err = je.err
-		}
-
-		if job.Retries > 0 {
-			job.Retries -= 1
-
-			s.retryJobs = append(s.retryJobs, job)
-		}
-	}
-
-	s.eventHandler(evt)
-}
-
-func (s *Supervisor) runJob(job *Job) (err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			buf := make([]byte, 512)
-
-			for {
-				n := runtime.Stack(buf, false)
-				if n < len(buf) {
-					buf = buf[:n]
-					break
+			switch config.RestartPolicy {
+			case RestartAlways:
+				shouldRestart = true
+			case RestartLimited:
+				if restartCount <= config.RestartCount {
+					shouldRestart = true
+					restartCount++
 				}
-				buf = make([]byte, len(buf)*2)
+			case RestartNever:
+				shouldRestart = false
 			}
 
-			stackTrace := string(buf)
+			log.Println(key, shouldRestart, ctx.Err())
+			shouldRestart = shouldRestart && g.running.Load() && ctx.Err() == nil
 
-			switch m := r.(type) {
-			case error:
-			default:
-				err = fmt.Errorf("panic recovered - %w", fmt.Errorf("%v", m))
-			}
-
-			err = jobError{
-				err:        err,
-				stacktrace: stackTrace,
+			if !shouldRestart {
+				break
 			}
 		}
-	}()
+	}(config.Key)
+}
 
-	ctx := &JobContext{
-		Name: job.Name,
-		Ctx:  context.Background(),
+func (g *SupervisorGroup) Cancel(key string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	cancel := g.workers[key]
+	cancel()
+}
+
+func (g *SupervisorGroup) Stop() {
+	log.Println("supervisor: cancel all")
+	g.running.Store(false)
+
+	for key, cancel := range g.workers {
+		log.Println("cancelling worker", key)
+		cancel()
+	}
+	g.wg.Wait()
+}
+
+// workers whose channel is full will be skipped
+func (g *SupervisorGroup) Broadcast(message any) {
+	log.Println("supervisor: broadcast", message)
+
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	for k, ch := range g.channels {
+		go func() {
+			select {
+			case ch <- message:
+			case <-time.After(time.Minute):
+				log.Println("supervisor: broadcast timeout", k)
+			}
+		}()
+	}
+}
+
+// workers whose channel is full will be skipped
+func (g *SupervisorGroup) BroadcastWithPrefix(prefix string, message any) {
+	log.Println("supervisor: broadcast with prefix", prefix)
+
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	for k, ch := range g.channels {
+		if !strings.HasPrefix(k, prefix) {
+			continue
+		}
+
+		go func() {
+			select {
+			case ch <- message:
+			case <-time.After(time.Minute):
+				log.Println("supervisor: broadcast_prefix timeout", k)
+			}
+		}()
+	}
+}
+
+func (g *SupervisorGroup) Send(key string, message any) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	ch, ok := g.channels[key]
+	if ok {
+		go func() {
+			select {
+			case ch <- message:
+			case <-time.After(time.Minute):
+				log.Println("supervisor: send timeout", key)
+			}
+		}()
+	}
+}
+
+func (g *SupervisorGroup) done(key string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	ch, ok := g.channels[key]
+	if ok {
+		close(ch)
 	}
 
-	err = job.Func(ctx)
+	delete(g.channels, key)
+	delete(g.workers, key)
+	g.wg.Done()
 
-	return err
+	log.Println("supervisor: worker done", key)
+}
+
+func (g *SupervisorGroup) Wait() {
+	log.Println("supervisor: wait")
+	g.wg.Wait()
 }

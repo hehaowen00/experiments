@@ -1,54 +1,58 @@
 package supervisor_test
 
 import (
-	"errors"
+	"context"
 	"log"
 	"testing"
+	"time"
 
 	"github.com/hehaowen00/workspace/supervisor"
 )
 
 func TestSupervisor(t *testing.T) {
-	sup := supervisor.New()
+	sup := supervisor.NewSupervisorGroup()
 
-	sup.UseEventHandler(func(e *supervisor.Event) {
-		log.Printf("received event %+v\n", e)
-	})
-
-	sup.Push(&supervisor.Job{
-		Name: "job 1",
-		Func: func(ctx *supervisor.JobContext) error {
-			log.Println("job 1 run")
-			return nil
+	sup.AddWorkerConfig(supervisor.WorkerConfig{
+		Key: "worker1",
+		Worker: func(ctx context.Context, ch chan any) {
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case msg := <-ch:
+					log.Printf("worker1 received message: %v\n", msg)
+					if s, ok := msg.(string); ok && s == "panic" {
+						log.Panicln("worker1 panicked")
+					}
+				}
+			}
 		},
+		RestartPolicy: supervisor.RestartAlways,
 	})
 
-	sup.Push(&supervisor.Job{
-		Name: "job 2",
-		Func: func(ctx *supervisor.JobContext) error {
-			return errors.New("job 2 error")
+	restartCount := 0
+
+	sup.AddWorkerConfig(supervisor.WorkerConfig{
+		Key: "worker2",
+		Worker: func(ctx context.Context, ch chan any) {
+			restartCount++
+			log.Panicln("worker2 panicked", restartCount)
 		},
-		Retries: 1,
+		RestartPolicy: supervisor.RestartLimited,
+		RestartCount:  3,
 	})
 
-	sup.Push(&supervisor.Job{
-		Name: "job 3",
-		Func: func(ctx *supervisor.JobContext) error {
-			panic("job 3 recover")
+	sup.AddWorkerConfig(supervisor.WorkerConfig{
+		Key: "worker3",
+		Worker: func(ctx context.Context, ch chan any) {
+			log.Panicln("worker3 panicked")
 		},
-		Retries: 1,
+		RestartPolicy: supervisor.RestartNever,
 	})
 
-	sup.Push(&supervisor.Job{
-		Name: "job 4",
-		Func: func(ctx *supervisor.JobContext) error {
-			var test any = "hello world"
-			val := test.(float64)
-			_ = val
-			return nil
-		},
-		Retries: 1,
-	})
+	sup.Send("worker1", "hello worker1")
 
-	sup.Run()
+	time.Sleep(time.Second * 3)
+	sup.Stop()
+	sup.Wait()
 }
