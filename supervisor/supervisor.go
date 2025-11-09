@@ -2,6 +2,7 @@ package supervisor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"runtime/debug"
@@ -41,7 +42,12 @@ type WorkerConfig struct {
 
 func (g *SupervisorGroup) AddWorkerConfig(
 	config WorkerConfig,
-) {
+) error {
+	if g.running.Load() == false {
+		log.Println("supervisor: not running, skip adding worker", config.Key)
+		return errors.New("supervisor group not running")
+	}
+
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
@@ -62,7 +68,7 @@ func (g *SupervisorGroup) AddWorkerConfig(
 	g.channels[config.Key] = ch
 	g.wg.Add(1)
 
-	log.Printf("supervisor: add worker %s - %v - %v \n", config.Key, config.RestartPolicy, config.RestartCount)
+	log.Printf("supervisor: add worker %s - %v:%v \n", config.Key, config.RestartPolicy, config.RestartCount)
 
 	go func(key string) {
 		defer g.done(key)
@@ -123,11 +129,14 @@ func (g *SupervisorGroup) AddWorkerConfig(
 			}
 		}
 	}(config.Key)
+
+	return nil
 }
 
 func (g *SupervisorGroup) Cancel(key string) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
+
 	cancel := g.workers[key]
 	cancel()
 }
