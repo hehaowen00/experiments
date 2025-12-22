@@ -19,16 +19,20 @@ func (r Result[T]) UnwrapPanic() T {
   return T 
 }
 
-match (result, result) {
-  case Ok(v0), Ok(v1):
-    fmt.Println("hello, world!")
+if val := result.(enum); val == Err(e) {
+}
+
+if val := result.(enum); val == Ok(v) {
+}
+
+switch val := result.(enum) {
+  case Ok:
+    fmt.Println("hello,", val)
     if true {
       break
     }
     // will not reach
-  case Err(e0), Ok(v1):
-  case Ok(v0), Err(e1):
-  case Err(e0), Err(e1):
+  case Err:
 }
 
 func PropagateError() Result[string] {
