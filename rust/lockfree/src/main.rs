@@ -112,9 +112,11 @@ fn run_lockfree_trial() -> Duration {
 
     for _ in 0..CONSUMERS {
         let arr = Arc::clone(&arr);
-        handles.push(thread::spawn(move || loop {
-            for i in 0..ARRAY_SIZE {
-                let _ = arr.take(i);
+        handles.push(thread::spawn(move || {
+            loop {
+                for i in 0..ARRAY_SIZE {
+                    let _ = arr.take(i);
+                }
             }
         }))
     }
@@ -123,7 +125,7 @@ fn run_lockfree_trial() -> Duration {
         handle.join().unwrap();
     }
 
-    Duration::from_secs_f64(start.elapsed().as_secs_f64())
+    start.elapsed()
 }
 
 fn run_mutex_trial() -> Duration {
@@ -149,10 +151,12 @@ fn run_mutex_trial() -> Duration {
 
     for _ in 0..CONSUMERS {
         let vec = Arc::clone(&vec);
-        handles.push(thread::spawn(move || loop {
-            let mut guard = vec.lock().unwrap();
-            for val in guard.iter_mut() {
-                let _ = val.take();
+        handles.push(thread::spawn(move || {
+            loop {
+                let mut guard = vec.lock().unwrap();
+                for val in guard.iter_mut() {
+                    let _ = val.take();
+                }
             }
         }));
     }
@@ -161,7 +165,7 @@ fn run_mutex_trial() -> Duration {
         handle.join().unwrap();
     }
 
-    Duration::from_secs_f64(start.elapsed().as_secs_f64())
+    start.elapsed()
 }
 
 fn main() {
