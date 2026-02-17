@@ -51,6 +51,7 @@ func main()
    -- memory allocation strategy
    -- also implement mem.heap(), mem.debug(), mem.fixed(size: u64)
   const alloc, free = mem.arena()
+  defer free()
 
    -- can have a const ref or a mut ref determined if the variable is mut or const on assignment
    -- functions can take a mut ref as a const ref in arguments but cannot make a const ref into a mut ref
