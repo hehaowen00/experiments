@@ -1,0 +1,58 @@
+enum status
+  pending
+  inprogress
+  finished
+  cancelled
+end
+
+struct string
+  data mut ref []u8
+  len u64
+
+  func _len_(self) u64
+    return self.len
+  end
+
+  func _index_(self, index: u64) maybe u8
+    if len(self.data) = 0 then
+       return none
+    else
+       return self.data[index]
+    end
+  end
+end
+
+func main(args []string) i32
+  printf("args %d\\n", #args)
+
+  printf("hello world!\n")
+
+  val a i32 = 0
+  val b i64 = 2
+
+  val c = Dual(5, 4)
+  val d = Dual{ real = 10, im = 7 }
+
+  const e = ref d
+
+  const a1 = if b > 7 then "A" else "B" end
+
+  for i = i, a + b
+    printf("%d\n", i)
+  end
+
+  while true do
+    break
+  end
+
+  -- x^2 + 3x + 5
+  -- 2x + 3
+  -- x = 2, 2 * 2 + 3 = 7
+  printf("%d\n", diff(expression, 2))
+
+  mut dist = poisson.new(6)
+  -- unnecessary, just showcasing how to use an interface
+  printf("%f\n", dist:sampler().rand())
+
+  return 0
+end

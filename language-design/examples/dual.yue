@@ -1,0 +1,37 @@
+struct Dual
+  real f64
+  complex f64
+
+  func _add_(self, r Dual) Dual
+    return Dual{
+      real = self.real + r.real,
+      im = self.im + r.im,
+    }
+  end
+  
+  func _mul_(self, r Dual) Dual
+    return Dual{
+      real = self.real * r.real,
+      im = (self.real * r.real) + (self.im * r.im)
+    }
+  end
+
+  func _exp_(self, r Dual) Dual
+    return r
+  end
+end
+
+def expression(x Dual) Dual
+  return (x ** 2) + (3 * x) + 5
+end
+
+def derivative(f func(Dual) Dual, x f64) f64
+  return f(Dual(x, 1)).im
+end
+
+func main()
+  -- x^2 + 3x + 5
+  -- 2x + 3
+  -- x = 2, 2 * 2 + 3 = 7
+  printf("%d\n", derivative(expression, 2))
+end
