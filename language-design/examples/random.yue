@@ -1,0 +1,71 @@
+struct Sampler
+  rand func() f64
+end
+
+struct PCG
+  mul f64
+  inc f64
+
+  func new() PCG
+  end
+
+  func next() u64
+  end
+
+  func float64() f64
+    return 0
+  end
+end
+
+struct Normal
+  pcg mut ref PCG
+  mu f64
+  sigma f64
+  next maybe f64
+
+  func new(pcg mut ref PCG, mean f64, stddev f64) Normal
+    val r = PCG.new().rand()
+
+    return normal{
+      pcg = pcg,
+      mu = mean,
+      sigma = stddev,
+      next = none,
+    }
+  end
+
+  func float64(mut self) f64
+     val r = if self.next ~= none then
+       val r = self.next.value
+       self.next = none
+       r
+     else
+       -- box muller transform
+       val u1 = 1.0 - self.pcg.rand()
+       val u2 = self.pcg.rand()
+
+       val radius = math.sqrt(-2 * math.log(u1))
+       val theta = (2 * math.PI) * u2
+
+       val r1 = radius * math.cos(theta)
+       val r2 = radius * math.sin(theta)
+
+       self.next = some r2
+       r1
+     end
+
+     return r * self.sigma + self.mu
+  end
+
+  func sampler(mut self) Sampler
+    return sampler{
+       rand = self.rand,
+    }
+  end
+end
+
+
+struct Poisson
+  func new(lambda f64) Poisson
+  end
+end
