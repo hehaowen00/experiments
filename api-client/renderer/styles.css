@@ -233,6 +233,7 @@ body {
 .tree-item .method-badge.PUT { color: var(--method-put); }
 .tree-item .method-badge.PATCH { color: var(--method-patch); }
 .tree-item .method-badge.DELETE { color: var(--method-delete); }
+.tree-item .method-badge.WS { color: #60d0e0; }
 .tree-item.active .method-badge { color: white; }
 
 .tree-item .item-name {
@@ -651,6 +652,97 @@ body {
 .resp-header-value {
   color: var(--text);
 }
+
+/* Stream log (SSE/WS messages) */
+#restab-messages {
+  display: flex;
+  flex-direction: column;
+}
+
+.stream-log {
+  flex: 1;
+  overflow-y: auto;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.stream-entry {
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.stream-entry:hover {
+  background: var(--surface);
+}
+
+.stream-dir {
+  flex-shrink: 0;
+  font-weight: 700;
+  min-width: 16px;
+  text-align: center;
+}
+
+.stream-dir.in { color: var(--success); }
+.stream-dir.out { color: var(--accent); }
+.stream-dir.sys { color: var(--text-dim); }
+
+.stream-type {
+  flex-shrink: 0;
+  color: var(--text-dim);
+  min-width: 60px;
+  font-size: 11px;
+}
+
+.stream-time {
+  flex-shrink: 0;
+  color: var(--text-dim);
+  min-width: 70px;
+  text-align: right;
+  font-size: 11px;
+}
+
+.stream-body {
+  flex: 1;
+  min-width: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.stream-body.error { color: var(--danger); }
+
+.stream-compose {
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.stream-compose .url-input {
+  flex: 1;
+}
+
+.stream-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-family: var(--mono);
+}
+
+.stream-status .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.stream-status .dot.connected { background: var(--success); }
+.stream-status .dot.disconnected { background: var(--danger); }
 
 /* Timeline */
 .timeline {

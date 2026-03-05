@@ -8,6 +8,8 @@ let currentBodyType = 'text';
 let currentFile = null; // { path, name, size }
 let currentFormFields = [{ key: '', value: '', type: 'text', filePath: '', fileName: '', fileSize: 0 }];
 let autoSaveTimer = null;
+let streamConnectionId = null; // active SSE or WS connection ID
+let streamType = null; // 'sse' or 'ws'
 
 const treeEl = document.getElementById('tree');
 const nameEl = document.getElementById('collection-name');
@@ -637,6 +639,7 @@ treeEl.addEventListener('click', async (e) => {
 });
 
 async function selectRequest(id) {
+  if (streamConnectionId) await disconnectStream();
   activeRequestId = id;
   const item = findItem(collection.items, id);
   if (!item || item.type === 'folder') return;
@@ -699,6 +702,9 @@ function resetResponse() {
   responsePlaceholderEl.style.display = ''; responsePlaceholderEl.textContent = 'Send a request to see the response';
   responseBodyContainer.style.display = 'none'; responseBodyContainer.innerHTML = '';
   respHeadersContentEl.innerHTML = ''; timelineContentEl.innerHTML = ''; historyContentEl.innerHTML = '';
+  document.getElementById('stream-log').innerHTML = '';
+  document.getElementById('messages-tab-btn').style.display = 'none';
+  document.getElementById('stream-compose').style.display = 'none';
   switchResponseTab('body');
 }
 
@@ -746,6 +752,7 @@ switchRequestTab('headers');
 function switchResponseTab(tab) {
   document.querySelectorAll('[data-restab]').forEach(t => t.classList.toggle('active', t.dataset.restab === tab));
   document.getElementById('restab-body').style.display = tab === 'body' ? '' : 'none';
+  document.getElementById('restab-messages').style.display = tab === 'messages' ? '' : 'none';
   document.getElementById('restab-resp-headers').style.display = tab === 'resp-headers' ? '' : 'none';
   document.getElementById('restab-timeline').style.display = tab === 'timeline' ? '' : 'none';
   document.getElementById('restab-history').style.display = tab === 'history' ? '' : 'none';
@@ -793,23 +800,76 @@ historyContentEl.addEventListener('click', async (e) => {
 
 // === Send request ===
 
-document.getElementById('send-btn').addEventListener('click', async () => {
-  const method = methodEl.value;
-  const url = urlEl.value.trim();
-  if (!url) { urlEl.focus(); return; }
+const sendBtn = document.getElementById('send-btn');
+const disconnectBtn = document.getElementById('disconnect-btn');
+const streamLogEl = document.getElementById('stream-log');
+const messagesTabBtn = document.getElementById('messages-tab-btn');
+const streamComposeEl = document.getElementById('stream-compose');
+const wsMessageInput = document.getElementById('ws-message-input');
 
+function setStreamUI(connected) {
+  sendBtn.style.display = connected ? 'none' : '';
+  disconnectBtn.style.display = connected ? '' : 'none';
+}
+
+function appendStreamEntry(dir, type, body, isError) {
+  const time = new Date().toLocaleTimeString();
+  const entry = document.createElement('div');
+  entry.className = 'stream-entry';
+  const arrow = dir === 'in' ? '\u25C0' : dir === 'out' ? '\u25B6' : '\u2022';
+  entry.innerHTML = `<span class="stream-dir ${dir}">${arrow}</span><span class="stream-type">${esc(type)}</span><span class="stream-body${isError ? ' error' : ''}">${esc(body)}</span><span class="stream-time">${esc(time)}</span>`;
+  streamLogEl.appendChild(entry);
+  streamLogEl.scrollTop = streamLogEl.scrollHeight;
+}
+
+async function disconnectStream() {
+  if (streamConnectionId) {
+    if (streamType === 'sse') await window.api.sseDisconnect(streamConnectionId);
+    else if (streamType === 'ws') await window.api.wsDisconnect(streamConnectionId);
+    streamConnectionId = null;
+    streamType = null;
+  }
+  setStreamUI(false);
+}
+
+disconnectBtn.addEventListener('click', () => {
+  appendStreamEntry('sys', 'system', 'Disconnected by user');
+  disconnectStream();
+});
+
+async function ensureActiveRequest(method, url) {
   if (!activeRequestId) {
-    const req = { id: generateId(), type: 'request', name: url.replace(/^https?:\/\//, '').slice(0, 40), method, url, headers: currentHeaders.filter(h => h.key), body: bodyEl.value, bodyType: currentBodyType };
+    const req = { id: generateId(), type: 'request', name: url.replace(/^(?:wss?|https?):\/\//, '').slice(0, 40), method, url, headers: currentHeaders.filter(h => h.key), body: bodyEl.value, bodyType: currentBodyType };
     collection.items.push(req);
     activeRequestId = req.id;
     await save(); renderTree();
   }
+}
 
+sendBtn.addEventListener('click', async () => {
+  const method = methodEl.value;
+  const url = urlEl.value.trim();
+  if (!url) { urlEl.focus(); return; }
+
+  // Disconnect any existing stream
+  if (streamConnectionId) await disconnectStream();
+
+  await ensureActiveRequest(method, url);
+
+  if (method === 'WS') {
+    await startWs(url);
+  } else {
+    await sendHttpRequest(method, url);
+  }
+});
+
+async function sendHttpRequest(method, url) {
   responsePlaceholderEl.style.display = '';
   responsePlaceholderEl.innerHTML = '<span class="spinner"></span> Sending...';
   responseBodyContainer.style.display = 'none';
   responseMetaEl.style.display = 'none';
   responseTabsEl.style.display = 'none';
+  messagesTabBtn.style.display = 'none';
 
   const sendOpts = {
     method, url,
@@ -821,9 +881,35 @@ document.getElementById('send-btn').addEventListener('click', async () => {
       key: f.key, value: f.value, type: f.type,
       filePath: f.filePath, fileName: f.fileName, fileMimeType: '',
     })),
+    _requestId: activeRequestId,
   };
 
   const result = await window.api.sendRequest(sendOpts);
+
+  // SSE detected — switch to streaming mode
+  if (result.sse) {
+    streamConnectionId = result.sseId;
+    streamType = 'sse';
+
+    streamLogEl.innerHTML = '';
+    messagesTabBtn.style.display = '';
+    streamComposeEl.style.display = 'none';
+    responseMetaEl.style.display = 'flex';
+    responseTabsEl.style.display = 'flex';
+    responsePlaceholderEl.style.display = 'none';
+    responseBodyContainer.style.display = 'none';
+
+    responseStatusEl.innerHTML = `<span class="stream-status"><span class="dot connected"></span> SSE ${result.status}</span>`;
+    responseStatusEl.className = 'response-status';
+    responseTimeEl.textContent = `${result.time}ms`;
+
+    respHeadersContentEl.innerHTML = renderRespHeaders(result.headers);
+    timelineContentEl.innerHTML = renderTimeline(result.timeline);
+
+    setStreamUI(true);
+    switchResponseTab('messages');
+    return;
+  }
 
   await window.api.saveResponse({
     request_id: activeRequestId, collection_id: collectionId,
@@ -837,6 +923,114 @@ document.getElementById('send-btn').addEventListener('click', async () => {
 
   showResponse(result);
   switchResponseTab(result.error ? 'timeline' : 'body');
+}
+
+// === WebSocket ===
+
+async function startWs(url) {
+  // Convert http(s) to ws(s) if needed, or leave ws(s) as-is
+  let wsUrl = url;
+  if (wsUrl.startsWith('http://')) wsUrl = 'ws://' + wsUrl.slice(7);
+  else if (wsUrl.startsWith('https://')) wsUrl = 'wss://' + wsUrl.slice(8);
+  else if (!wsUrl.startsWith('ws://') && !wsUrl.startsWith('wss://')) wsUrl = 'ws://' + wsUrl;
+
+  const connId = generateId();
+  streamConnectionId = connId;
+  streamType = 'ws';
+
+  streamLogEl.innerHTML = '';
+  messagesTabBtn.style.display = '';
+  streamComposeEl.style.display = 'flex';
+  responseMetaEl.style.display = 'flex';
+  responseTabsEl.style.display = 'flex';
+  responsePlaceholderEl.style.display = 'none';
+  responseBodyContainer.style.display = 'none';
+
+  responseStatusEl.innerHTML = '<span class="stream-status"><span class="dot connected"></span> Connecting...</span>';
+  responseStatusEl.className = 'response-status';
+  responseTimeEl.textContent = '';
+
+  setStreamUI(true);
+  switchResponseTab('messages');
+
+  appendStreamEntry('sys', 'system', `Connecting to ${wsUrl}...`);
+
+  await window.api.wsConnect({
+    id: connId, url: wsUrl,
+    headers: currentHeaders.filter(h => h.key),
+  });
+}
+
+// WS send message
+document.getElementById('ws-send-msg-btn').addEventListener('click', async () => {
+  const msg = wsMessageInput.value;
+  if (!msg || !streamConnectionId || streamType !== 'ws') return;
+  await window.api.wsSend({ id: streamConnectionId, data: msg });
+  appendStreamEntry('out', 'sent', msg);
+  wsMessageInput.value = '';
+});
+
+wsMessageInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') document.getElementById('ws-send-msg-btn').click();
+});
+
+// === SSE event listeners ===
+
+window.api.onSseOpen((d) => {
+  if (d.id !== streamConnectionId) return;
+  responseStatusEl.innerHTML = `<span class="stream-status"><span class="dot connected"></span> Connected</span>`;
+  appendStreamEntry('sys', 'system', `Connected — ${d.status} ${d.statusText}`);
+});
+
+window.api.onSseEvent((d) => {
+  if (d.id !== streamConnectionId) return;
+  const label = d.event.type !== 'message' ? d.event.type : 'data';
+  appendStreamEntry('in', label, d.event.data);
+});
+
+window.api.onSseError((d) => {
+  if (d.id !== streamConnectionId) return;
+  appendStreamEntry('sys', 'error', d.error, true);
+  responseStatusEl.innerHTML = `<span class="stream-status"><span class="dot disconnected"></span> Error</span>`;
+  setStreamUI(false);
+  streamConnectionId = null; streamType = null;
+});
+
+window.api.onSseClose((d) => {
+  if (d.id !== streamConnectionId) return;
+  appendStreamEntry('sys', 'system', 'Connection closed');
+  responseStatusEl.innerHTML = `<span class="stream-status"><span class="dot disconnected"></span> Closed</span>`;
+  setStreamUI(false);
+  streamConnectionId = null; streamType = null;
+});
+
+// === WebSocket event listeners ===
+
+window.api.onWsOpen((d) => {
+  if (d.id !== streamConnectionId) return;
+  responseStatusEl.innerHTML = `<span class="stream-status"><span class="dot connected"></span> Connected</span>`;
+  appendStreamEntry('sys', 'system', 'WebSocket connected');
+});
+
+window.api.onWsMessage((d) => {
+  if (d.id !== streamConnectionId) return;
+  appendStreamEntry('in', d.isBinary ? 'binary' : 'text', d.data);
+});
+
+window.api.onWsError((d) => {
+  if (d.id !== streamConnectionId) return;
+  appendStreamEntry('sys', 'error', d.error, true);
+  responseStatusEl.innerHTML = `<span class="stream-status"><span class="dot disconnected"></span> Error</span>`;
+  setStreamUI(false);
+  streamConnectionId = null; streamType = null;
+});
+
+window.api.onWsClose((d) => {
+  if (d.id !== streamConnectionId) return;
+  appendStreamEntry('sys', 'system', `Connection closed (code: ${d.code}${d.reason ? ', reason: ' + d.reason : ''})`);
+  responseStatusEl.innerHTML = `<span class="stream-status"><span class="dot disconnected"></span> Closed</span>`;
+  setStreamUI(false);
+  streamConnectionId = null; streamType = null;
 });
 
 // === Sidebar buttons ===
@@ -955,5 +1149,7 @@ window.matchMedia('(min-aspect-ratio: 1/1)').addEventListener('change', () => {
 });
 
 // === Init ===
+
+window.addEventListener('beforeunload', () => { if (streamConnectionId) disconnectStream(); });
 
 load();
