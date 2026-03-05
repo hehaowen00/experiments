@@ -1102,7 +1102,12 @@ async function save() { await window.api.saveCollection(collection); }
 function renderTree() { treeEl.innerHTML = renderItems(collection.items, 0); }
 
 function renderItems(items, depth) {
-  return items.map(item => {
+  const sorted = [...items].sort((a, b) => {
+    if (a.type === 'folder' && b.type !== 'folder') return -1;
+    if (a.type !== 'folder' && b.type === 'folder') return 1;
+    return 0;
+  });
+  return sorted.map(item => {
     if (item.type === 'folder') {
       const collapsed = item.collapsed ? 'collapsed' : '';
       const arrow = item.collapsed ? '&#9654;' : '&#9660;';
