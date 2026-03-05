@@ -6,10 +6,19 @@ const Database = require('better-sqlite3');
 const WebSocket = require('ws');
 
 let db;
-const DB_PATH = path.join(app.getPath('userData'), 'api-client.db');
-console.log(DB_PATH)
+const CONFIG_DIR = path.join(require('os').homedir(), '.config', 'api-client');
+const DB_PATH = path.join(CONFIG_DIR, 'api-client.db');
 
 function initDb() {
+  if (!fs.existsSync(CONFIG_DIR)) {
+    fs.mkdirSync(CONFIG_DIR, { recursive: true });
+  }
+
+  // Migrate from old location
+  const oldDbPath = path.join(app.getPath('userData'), 'api-client.db');
+  if (!fs.existsSync(DB_PATH) && fs.existsSync(oldDbPath)) {
+    fs.copyFileSync(oldDbPath, DB_PATH);
+  }
   db = new Database(DB_PATH);
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
@@ -59,6 +68,24 @@ function initDb() {
     db.exec("ALTER TABLE collections ADD COLUMN last_used TEXT DEFAULT ''");
     db.exec("UPDATE collections SET last_used = created_at WHERE last_used = ''");
   }
+  if (!cols.includes('pinned')) {
+    db.exec("ALTER TABLE collections ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0");
+  }
+  if (!cols.includes('category_id')) {
+    db.exec("ALTER TABLE collections ADD COLUMN category_id TEXT DEFAULT NULL");
+  }
+  if (!cols.includes('variables')) {
+    db.exec("ALTER TABLE collections ADD COLUMN variables TEXT NOT NULL DEFAULT '[]'");
+  }
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS categories (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      collapsed INTEGER NOT NULL DEFAULT 0
+    );
+  `);
 
   migrateJsonFiles();
 }
@@ -85,24 +112,46 @@ function migrateJsonFiles() {
 // --- Collection CRUD ---
 
 function loadCollections() {
-  return db.prepare('SELECT id, name, last_used FROM collections ORDER BY last_used DESC').all();
+  return db.prepare('SELECT id, name, last_used, pinned, category_id FROM collections ORDER BY last_used DESC').all();
+}
+
+function loadCategories() {
+  return db.prepare('SELECT * FROM categories ORDER BY sort_order ASC, rowid ASC').all();
+}
+
+function saveCategory(cat) {
+  const existing = db.prepare('SELECT id FROM categories WHERE id = ?').get(cat.id);
+  if (existing) {
+    db.prepare('UPDATE categories SET name = ?, sort_order = ?, collapsed = ? WHERE id = ?')
+      .run(cat.name, cat.sort_order || 0, cat.collapsed ? 1 : 0, cat.id);
+  } else {
+    const maxOrder = db.prepare('SELECT MAX(sort_order) as m FROM categories').get();
+    db.prepare('INSERT INTO categories (id, name, sort_order, collapsed) VALUES (?, ?, ?, ?)')
+      .run(cat.id, cat.name, (maxOrder?.m || 0) + 1, 0);
+  }
+}
+
+function deleteCategory(id) {
+  db.prepare('UPDATE collections SET category_id = NULL WHERE category_id = ?').run(id);
+  db.prepare('DELETE FROM categories WHERE id = ?').run(id);
 }
 
 function loadCollection(id) {
   const row = db.prepare('SELECT * FROM collections WHERE id = ?').get(id);
   if (!row) return null;
   db.prepare("UPDATE collections SET last_used = datetime('now') WHERE id = ?").run(id);
-  return { id: row.id, name: row.name, items: JSON.parse(row.items) };
+  return { id: row.id, name: row.name, items: JSON.parse(row.items), variables: JSON.parse(row.variables || '[]') };
 }
 
 function saveCollection(collection) {
+  const vars = JSON.stringify(collection.variables || []);
   const existing = db.prepare('SELECT id FROM collections WHERE id = ?').get(collection.id);
   if (existing) {
-    db.prepare('UPDATE collections SET name = ?, items = ? WHERE id = ?')
-      .run(collection.name, JSON.stringify(collection.items), collection.id);
+    db.prepare('UPDATE collections SET name = ?, items = ?, variables = ? WHERE id = ?')
+      .run(collection.name, JSON.stringify(collection.items), vars, collection.id);
   } else {
-    db.prepare("INSERT INTO collections (id, name, items, last_used) VALUES (?, ?, ?, datetime('now'))")
-      .run(collection.id, collection.name, JSON.stringify(collection.items));
+    db.prepare("INSERT INTO collections (id, name, items, variables, last_used) VALUES (?, ?, ?, ?, datetime('now'))")
+      .run(collection.id, collection.name, JSON.stringify(collection.items), vars);
   }
 }
 
@@ -227,6 +276,39 @@ ipcMain.handle('collections:delete', (_, id) => {
   return true;
 });
 
+ipcMain.handle('collections:pin', (_, id, pinned) => {
+  db.prepare('UPDATE collections SET pinned = ? WHERE id = ?').run(pinned ? 1 : 0, id);
+  return true;
+});
+
+ipcMain.handle('collections:setCategory', (_, id, categoryId) => {
+  db.prepare('UPDATE collections SET category_id = ? WHERE id = ?').run(categoryId || null, id);
+  return true;
+});
+
+ipcMain.handle('categories:list', () => loadCategories());
+
+ipcMain.handle('categories:create', (_, name) => {
+  const id = uuidv4();
+  saveCategory({ id, name });
+  return { id, name, sort_order: 0, collapsed: 0 };
+});
+
+ipcMain.handle('categories:rename', (_, id, name) => {
+  db.prepare('UPDATE categories SET name = ? WHERE id = ?').run(name, id);
+  return true;
+});
+
+ipcMain.handle('categories:delete', (_, id) => {
+  deleteCategory(id);
+  return true;
+});
+
+ipcMain.handle('categories:toggleCollapse', (_, id, collapsed) => {
+  db.prepare('UPDATE categories SET collapsed = ? WHERE id = ?').run(collapsed ? 1 : 0, id);
+  return true;
+});
+
 ipcMain.handle('collection:load', (_, id) => loadCollection(id));
 
 ipcMain.handle('collection:save', (_, collection) => {
@@ -294,14 +376,19 @@ function buildMultipartBody(fields) {
 ipcMain.handle('request:send', async (_, opts) => {
   const http = require('http');
   const https = require('https');
+  const zlib = require('zlib');
   const { URL } = require('url');
 
   const { method, url, headers, bodyType, body, filePath, formFields } = opts;
   const h = {};
   if (headers) {
     for (const { key, value, enabled } of headers) {
-      if (enabled && key) h[key] = value;
+      if (enabled && key) h[key.toLowerCase()] = value;
     }
+  }
+
+  if (!h['accept-encoding']) {
+    h['accept-encoding'] = 'gzip, deflate, br';
   }
 
   // Build request body
@@ -310,20 +397,20 @@ ipcMain.handle('request:send', async (_, opts) => {
     if (bodyType === 'file' && filePath) {
       if (fs.existsSync(filePath)) {
         reqBody = fs.readFileSync(filePath);
-        if (!h['Content-Type'] && !h['content-type']) {
+        if (!h['content-type']) {
           const ext = path.extname(filePath).toLowerCase();
           const mimeMap = {
             '.json': 'application/json', '.xml': 'application/xml', '.html': 'text/html',
             '.txt': 'text/plain', '.csv': 'text/csv', '.png': 'image/png', '.jpg': 'image/jpeg',
             '.gif': 'image/gif', '.pdf': 'application/pdf', '.zip': 'application/zip'
           };
-          h['Content-Type'] = mimeMap[ext] || 'application/octet-stream';
+          h['content-type'] = mimeMap[ext] || 'application/octet-stream';
         }
       }
     } else if (bodyType === 'form' && formFields && formFields.length) {
       const mp = buildMultipartBody(formFields);
       reqBody = mp.body;
-      h['Content-Type'] = mp.contentType;
+      h['content-type'] = mp.contentType;
     } else if (body) {
       reqBody = Buffer.from(body);
     }
@@ -373,6 +460,26 @@ ipcMain.handle('request:send', async (_, opts) => {
       res.headers && Object.entries(res.headers).forEach(([k, v]) => { respHeaders[k] = v; });
       const ct = res.headers['content-type'] || '';
 
+      // Decompress response based on content-encoding
+      const encoding = (res.headers['content-encoding'] || '').trim().toLowerCase();
+      let stream = res;
+      if (encoding === 'gzip' || encoding === 'x-gzip') {
+        stream = res.pipe(zlib.createGunzip());
+      } else if (encoding === 'deflate') {
+        stream = res.pipe(zlib.createInflate());
+      } else if (encoding === 'br') {
+        stream = res.pipe(zlib.createBrotliDecompress());
+      }
+
+      if (stream !== res) {
+        timeline.push({ t: ts(), type: 'info', text: `Decompressing response (${encoding})` });
+        stream.on('error', (err) => {
+          const totalTime = ts();
+          timeline.push({ t: totalTime, type: 'error', text: `Decompression error: ${err.message}` });
+          resolve({ error: `Decompression failed: ${err.message}`, time: totalTime, contentType: ct, timeline });
+        });
+      }
+
       // SSE: stream events instead of buffering
       if (ct.includes('text/event-stream')) {
         const sseId = opts._requestId || Date.now().toString(36);
@@ -391,7 +498,7 @@ ipcMain.handle('request:send', async (_, opts) => {
         mainWindow.webContents.send('sse:open', { id: sseId, status: res.statusCode, statusText: res.statusMessage });
 
         let buffer = '';
-        res.on('data', (chunk) => {
+        stream.on('data', (chunk) => {
           buffer += chunk.toString('utf-8');
           const parts = buffer.split('\n\n');
           buffer = parts.pop();
@@ -402,7 +509,7 @@ ipcMain.handle('request:send', async (_, opts) => {
           }
         });
 
-        res.on('end', () => {
+        stream.on('end', () => {
           activeSseConnections.delete(sseId);
           mainWindow.webContents.send('sse:close', { id: sseId });
         });
@@ -411,8 +518,8 @@ ipcMain.handle('request:send', async (_, opts) => {
       }
 
       const chunks = [];
-      res.on('data', (chunk) => chunks.push(chunk));
-      res.on('end', () => {
+      stream.on('data', (chunk) => chunks.push(chunk));
+      stream.on('end', () => {
         const totalTime = ts();
         const buf = Buffer.concat(chunks);
         const isImage = ct.startsWith('image/');
@@ -520,7 +627,7 @@ ipcMain.handle('ws:connect', (event, opts) => {
   const h = {};
   if (headers) {
     for (const { key, value, enabled } of headers) {
-      if (enabled && key) h[key] = value;
+      if (enabled && key) h[key.toLowerCase()] = value;
     }
   }
 

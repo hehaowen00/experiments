@@ -274,7 +274,7 @@ export default function ResponsePane(props) {
         const foldEl = renderFoldableJson(JSON.parse(body));
         bodyContainerRef.appendChild(wrapWithLineNumbers(foldEl, lineCount));
         return;
-      } catch {}
+      } catch { }
     }
 
     if (format === 'xml' || format === 'html') {

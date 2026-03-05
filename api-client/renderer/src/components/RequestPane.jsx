@@ -1,6 +1,55 @@
-import { createSignal, createEffect, Show, For } from 'solid-js';
-import { esc, formatBytes, detectFormat } from '../helpers';
+import { createEffect, createSignal, For, Index, Show } from 'solid-js';
+import { detectFormat, esc, formatBytes } from '../helpers';
 import { highlightFlat } from '../highlight';
+
+function useDragReorder(onReorder) {
+  let dragIdx = null;
+
+  function onDragStart(e, i) {
+    dragIdx = i;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(i));
+    e.currentTarget.classList.add('dragging');
+  }
+
+  function onDragOver(e, i) {
+    if (dragIdx === null || dragIdx === i) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const el = e.currentTarget;
+    el.classList.remove('kv-drag-above', 'kv-drag-below');
+    const rect = el.getBoundingClientRect();
+    const mid = rect.top + rect.height / 2;
+    el.classList.add(e.clientY < mid ? 'kv-drag-above' : 'kv-drag-below');
+  }
+
+  function onDragLeave(e) {
+    e.currentTarget.classList.remove('kv-drag-above', 'kv-drag-below');
+  }
+
+  function onDrop(e, i) {
+    e.preventDefault();
+    e.currentTarget.classList.remove('kv-drag-above', 'kv-drag-below');
+    if (dragIdx === null || dragIdx === i) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const mid = rect.top + rect.height / 2;
+    let to = e.clientY < mid ? i : i;
+    // If dropping below, and coming from above, adjust
+    if (e.clientY >= mid && dragIdx < i) to = i;
+    else if (e.clientY >= mid && dragIdx > i) to = i + 1;
+    else if (e.clientY < mid && dragIdx > i) to = i;
+    else if (e.clientY < mid && dragIdx < i) to = i - 1;
+    if (dragIdx !== to) onReorder(dragIdx, to);
+    dragIdx = null;
+  }
+
+  function onDragEnd(e) {
+    e.currentTarget.classList.remove('dragging');
+    dragIdx = null;
+  }
+
+  return { onDragStart, onDragOver, onDragLeave, onDrop, onDragEnd };
+}
 
 export default function RequestPane(props) {
   let bodyRef;
@@ -39,27 +88,69 @@ export default function RequestPane(props) {
     lineNumbersRef.scrollTop = bodyRef.scrollTop;
   }
 
+  const headerDrag = useDragReorder((from, to) => props.onReorderHeaders(from, to));
+  const paramDrag = useDragReorder((from, to) => props.onReorderParams(from, to));
+  const variableDrag = useDragReorder((from, to) => props.onReorderVariables(from, to));
+  const formDrag = useDragReorder((from, to) => props.onReorderFormFields(from, to));
+
   return (
     <div class="request-pane" id="request-pane">
       <div class="request-body-section">
         <div class="section-tabs">
           <button class={`section-tab ${activeTab() === 'headers' ? 'active' : ''}`} onClick={() => setActiveTab('headers')}>Headers</button>
+          <button class={`section-tab ${activeTab() === 'params' ? 'active' : ''}`} onClick={() => setActiveTab('params')}>Params</button>
+          <button class={`section-tab ${activeTab() === 'variables' ? 'active' : ''}`} onClick={() => setActiveTab('variables')}>Variables</button>
           <button class={`section-tab ${activeTab() === 'body' ? 'active' : ''}`} onClick={() => setActiveTab('body')}>Body</button>
         </div>
+
+        {/* Params tab */}
+        <Show when={activeTab() === 'params'}>
+          <div class="headers-table">
+            <Index each={props.params}>
+              {(p, i) => (
+                <div
+                  class="header-row"
+                  draggable="true"
+                  onDragStart={(e) => paramDrag.onDragStart(e, i)}
+                  onDragOver={(e) => paramDrag.onDragOver(e, i)}
+                  onDragLeave={paramDrag.onDragLeave}
+                  onDrop={(e) => paramDrag.onDrop(e, i)}
+                  onDragEnd={paramDrag.onDragEnd}
+                >
+                  <span class="drag-handle">&#8942;</span>
+                  <input type="checkbox" checked={p().enabled} onChange={(e) => props.onParamChange(i, 'enabled', e.target.checked)} />
+                  <input type="text" placeholder="Parameter name" value={p().key} onInput={(e) => props.onParamChange(i, 'key', e.target.value)} />
+                  <input type="text" placeholder="Value" value={p().value} onInput={(e) => props.onParamChange(i, 'value', e.target.value)} />
+                  <button class="btn btn-danger btn-sm" onClick={() => props.onRemoveParam(i)}>&times;</button>
+                </div>
+              )}
+            </Index>
+          </div>
+          <button class="btn btn-ghost btn-sm" onClick={props.onAddParam}>+ Add Parameter</button>
+        </Show>
 
         {/* Headers tab */}
         <Show when={activeTab() === 'headers'}>
           <div class="headers-table">
-            <For each={props.headers}>
+            <Index each={props.headers}>
               {(h, i) => (
-                <div class="header-row">
-                  <input type="checkbox" checked={h.enabled} onChange={(e) => props.onHeaderChange(i(), 'enabled', e.target.checked)} />
-                  <input type="text" placeholder="Header name" value={h.key} onInput={(e) => props.onHeaderChange(i(), 'key', e.target.value)} />
-                  <input type="text" placeholder="Value" value={h.value} onInput={(e) => props.onHeaderChange(i(), 'value', e.target.value)} />
-                  <button class="btn btn-danger btn-sm" onClick={() => props.onRemoveHeader(i())}>&times;</button>
+                <div
+                  class="header-row"
+                  draggable="true"
+                  onDragStart={(e) => headerDrag.onDragStart(e, i)}
+                  onDragOver={(e) => headerDrag.onDragOver(e, i)}
+                  onDragLeave={headerDrag.onDragLeave}
+                  onDrop={(e) => headerDrag.onDrop(e, i)}
+                  onDragEnd={headerDrag.onDragEnd}
+                >
+                  <span class="drag-handle">&#8942;</span>
+                  <input type="checkbox" checked={h().enabled} onChange={(e) => props.onHeaderChange(i, 'enabled', e.target.checked)} />
+                  <input type="text" class="header-key" placeholder="Header name" value={h().key} onInput={(e) => { e.target.value = e.target.value.toLowerCase(); props.onHeaderChange(i, 'key', e.target.value); }} />
+                  <input type="text" placeholder="Value" value={h().value} onInput={(e) => props.onHeaderChange(i, 'value', e.target.value)} />
+                  <button class="btn btn-danger btn-sm" onClick={() => props.onRemoveHeader(i)}>&times;</button>
                 </div>
               )}
-            </For>
+            </Index>
           </div>
           <button class="btn btn-ghost btn-sm" onClick={props.onAddHeader}>+ Add Header</button>
         </Show>
@@ -116,26 +207,60 @@ export default function RequestPane(props) {
           {/* Form body */}
           <Show when={props.bodyType === 'form'}>
             <div class="form-fields">
-              <For each={props.formFields}>
+              <Index each={props.formFields}>
                 {(f, i) => (
-                  <div class="form-field-row">
-                    <input type="text" placeholder="Name" value={f.key} onInput={(e) => props.onFormFieldChange(i(), 'key', e.target.value)} />
-                    <select value={f.type} onChange={(e) => props.onFormFieldChange(i(), 'type', e.target.value)}>
+                  <div
+                    class="form-field-row"
+                    draggable="true"
+                    onDragStart={(e) => formDrag.onDragStart(e, i)}
+                    onDragOver={(e) => formDrag.onDragOver(e, i)}
+                    onDragLeave={formDrag.onDragLeave}
+                    onDrop={(e) => formDrag.onDrop(e, i)}
+                    onDragEnd={formDrag.onDragEnd}
+                  >
+                    <span class="drag-handle">&#8942;</span>
+                    <input type="text" placeholder="Name" value={f().key} onInput={(e) => props.onFormFieldChange(i, 'key', e.target.value)} />
+                    <select value={f().type} onChange={(e) => props.onFormFieldChange(i, 'type', e.target.value)}>
                       <option value="text">Text</option>
                       <option value="file">File</option>
                     </select>
-                    <Show when={f.type === 'text'} fallback={
-                      <button class="btn btn-ghost btn-sm form-pick-file" onClick={() => props.onFormPickFile(i())}>{f.fileName || 'Choose...'}</button>
+                    <Show when={f().type === 'text'} fallback={
+                      <button class="btn btn-ghost btn-sm form-pick-file" onClick={() => props.onFormPickFile(i)}>{f().fileName || 'Choose...'}</button>
                     }>
-                      <input type="text" placeholder="Value" value={f.value} onInput={(e) => props.onFormFieldChange(i(), 'value', e.target.value)} />
+                      <input type="text" placeholder="Value" value={f().value} onInput={(e) => props.onFormFieldChange(i, 'value', e.target.value)} />
                     </Show>
-                    <button class="btn btn-danger btn-sm" onClick={() => props.onRemoveFormField(i())}>&times;</button>
+                    <button class="btn btn-danger btn-sm" onClick={() => props.onRemoveFormField(i)}>&times;</button>
                   </div>
                 )}
-              </For>
+              </Index>
             </div>
             <button class="btn btn-ghost btn-sm" onClick={props.onAddFormField}>+ Add Field</button>
           </Show>
+        </Show>
+
+        {/* Variables tab */}
+        <Show when={activeTab() === 'variables'}>
+          <div class="headers-table">
+            <Index each={props.variables}>
+              {(v, i) => (
+                <div
+                  class="header-row"
+                  draggable="true"
+                  onDragStart={(e) => variableDrag.onDragStart(e, i)}
+                  onDragOver={(e) => variableDrag.onDragOver(e, i)}
+                  onDragLeave={variableDrag.onDragLeave}
+                  onDrop={(e) => variableDrag.onDrop(e, i)}
+                  onDragEnd={variableDrag.onDragEnd}
+                >
+                  <span class="drag-handle">&#8942;</span>
+                  <input type="text" placeholder="Variable name" value={v().key} onInput={(e) => props.onVariableChange(i, 'key', e.target.value)} />
+                  <input type="text" placeholder="Value" value={v().value} onInput={(e) => props.onVariableChange(i, 'value', e.target.value)} />
+                  <button class="btn btn-danger btn-sm" onClick={() => props.onRemoveVariable(i)}>&times;</button>
+                </div>
+              )}
+            </Index>
+          </div>
+          <button class="btn btn-ghost btn-sm" onClick={props.onAddVariable}>+ Add Variable</button>
         </Show>
       </div>
     </div>

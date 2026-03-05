@@ -1,8 +1,9 @@
 import { createSignal, createEffect, onMount, onCleanup } from 'solid-js';
-import { generateId, findItem, removeItem, findParentArray, isDescendant } from '../helpers';
-import { showPrompt, showConfirm } from '../components/Modal';
+import { generateId, findItem, removeItem, findParentArray, isDescendant, resolveVariables, buildUrlWithParams, parseCurl } from '../helpers';
+import { showPrompt, showConfirm, showTextarea } from '../components/Modal';
 import Modal from '../components/Modal';
 import Sidebar from '../components/Sidebar';
+import Variables from '../components/Variables';
 import RequestPane from '../components/RequestPane';
 import ResponsePane from '../components/ResponsePane';
 
@@ -13,6 +14,7 @@ export default function Collection(props) {
   const [url, setUrl] = createSignal('');
   const [body, setBody] = createSignal('');
   const [headers, setHeaders] = createSignal([{ key: '', value: '', enabled: true }]);
+  const [params, setParams] = createSignal([{ key: '', value: '', enabled: true }]);
   const [bodyType, setBodyType] = createSignal('text');
   const [contentType, setContentType] = createSignal('auto');
   const [file, setFile] = createSignal(null);
@@ -30,6 +32,8 @@ export default function Collection(props) {
   const [streamMessages, setStreamMessages] = createSignal([]);
   const [wsInput, setWsInput] = createSignal('');
 
+  const [variables, setVariables] = createSignal([{ key: '', value: '' }]);
+
   let autoSaveTimer = null;
   let dragItemId = null;
 
@@ -38,6 +42,7 @@ export default function Collection(props) {
     const c = await window.api.loadCollection(props.id);
     if (!c) { props.onBack(); return; }
     setCollection(c);
+    setVariables(c.variables?.length > 0 ? c.variables.map(v => ({ ...v })) : [{ key: '', value: '' }]);
     document.title = `${c.name} - API Client`;
   });
 
@@ -57,14 +62,63 @@ export default function Collection(props) {
       item.method = method();
       item.url = url();
       item.headers = headers().filter(h => h.key);
+      item.params = params().filter(p => p.key);
       item.bodyType = bodyType();
       item.contentType = contentType();
       item.body = body();
       item.bodyFile = file();
       item.bodyForm = formFields().filter(f => f.key);
-      setCollection({ ...c });
+      setCollection({ ...c, items: structuredClone(c.items) });
       save();
     }, 500);
+  }
+
+  // Variable management
+  function onVariableChange(idx, field, value) {
+    setVariables(prev => {
+      const next = [...prev];
+      next[idx] = { ...next[idx], [field]: value };
+      return next;
+    });
+    saveVariables();
+  }
+
+  function removeVariable(idx) {
+    setVariables(prev => {
+      const next = [...prev];
+      next.splice(idx, 1);
+      if (next.length === 0) next.push({ key: '', value: '' });
+      return next;
+    });
+    saveVariables();
+  }
+
+  function addVariable() {
+    setVariables(prev => [...prev, { key: '', value: '' }]);
+  }
+
+  function reorderVariables(from, to) {
+    setVariables(prev => {
+      const next = [...prev];
+      const [item] = next.splice(from, 1);
+      next.splice(to, 0, item);
+      return next;
+    });
+    saveVariables();
+  }
+
+  function saveVariables() {
+    clearTimeout(autoSaveTimer);
+    autoSaveTimer = setTimeout(() => {
+      const c = collection();
+      if (!c) return;
+      c.variables = variables().filter(v => v.key);
+      save();
+    }, 500);
+  }
+
+  function getVariables() {
+    return variables().filter(v => v.key);
   }
 
   // Select a request
@@ -79,6 +133,7 @@ export default function Collection(props) {
     setUrl(item.url || '');
     setBody(item.body || '');
     setHeaders(item.headers?.length > 0 ? item.headers.map(h => ({ ...h })) : [{ key: '', value: '', enabled: true }]);
+    setParams(item.params?.length > 0 ? item.params.map(p => ({ ...p })) : [{ key: '', value: '', enabled: true }]);
     setBodyType(item.bodyType || 'text');
     setContentType(item.contentType || 'auto');
     setFile(item.bodyFile || null);
@@ -95,6 +150,7 @@ export default function Collection(props) {
     setUrl('');
     setBody('');
     setHeaders([{ key: '', value: '', enabled: true }]);
+    setParams([{ key: '', value: '', enabled: true }]);
     setBodyType('text');
     setContentType('auto');
     setFile(null);
@@ -111,7 +167,7 @@ export default function Collection(props) {
     const n = await showPrompt('Rename:', item.name);
     if (n && n.trim()) {
       item.name = n.trim();
-      setCollection({ ...c });
+      setCollection({ ...c, items: structuredClone(c.items) });
       save();
     }
   }
@@ -123,7 +179,7 @@ export default function Collection(props) {
     if (await showConfirm(`Delete "${item.name}"?`)) {
       removeItem(c.items, id);
       if (activeRequestId() === id) { setActiveRequestId(null); clearEditor(); }
-      setCollection({ ...c });
+      setCollection({ ...c, items: structuredClone(c.items) });
       save();
     }
   }
@@ -133,7 +189,7 @@ export default function Collection(props) {
     const folder = findItem(c.items, id);
     if (folder) {
       folder.collapsed = !folder.collapsed;
-      setCollection({ ...c });
+      setCollection({ ...c, items: structuredClone(c.items) });
       save();
     }
   }
@@ -147,7 +203,7 @@ export default function Collection(props) {
     const req = { id: generateId(), type: 'request', name, method: 'GET', url: '', headers: [], body: '', bodyType: 'text' };
     folder.children = folder.children || [];
     folder.children.push(req);
-    setCollection({ ...c });
+    setCollection({ ...c, items: structuredClone(c.items) });
     await save();
     selectRequest(req.id);
   }
@@ -158,7 +214,7 @@ export default function Collection(props) {
     const c = collection();
     const req = { id: generateId(), type: 'request', name, method: 'GET', url: '', headers: [], body: '', bodyType: 'text' };
     c.items.push(req);
-    setCollection({ ...c });
+    setCollection({ ...c, items: structuredClone(c.items) });
     await save();
     selectRequest(req.id);
   }
@@ -168,8 +224,19 @@ export default function Collection(props) {
     if (!name) return;
     const c = collection();
     c.items.push({ id: generateId(), type: 'folder', name, children: [], collapsed: false });
-    setCollection({ ...c });
+    setCollection({ ...c, items: structuredClone(c.items) });
     save();
+  }
+
+  async function renameCollection() {
+    const c = collection();
+    const name = await showPrompt('Rename collection:', c.name);
+    if (name && name.trim()) {
+      c.name = name.trim();
+      setCollection({ ...c, items: structuredClone(c.items) });
+      document.title = `${c.name} - API Client`;
+      save();
+    }
   }
 
   // Drag and drop
@@ -241,7 +308,7 @@ export default function Collection(props) {
     }
 
     dragItemId = null;
-    setCollection({ ...c });
+    setCollection({ ...c, items: structuredClone(c.items) });
     await save();
   }
 
@@ -249,7 +316,7 @@ export default function Collection(props) {
   function onHeaderChange(idx, field, value) {
     setHeaders(prev => {
       const next = [...prev];
-      next[idx] = { ...next[idx], [field]: value };
+      next[idx] = { ...next[idx], [field]: field === 'key' ? value.toLowerCase() : value };
       return next;
     });
     scheduleAutoSave();
@@ -267,6 +334,85 @@ export default function Collection(props) {
 
   function addHeader() {
     setHeaders(prev => [...prev, { key: '', value: '', enabled: true }]);
+  }
+
+  function reorderHeaders(from, to) {
+    setHeaders(prev => {
+      const next = [...prev];
+      const [item] = next.splice(from, 1);
+      next.splice(to, 0, item);
+      return next;
+    });
+    scheduleAutoSave();
+  }
+
+  // Param management
+  function onParamChange(idx, field, value) {
+    setParams(prev => {
+      const next = [...prev];
+      next[idx] = { ...next[idx], [field]: value };
+      return next;
+    });
+    scheduleAutoSave();
+  }
+
+  function removeParam(idx) {
+    setParams(prev => {
+      const next = [...prev];
+      next.splice(idx, 1);
+      if (next.length === 0) next.push({ key: '', value: '', enabled: true });
+      return next;
+    });
+    scheduleAutoSave();
+  }
+
+  function addParam() {
+    setParams(prev => [...prev, { key: '', value: '', enabled: true }]);
+  }
+
+  function reorderParams(from, to) {
+    setParams(prev => {
+      const next = [...prev];
+      const [item] = next.splice(from, 1);
+      next.splice(to, 0, item);
+      return next;
+    });
+    scheduleAutoSave();
+  }
+
+  function handleUrlPaste(e) {
+    const pasted = e.clipboardData.getData('text');
+    if (!pasted) return;
+    try {
+      const urlObj = new URL(pasted);
+      const entries = [...urlObj.searchParams.entries()];
+      if (entries.length === 0) return;
+      e.preventDefault();
+      const baseUrl = pasted.split('?')[0];
+      setUrl(baseUrl);
+      const newParams = entries.map(([key, value]) => ({ key, value, enabled: true }));
+      setParams(prev => {
+        const existing = prev.filter(p => p.key);
+        const combined = [...existing, ...newParams, { key: '', value: '', enabled: true }];
+        return combined;
+      });
+      scheduleAutoSave();
+    } catch {
+      // not a valid URL, let default paste happen
+    }
+  }
+
+  async function importCurl() {
+    const input = await showTextarea('Import from cURL');
+    if (!input) return;
+    const parsed = parseCurl(input);
+    if (!parsed) return;
+    setMethod(parsed.method);
+    setUrl(parsed.url);
+    if (parsed.body) setBody(parsed.body);
+    if (parsed.headers.length > 0) setHeaders([...parsed.headers, { key: '', value: '', enabled: true }]);
+    if (parsed.params.length > 0) setParams([...parsed.params, { key: '', value: '', enabled: true }]);
+    scheduleAutoSave();
   }
 
   // Form field management
@@ -291,6 +437,16 @@ export default function Collection(props) {
 
   function addFormField() {
     setFormFields(prev => [...prev, { key: '', value: '', type: 'text', filePath: '', fileName: '', fileSize: 0 }]);
+  }
+
+  function reorderFormFields(from, to) {
+    setFormFields(prev => {
+      const next = [...prev];
+      const [item] = next.splice(from, 1);
+      next.splice(to, 0, item);
+      return next;
+    });
+    scheduleAutoSave();
   }
 
   async function pickFormFile(idx) {
@@ -393,15 +549,18 @@ export default function Collection(props) {
       const req = { id: generateId(), type: 'request', name: u.replace(/^(?:wss?|https?):\/\//, '').slice(0, 40), method: m, url: u, headers: headers().filter(h => h.key), body: body(), bodyType: bodyType() };
       c.items.push(req);
       setActiveRequestId(req.id);
-      setCollection({ ...c });
+      setCollection({ ...c, items: structuredClone(c.items) });
       await save();
     }
   }
 
   async function sendRequest() {
     let m = method();
-    const u = url().trim();
-    if (!u) return;
+    const rawUrl = url().trim();
+    if (!rawUrl) return;
+
+    const vars = getVariables();
+    const u = buildUrlWithParams(resolveVariables(rawUrl, vars), params());
 
     if (m !== 'WS' && (u.startsWith('ws://') || u.startsWith('wss://'))) {
       m = 'WS';
@@ -425,14 +584,19 @@ export default function Collection(props) {
     setStreamMessages([]);
     setStreamStatus('');
 
+    const vars = getVariables();
     const sendOpts = {
       method: m, url: u,
-      headers: headers().filter(h => h.key),
+      headers: headers().filter(h => h.key).map(h => ({
+        ...h,
+        key: resolveVariables(h.key, vars),
+        value: resolveVariables(h.value, vars),
+      })),
       bodyType: bodyType(),
-      body: body(),
+      body: resolveVariables(body(), vars),
       filePath: file()?.path || null,
       formFields: formFields().filter(f => f.key).map(f => ({
-        key: f.key, value: f.value, type: f.type,
+        key: resolveVariables(f.key, vars), value: resolveVariables(f.value, vars), type: f.type,
         filePath: f.filePath, fileName: f.fileName, fileMimeType: '',
       })),
       _requestId: activeRequestId(),
@@ -578,6 +742,7 @@ export default function Collection(props) {
             onAddToFolder={addToFolder}
             onAddRequest={addRequest}
             onAddFolder={addFolder}
+            onRenameCollection={renameCollection}
             onDragStart={onDragStart}
             onDragOver={onDragOver}
             onDragLeave={onDragLeave}
@@ -602,8 +767,10 @@ export default function Collection(props) {
                 placeholder="Enter URL..."
                 value={url()}
                 onInput={(e) => { setUrl(e.target.value); scheduleAutoSave(); }}
+                onPaste={handleUrlPaste}
                 onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') sendRequest(); }}
               />
+              <button class="btn btn-ghost" onClick={importCurl} title="Import from cURL">cURL</button>
               {streamConnectionId() ? (
                 <button class="btn btn-danger" onClick={() => {
                   appendStreamMessage('sys', 'system', 'Disconnected by user');
@@ -621,9 +788,15 @@ export default function Collection(props) {
                 contentType={contentType()}
                 file={file()}
                 formFields={formFields()}
+                params={params()}
                 onHeaderChange={onHeaderChange}
                 onRemoveHeader={removeHeader}
                 onAddHeader={addHeader}
+                onReorderHeaders={reorderHeaders}
+                onParamChange={onParamChange}
+                onRemoveParam={removeParam}
+                onAddParam={addParam}
+                onReorderParams={reorderParams}
                 onBodyChange={(v) => { setBody(v); scheduleAutoSave(); }}
                 onBodyTypeChange={(v) => { setBodyType(v); scheduleAutoSave(); }}
                 onContentTypeChange={(v) => { setContentType(v); scheduleAutoSave(); }}
@@ -632,7 +805,13 @@ export default function Collection(props) {
                 onFormFieldChange={onFormFieldChange}
                 onRemoveFormField={removeFormField}
                 onAddFormField={addFormField}
+                onReorderFormFields={reorderFormFields}
                 onFormPickFile={pickFormFile}
+                variables={variables()}
+                onVariableChange={onVariableChange}
+                onRemoveVariable={removeVariable}
+                onAddVariable={addVariable}
+                onReorderVariables={reorderVariables}
               />
               <div
                 class="resize-handle resize-handle-pane"

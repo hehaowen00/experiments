@@ -16,7 +16,7 @@ function TreeItems(props) {
             class={`tree-item ${item.id === props.activeId ? 'active' : ''}`}
             data-id={item.id}
             draggable="true"
-            style={{ 'padding-left': `${12 + props.depth * 16}px` }}
+            style={props.depth > 0 ? { 'padding-left': `${props.depth * 10}px` } : {}}
             onClick={() => props.onSelect(item.id)}
             onDragStart={(e) => props.onDragStart(e, item.id)}
             onDragOver={(e) => props.onDragOver(e, item.id, false)}
@@ -36,7 +36,7 @@ function TreeItems(props) {
               class="folder-header"
               data-id={item.id}
               draggable="true"
-              style={{ 'padding-left': `${12 + props.depth * 16}px` }}
+  
               onClick={() => props.onToggleFolder(item.id)}
               onDragStart={(e) => props.onDragStart(e, item.id)}
               onDragOver={(e) => props.onDragOver(e, item.id, true)}
@@ -84,7 +84,7 @@ export default function Sidebar(props) {
       <div class="sidebar-header">
         <div class="back-row">
           <button class="back-btn" onClick={props.onBack} title="Back to collections">&larr;</button>
-          <span class="collection-name">{props.name}</span>
+          <span class="collection-name" onClick={props.onRenameCollection} title="Click to rename">{props.name}</span>
         </div>
         <div class="sidebar-actions">
           <button class="btn btn-primary btn-sm" onClick={props.onAddRequest}>+ Request</button>

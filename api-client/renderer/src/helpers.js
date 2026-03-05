@@ -78,3 +78,72 @@ export function contentTypeToFormat(ct) {
   if (ct.includes('html')) return 'html';
   return 'text';
 }
+
+export function buildUrlWithParams(url, params) {
+  const enabled = params.filter(p => p.enabled && p.key);
+  if (enabled.length === 0) return url;
+  const qs = enabled.map(p => `${encodeURIComponent(p.key)}=${encodeURIComponent(p.value)}`).join('&');
+  return url + (url.includes('?') ? '&' : '?') + qs;
+}
+
+export function parseCurl(input) {
+  const s = input.replace(/\\\n/g, ' ').trim();
+  if (!s.startsWith('curl')) return null;
+
+  const result = { method: 'GET', url: '', headers: [], body: '', params: [] };
+  const tokens = [];
+  let i = 0;
+  while (i < s.length) {
+    while (i < s.length && s[i] === ' ') i++;
+    if (i >= s.length) break;
+    let token = '';
+    const q = s[i];
+    if (q === "'" || q === '"') {
+      i++;
+      while (i < s.length && s[i] !== q) {
+        if (s[i] === '\\' && q === '"') { i++; token += s[i] || ''; }
+        else token += s[i];
+        i++;
+      }
+      i++;
+    } else {
+      while (i < s.length && s[i] !== ' ') { token += s[i]; i++; }
+    }
+    tokens.push(token);
+  }
+
+  for (let t = 1; t < tokens.length; t++) {
+    const arg = tokens[t];
+    if (arg === '-X' || arg === '--request') {
+      result.method = (tokens[++t] || 'GET').toUpperCase();
+    } else if (arg === '-H' || arg === '--header') {
+      const hdr = tokens[++t] || '';
+      const ci = hdr.indexOf(':');
+      if (ci > 0) result.headers.push({ key: hdr.slice(0, ci).trim().toLowerCase(), value: hdr.slice(ci + 1).trim(), enabled: true });
+    } else if (arg === '-d' || arg === '--data' || arg === '--data-raw' || arg === '--data-binary') {
+      result.body = tokens[++t] || '';
+      if (result.method === 'GET') result.method = 'POST';
+    } else if (!arg.startsWith('-') && !result.url) {
+      result.url = arg;
+    }
+  }
+
+  try {
+    const urlObj = new URL(result.url);
+    const entries = [...urlObj.searchParams.entries()];
+    if (entries.length > 0) {
+      result.params = entries.map(([key, value]) => ({ key, value, enabled: true }));
+      result.url = result.url.split('?')[0];
+    }
+  } catch {}
+
+  return result;
+}
+
+export function resolveVariables(str, variables) {
+  if (!str || !variables) return str;
+  return str.replace(/\{\{(\w+)\}\}/g, (match, name) => {
+    const v = variables.find(v => v.key === name);
+    return v ? v.value : match;
+  });
+}

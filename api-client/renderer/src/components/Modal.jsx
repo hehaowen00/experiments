@@ -25,6 +25,16 @@ export function showConfirm(title) {
   });
 }
 
+export function showTextarea(title, placeholder = '') {
+  return new Promise((resolve) => {
+    modalResolve = resolve;
+    setModalTitle(title);
+    setModalValue('');
+    setModalType('textarea');
+    setModalVisible(true);
+  });
+}
+
 function close(result) {
   setModalVisible(false);
   if (modalResolve) { modalResolve(result); modalResolve = null; }
@@ -34,8 +44,8 @@ export default function Modal() {
   let inputRef;
 
   function onKeyDown(e) {
-    if (e.key === 'Enter') close(modalType() === 'prompt' ? modalValue() : true);
-    if (e.key === 'Escape') close(modalType() === 'prompt' ? null : false);
+    if (e.key === 'Enter' && modalType() !== 'textarea') close(modalType() === 'prompt' ? modalValue() : true);
+    if (e.key === 'Escape') close(modalType() === 'prompt' || modalType() === 'textarea' ? null : false);
   }
 
   return (
@@ -54,9 +64,19 @@ export default function Modal() {
               autofocus
             />
           </Show>
+          <Show when={modalType() === 'textarea'}>
+            <textarea
+              class="modal-input modal-textarea"
+              value={modalValue()}
+              onInput={(e) => setModalValue(e.target.value)}
+              placeholder="Paste curl command here..."
+              rows={6}
+              autofocus
+            />
+          </Show>
           <div class="modal-buttons">
             <button class="btn btn-ghost" onClick={() => close(modalType() === 'prompt' ? null : false)}>Cancel</button>
-            <Show when={modalType() === 'prompt'}>
+            <Show when={modalType() === 'prompt' || modalType() === 'textarea'}>
               <button class="btn btn-primary" onClick={() => close(modalValue())}>OK</button>
             </Show>
             <Show when={modalType() === 'confirm'}>
