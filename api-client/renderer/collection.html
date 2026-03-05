@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src *">
+  <link rel="stylesheet" href="styles.css">
+  <title>API Client</title>
+</head>
+<body>
+  <div class="collection-view">
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <div class="back-row">
+          <button class="back-btn" id="back-btn" title="Back to collections">&larr;</button>
+          <span class="collection-name" id="collection-name"></span>
+        </div>
+        <div class="sidebar-actions">
+          <button class="btn btn-primary btn-sm" id="add-request-btn">+ Request</button>
+          <button class="btn btn-ghost btn-sm" id="add-folder-btn">+ Folder</button>
+        </div>
+      </div>
+      <div class="tree" id="tree"></div>
+    </div>
+    <div class="resize-handle resize-handle-sidebar" id="sidebar-resize"></div>
+    <div class="main-panel">
+      <div class="request-bar">
+        <select class="method-select" id="method">
+          <option>GET</option>
+          <option>POST</option>
+          <option>PUT</option>
+          <option>PATCH</option>
+          <option>DELETE</option>
+          <option>HEAD</option>
+          <option>OPTIONS</option>
+        </select>
+        <input type="text" class="url-input" id="url" placeholder="Enter URL..." />
+        <button class="btn btn-primary" id="send-btn">Send</button>
+      </div>
+      <div class="request-response-split">
+        <div class="request-pane" id="request-pane">
+          <div class="request-body-section">
+            <div class="section-tabs">
+              <button class="section-tab active" data-tab="headers">Headers</button>
+              <button class="section-tab" data-tab="body">Body</button>
+            </div>
+            <div id="tab-headers">
+              <div class="headers-table" id="headers-table"></div>
+              <button class="btn btn-ghost btn-sm" id="add-header-btn">+ Add Header</button>
+            </div>
+            <div id="tab-body" style="display:none">
+              <div class="body-type-bar">
+                <select class="body-type-select" id="body-type">
+                  <option value="text">Text</option>
+                  <option value="file">File</option>
+                  <option value="form">Form Data</option>
+                </select>
+                <select class="body-type-select" id="content-type-select">
+                  <option value="auto">Auto</option>
+                  <option value="json">JSON</option>
+                  <option value="xml">XML</option>
+                  <option value="html">HTML</option>
+                  <option value="text">Plain Text</option>
+                </select>
+              </div>
+              <div id="body-panel-text">
+                <div class="code-editor" id="request-editor">
+                  <div class="line-numbers" id="request-line-numbers" aria-hidden="true"><span class="line-num">1</span></div>
+                  <div class="code-editor-inner">
+                    <pre class="code-highlight" aria-hidden="true"><code id="request-body-highlight"></code></pre>
+                    <textarea id="request-body" class="code-input" placeholder="Request body (JSON, XML, text...)" spellcheck="false"></textarea>
+                  </div>
+                </div>
+              </div>
+              <div id="body-panel-file" style="display:none">
+                <div class="file-upload-area" id="file-upload-area">
+                  <button class="btn btn-ghost" id="pick-file-btn">Choose File</button>
+                  <div class="file-info" id="file-info">No file selected</div>
+                  <button class="btn btn-danger btn-sm" id="clear-file-btn" style="display:none">Clear</button>
+                </div>
+              </div>
+              <div id="body-panel-form" style="display:none">
+                <div class="form-fields" id="form-fields"></div>
+                <button class="btn btn-ghost btn-sm" id="add-form-field-btn">+ Add Field</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="resize-handle resize-handle-pane" id="pane-resize"></div>
+        <div class="response-pane">
+          <div class="response-section">
+            <div class="response-meta" id="response-meta" style="display:none">
+              <span class="response-status" id="response-status"></span>
+              <span class="response-time" id="response-time"></span>
+            </div>
+            <div class="response-tabs" id="response-tabs" style="display:none">
+              <button class="section-tab active" data-restab="body">Body</button>
+              <button class="section-tab" data-restab="resp-headers">Headers</button>
+              <button class="section-tab" data-restab="timeline">Timeline</button>
+              <button class="section-tab" data-restab="history">History</button>
+            </div>
+            <div class="response-tab-content" id="restab-body">
+              <div class="response-placeholder" id="response-placeholder">Send a request to see the response</div>
+              <div id="response-body-container" style="display:none"></div>
+            </div>
+            <div class="response-tab-content" id="restab-resp-headers" style="display:none"></div>
+            <div class="response-tab-content" id="restab-timeline" style="display:none"></div>
+            <div class="response-tab-content" id="restab-history" style="display:none"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal -->
+  <div class="modal-overlay" id="modal-overlay">
+    <div class="modal">
+      <div class="modal-title" id="modal-title"></div>
+      <input type="text" class="modal-input" id="modal-input" />
+      <div class="modal-buttons">
+        <button class="btn btn-ghost" id="modal-cancel">Cancel</button>
+        <button class="btn btn-primary" id="modal-ok">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirm modal -->
+  <div class="modal-overlay" id="confirm-overlay">
+    <div class="modal">
+      <div class="modal-title" id="confirm-title"></div>
+      <div class="modal-buttons">
+        <button class="btn btn-ghost" id="confirm-cancel">Cancel</button>
+        <button class="btn btn-danger" id="confirm-ok">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="collection.js"></script>
+</body>
+</html>
