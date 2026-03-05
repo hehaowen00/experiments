@@ -1,6 +1,7 @@
 import { createSignal, For, onMount, Show } from 'solid-js';
 import Modal, { showConfirm, showPrompt } from '../components/Modal';
 import { formatLastUsed } from '../helpers';
+import t from '../locale';
 
 export default function Landing(props) {
   const [collections, setCollections] = createSignal([]);
@@ -36,7 +37,7 @@ export default function Landing(props) {
   }
 
   async function rename(id, oldName) {
-    const name = await showPrompt('Rename collection:', oldName);
+    const name = await showPrompt(t.landing.renameCollectionModal.title, oldName);
     if (name && name.trim()) {
       await window.api.renameCollection(id, name.trim());
       load();
@@ -44,7 +45,7 @@ export default function Landing(props) {
   }
 
   async function remove(id, name) {
-    if (await showConfirm(`Delete "${name}"? This cannot be undone.`)) {
+    if (await showConfirm(t.landing.deleteCollectionModal.title(name), t.landing.deleteCollectionModal.description)) {
       await window.api.deleteCollection(id);
       load();
     }
@@ -58,7 +59,7 @@ export default function Landing(props) {
 
   // Category management
   async function addCategory() {
-    const name = await showPrompt('Category name:', 'New Category');
+    const name = await showPrompt(t.landing.newCategoryModal.title, t.landing.newCategoryModal.defaultValue);
     if (name && name.trim()) {
       await window.api.createCategory(name.trim());
       load();
@@ -67,7 +68,7 @@ export default function Landing(props) {
 
   async function renameCategory(e, id, oldName) {
     e.stopPropagation();
-    const name = await showPrompt('Rename category:', oldName);
+    const name = await showPrompt(t.landing.renameCategoryModal.title, oldName);
     if (name && name.trim()) {
       await window.api.renameCategory(id, name.trim());
       load();
@@ -76,7 +77,7 @@ export default function Landing(props) {
 
   async function removeCategory(e, id, name) {
     e.stopPropagation();
-    let future = await showConfirm(`Delete category "${name}"?`, `Collections will be uncategorized.`)
+    let future = await showConfirm(t.landing.deleteCategoryModal.title(name), t.landing.deleteCategoryModal.description)
     if (future) {
       await window.api.deleteCategory(id);
       load();
@@ -141,11 +142,11 @@ export default function Landing(props) {
         <span class="name">{props.c.name}</span>
         <span class="last-used">{formatLastUsed(props.c.last_used)}</span>
         <div class="actions">
-          <button class="btn btn-ghost btn-sm" onClick={(e) => togglePin(e, props.c.id, props.c.pinned)} title={props.c.pinned ? 'Unpin' : 'Pin'}>
-            {props.c.pinned ? 'Unpin' : 'Pin'}
+          <button class="btn btn-ghost btn-sm" onClick={(e) => togglePin(e, props.c.id, props.c.pinned)} title={props.c.pinned ? t.landing.unpinButton : t.landing.pinButton}>
+            {props.c.pinned ? t.landing.unpinButton : t.landing.pinButton}
           </button>
-          <button class="btn btn-ghost btn-sm" onClick={(e) => { e.stopPropagation(); rename(props.c.id, props.c.name); }}>Rename</button>
-          <button class="btn btn-danger btn-sm" onClick={(e) => { e.stopPropagation(); remove(props.c.id, props.c.name); }}>Delete</button>
+          <button class="btn btn-ghost btn-sm" onClick={(e) => { e.stopPropagation(); rename(props.c.id, props.c.name); }}>{t.landing.renameButton}</button>
+          <button class="btn btn-danger btn-sm" onClick={(e) => { e.stopPropagation(); remove(props.c.id, props.c.name); }}>{t.landing.deleteButton}</button>
         </div>
       </div>
     );
@@ -153,24 +154,24 @@ export default function Landing(props) {
 
   return (
     <div class="landing">
-      <h1>API Client</h1>
-      <p class="subtitle">Organize and send HTTP requests</p>
+      <h1>{t.app.name}</h1>
+      <p class="subtitle">{t.app.subtitle}</p>
       <div class="toolbar">
         <input
           ref={nameInputRef}
           type="text"
-          placeholder="New Collection"
+          placeholder={t.landing.newCollectionPlaceholder}
           value={newName()}
           onInput={(e) => setNewName(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') create(); }}
         />
-        <button class="btn btn-primary" onClick={create}>Create</button>
-        <button class="btn btn-ghost" onClick={addCategory}>+ Category</button>
+        <button class="btn btn-primary" onClick={create}>{t.landing.createButton}</button>
+        <button class="btn btn-ghost" onClick={addCategory}>{t.landing.addCategoryButton}</button>
       </div>
 
       <div class="landing-content">
         <Show when={collections().length === 0 && categories().length === 0}>
-          <div class="empty-state">No collections yet. Create one to get started.</div>
+          <div class="empty-state">{t.landing.emptyState}</div>
         </Show>
 
         {/* Category sections */}
@@ -186,15 +187,15 @@ export default function Landing(props) {
                 <span innerHTML={cat.collapsed ? '&#9654;' : '&#9660;'} />
                 <span class="category-name">{cat.name}</span>
                 <div class="category-actions">
-                  <button class="btn btn-ghost btn-sm" onClick={(e) => renameCategory(e, cat.id, cat.name)}>Rename</button>
-                  <button class="btn btn-danger btn-sm" onClick={(e) => removeCategory(e, cat.id, cat.name)}>Delete</button>
+                  <button class="btn btn-ghost btn-sm" onClick={(e) => renameCategory(e, cat.id, cat.name)}>{t.landing.renameButton}</button>
+                  <button class="btn btn-danger btn-sm" onClick={(e) => removeCategory(e, cat.id, cat.name)}>{t.landing.deleteButton}</button>
                 </div>
                 <span class="category-count">{collectionsInCategory(cat.id).length}</span>
               </div>
               <Show when={!cat.collapsed}>
                 <div class="collection-list">
                   <Show when={collectionsInCategory(cat.id).length === 0}>
-                    <div class="empty-category">Drop collections here</div>
+                    <div class="empty-category">{t.landing.dropHint}</div>
                   </Show>
                   <For each={collectionsInCategory(cat.id)}>
                     {(c) => <CollectionCard c={c} onOpen={props.onOpen} />}
@@ -214,7 +215,7 @@ export default function Landing(props) {
             onDrop={(e) => onCategoryDrop(e, null)}
           >
             <Show when={categories().length > 0}>
-              <div class="landing-section-header">Uncategorized</div>
+              <div class="landing-section-header">{t.landing.uncategorized}</div>
             </Show>
             <div class="collection-list">
               <For each={uncategorizedCollections()}>

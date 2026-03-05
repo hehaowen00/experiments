@@ -162,8 +162,9 @@ function deleteCollection(id) {
 // --- Response CRUD ---
 
 function saveResponse(data) {
-  // Delete previous responses for this request, keep only the new one
-  db.prepare('DELETE FROM responses WHERE request_id = ?').run(data.request_id);
+  // Clear response data from previous entries to save space, keep only metadata for history
+  db.prepare(`UPDATE responses SET response_headers = '{}', response_body = NULL, timeline = '[]'
+    WHERE request_id = ?`).run(data.request_id);
   const result = db.prepare(`
     INSERT INTO responses (request_id, collection_id, status, status_text,
       response_headers, response_body, timeline, time_ms, request_method,

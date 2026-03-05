@@ -1,6 +1,7 @@
 import { createSignal } from 'solid-js';
 import Landing from './pages/Landing';
 import Collection from './pages/Collection';
+import t from './locale';
 
 export default function App() {
   const [page, setPage] = createSignal({ type: 'landing' });
@@ -11,6 +12,7 @@ export default function App() {
 
   function goHome() {
     setPage({ type: 'landing' });
+    document.title = t.app.name;
   }
 
   return (

@@ -1,4 +1,5 @@
 import { createSignal, Show } from 'solid-js';
+import t from '../locale';
 
 let modalResolve = null;
 const [modalVisible, setModalVisible] = createSignal(false);
@@ -76,18 +77,18 @@ export default function Modal() {
               class="modal-input modal-textarea"
               value={modalValue()}
               onInput={(e) => setModalValue(e.target.value)}
-              placeholder="Paste curl command here..."
+              placeholder={t.modal.curlPlaceholder}
               rows={6}
               autofocus
             />
           </Show>
           <div class="modal-buttons">
-            <button class="btn btn-ghost" onClick={() => close(modalType() === 'prompt' ? null : false)}>Cancel</button>
+            <button class="btn btn-ghost" onClick={() => close(modalType() === 'prompt' ? null : false)}>{t.modal.cancelButton}</button>
             <Show when={modalType() === 'prompt' || modalType() === 'textarea'}>
-              <button class="btn btn-primary" onClick={() => close(modalValue())}>OK</button>
+              <button class="btn btn-primary" onClick={() => close(modalValue())}>{t.modal.okButton}</button>
             </Show>
             <Show when={modalType() === 'confirm'}>
-              <button class="btn btn-danger" onClick={() => close(true)}>Delete</button>
+              <button class="btn btn-danger" onClick={() => close(true)}>{t.modal.deleteButton}</button>
             </Show>
           </div>
         </div>

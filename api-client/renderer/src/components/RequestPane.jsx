@@ -1,5 +1,6 @@
-import { createEffect, createSignal, For, Index, Show } from 'solid-js';
-import { detectFormat, esc, formatBytes } from '../helpers';
+import { createSignal, For, Index, Show } from 'solid-js';
+import { buildUrlWithParams, detectFormat, formatBytes, resolveVariables } from '../helpers';
+import t from '../locale';
 import { highlightFlat } from '../highlight';
 
 function useDragReorder(onReorder) {
@@ -51,6 +52,28 @@ function useDragReorder(onReorder) {
   return { onDragStart, onDragOver, onDragLeave, onDrop, onDragEnd };
 }
 
+function UrlPreview(props) {
+  const [copied, setCopied] = createSignal(false);
+  const previewUrl = () => {
+    const resolved = resolveVariables(props.url || '', props.variables || []);
+    return buildUrlWithParams(resolved, props.params || []);
+  };
+  function copy() {
+    navigator.clipboard.writeText(previewUrl());
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }
+  return (
+    <div class="url-preview">
+      <span class="url-preview-label">{t.requestPane.urlPreview.label}</span>
+      <div class="url-preview-row">
+        <span class="url-preview-value">{previewUrl() || t.requestPane.urlPreview.noUrl}</span>
+        <button class="btn btn-ghost btn-sm" onClick={copy}>{copied() ? t.requestPane.urlPreview.copiedButton : t.requestPane.urlPreview.copyButton}</button>
+      </div>
+    </div>
+  );
+}
+
 export default function RequestPane(props) {
   let bodyRef;
   let lineNumbersRef;
@@ -97,15 +120,16 @@ export default function RequestPane(props) {
     <div class="request-pane" id="request-pane">
       <div class="request-body-section">
         <div class="section-tabs">
-          <button class={`section-tab ${activeTab() === 'headers' ? 'active' : ''}`} onClick={() => setActiveTab('headers')}>Headers</button>
-          <button class={`section-tab ${activeTab() === 'params' ? 'active' : ''}`} onClick={() => setActiveTab('params')}>Params</button>
-          <button class={`section-tab ${activeTab() === 'variables' ? 'active' : ''}`} onClick={() => setActiveTab('variables')}>Variables</button>
-          <button class={`section-tab ${activeTab() === 'body' ? 'active' : ''}`} onClick={() => setActiveTab('body')}>Body</button>
+          <button class={`section-tab ${activeTab() === 'headers' ? 'active' : ''}`} onClick={() => setActiveTab('headers')}>{t.requestPane.tabs.headers}</button>
+          <button class={`section-tab ${activeTab() === 'params' ? 'active' : ''}`} onClick={() => setActiveTab('params')}>{t.requestPane.tabs.params}</button>
+          <button class={`section-tab ${activeTab() === 'variables' ? 'active' : ''}`} onClick={() => setActiveTab('variables')}>{t.requestPane.tabs.variables}</button>
+          <button class={`section-tab ${activeTab() === 'body' ? 'active' : ''}`} onClick={() => setActiveTab('body')}>{t.requestPane.tabs.body}</button>
         </div>
 
         {/* Params tab */}
         <Show when={activeTab() === 'params'}>
           <div class="headers-table">
+            <UrlPreview url={props.url} params={props.params} variables={props.variables} />
             <Index each={props.params}>
               {(p, i) => (
                 <div
@@ -119,14 +143,14 @@ export default function RequestPane(props) {
                 >
                   <span class="drag-handle">&#8942;</span>
                   <input type="checkbox" checked={p().enabled} onChange={(e) => props.onParamChange(i, 'enabled', e.target.checked)} />
-                  <input type="text" placeholder="Parameter name" value={p().key} onInput={(e) => props.onParamChange(i, 'key', e.target.value)} />
-                  <input type="text" placeholder="Value" value={p().value} onInput={(e) => props.onParamChange(i, 'value', e.target.value)} />
+                  <input type="text" placeholder={t.requestPane.paramNamePlaceholder} value={p().key} onInput={(e) => props.onParamChange(i, 'key', e.target.value)} />
+                  <input type="text" placeholder={t.requestPane.valuePlaceholder} value={p().value} onInput={(e) => props.onParamChange(i, 'value', e.target.value)} />
                   <button class="btn btn-danger btn-sm" onClick={() => props.onRemoveParam(i)}>&times;</button>
                 </div>
               )}
             </Index>
           </div>
-          <button class="btn btn-ghost btn-sm" onClick={props.onAddParam}>+ Add Parameter</button>
+          <button class="btn btn-ghost btn-sm" onClick={props.onAddParam}>{t.requestPane.addParameterButton}</button>
         </Show>
 
         {/* Headers tab */}
@@ -145,30 +169,30 @@ export default function RequestPane(props) {
                 >
                   <span class="drag-handle">&#8942;</span>
                   <input type="checkbox" checked={h().enabled} onChange={(e) => props.onHeaderChange(i, 'enabled', e.target.checked)} />
-                  <input type="text" class="header-key" placeholder="Header name" value={h().key} onInput={(e) => { e.target.value = e.target.value.toLowerCase(); props.onHeaderChange(i, 'key', e.target.value); }} />
-                  <input type="text" placeholder="Value" value={h().value} onInput={(e) => props.onHeaderChange(i, 'value', e.target.value)} />
+                  <input type="text" class="header-key" placeholder={t.requestPane.headerNamePlaceholder} value={h().key} onInput={(e) => { e.target.value = e.target.value.toLowerCase(); props.onHeaderChange(i, 'key', e.target.value); }} />
+                  <input type="text" placeholder={t.requestPane.valuePlaceholder} value={h().value} onInput={(e) => props.onHeaderChange(i, 'value', e.target.value)} />
                   <button class="btn btn-danger btn-sm" onClick={() => props.onRemoveHeader(i)}>&times;</button>
                 </div>
               )}
             </Index>
           </div>
-          <button class="btn btn-ghost btn-sm" onClick={props.onAddHeader}>+ Add Header</button>
+          <button class="btn btn-ghost btn-sm" onClick={props.onAddHeader}>{t.requestPane.addHeaderButton}</button>
         </Show>
 
         {/* Body tab */}
         <Show when={activeTab() === 'body'}>
           <div class="body-type-bar">
             <select class="body-type-select" value={props.bodyType} onChange={(e) => props.onBodyTypeChange(e.target.value)}>
-              <option value="text">Text</option>
-              <option value="file">File</option>
-              <option value="form">Form Data</option>
+              <option value="text">{t.requestPane.bodyTypes.text}</option>
+              <option value="file">{t.requestPane.bodyTypes.file}</option>
+              <option value="form">{t.requestPane.bodyTypes.form}</option>
             </select>
             <select class="body-type-select" value={props.contentType} onChange={(e) => props.onContentTypeChange(e.target.value)}>
-              <option value="auto">Auto</option>
-              <option value="json">JSON</option>
-              <option value="xml">XML</option>
-              <option value="html">HTML</option>
-              <option value="text">Plain Text</option>
+              <option value="auto">{t.requestPane.contentTypes.auto}</option>
+              <option value="json">{t.requestPane.contentTypes.json}</option>
+              <option value="xml">{t.requestPane.contentTypes.xml}</option>
+              <option value="html">{t.requestPane.contentTypes.html}</option>
+              <option value="text">{t.requestPane.contentTypes.text}</option>
             </select>
           </div>
 
@@ -183,7 +207,7 @@ export default function RequestPane(props) {
                 <textarea
                   ref={bodyRef}
                   class="code-input"
-                  placeholder="Request body (JSON, XML, text...)"
+                  placeholder={t.requestPane.bodyPlaceholder}
                   spellcheck={false}
                   value={props.body}
                   onInput={(e) => props.onBodyChange(e.target.value)}
@@ -196,10 +220,10 @@ export default function RequestPane(props) {
           {/* File body */}
           <Show when={props.bodyType === 'file'}>
             <div class="file-upload-area">
-              <button class="btn btn-ghost" onClick={props.onPickFile}>Choose File</button>
-              <div class="file-info">{props.file ? `${props.file.name} (${formatBytes(props.file.size)})` : 'No file selected'}</div>
+              <button class="btn btn-ghost" onClick={props.onPickFile}>{t.requestPane.chooseFileButton}</button>
+              <div class="file-info">{props.file ? `${props.file.name} (${formatBytes(props.file.size)})` : t.requestPane.noFileSelected}</div>
               <Show when={props.file}>
-                <button class="btn btn-danger btn-sm" onClick={props.onClearFile}>Clear</button>
+                <button class="btn btn-danger btn-sm" onClick={props.onClearFile}>{t.requestPane.clearButton}</button>
               </Show>
             </div>
           </Show>
@@ -219,28 +243,29 @@ export default function RequestPane(props) {
                     onDragEnd={formDrag.onDragEnd}
                   >
                     <span class="drag-handle">&#8942;</span>
-                    <input type="text" placeholder="Name" value={f().key} onInput={(e) => props.onFormFieldChange(i, 'key', e.target.value)} />
+                    <input type="text" placeholder={t.requestPane.namePlaceholder} value={f().key} onInput={(e) => props.onFormFieldChange(i, 'key', e.target.value)} />
                     <select value={f().type} onChange={(e) => props.onFormFieldChange(i, 'type', e.target.value)}>
-                      <option value="text">Text</option>
-                      <option value="file">File</option>
+                      <option value="text">{t.requestPane.formFieldTypes.text}</option>
+                      <option value="file">{t.requestPane.formFieldTypes.file}</option>
                     </select>
                     <Show when={f().type === 'text'} fallback={
-                      <button class="btn btn-ghost btn-sm form-pick-file" onClick={() => props.onFormPickFile(i)}>{f().fileName || 'Choose...'}</button>
+                      <button class="btn btn-ghost btn-sm form-pick-file" onClick={() => props.onFormPickFile(i)}>{f().fileName || t.requestPane.chooseButton}</button>
                     }>
-                      <input type="text" placeholder="Value" value={f().value} onInput={(e) => props.onFormFieldChange(i, 'value', e.target.value)} />
+                      <input type="text" placeholder={t.requestPane.valuePlaceholder} value={f().value} onInput={(e) => props.onFormFieldChange(i, 'value', e.target.value)} />
                     </Show>
                     <button class="btn btn-danger btn-sm" onClick={() => props.onRemoveFormField(i)}>&times;</button>
                   </div>
                 )}
               </Index>
             </div>
-            <button class="btn btn-ghost btn-sm" onClick={props.onAddFormField}>+ Add Field</button>
+            <button class="btn btn-ghost btn-sm" onClick={props.onAddFormField}>{t.requestPane.addFieldButton}</button>
           </Show>
         </Show>
 
         {/* Variables tab */}
         <Show when={activeTab() === 'variables'}>
           <div class="headers-table">
+            <UrlPreview url={props.url} params={props.params} variables={props.variables} />
             <Index each={props.variables}>
               {(v, i) => (
                 <div
@@ -253,14 +278,14 @@ export default function RequestPane(props) {
                   onDragEnd={variableDrag.onDragEnd}
                 >
                   <span class="drag-handle">&#8942;</span>
-                  <input type="text" placeholder="Variable name" value={v().key} onInput={(e) => props.onVariableChange(i, 'key', e.target.value)} />
-                  <input type="text" placeholder="Value" value={v().value} onInput={(e) => props.onVariableChange(i, 'value', e.target.value)} />
+                  <input type="text" placeholder={t.requestPane.variableNamePlaceholder} value={v().key} onInput={(e) => props.onVariableChange(i, 'key', e.target.value)} />
+                  <input type="text" placeholder={t.requestPane.valuePlaceholder} value={v().value} onInput={(e) => props.onVariableChange(i, 'value', e.target.value)} />
                   <button class="btn btn-danger btn-sm" onClick={() => props.onRemoveVariable(i)}>&times;</button>
                 </div>
               )}
             </Index>
           </div>
-          <button class="btn btn-ghost btn-sm" onClick={props.onAddVariable}>+ Add Variable</button>
+          <button class="btn btn-ghost btn-sm" onClick={props.onAddVariable}>{t.requestPane.addVariableButton}</button>
         </Show>
       </div>
     </div>
