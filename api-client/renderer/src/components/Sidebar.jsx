@@ -1,6 +1,7 @@
 import { For, Show } from 'solid-js';
 import { esc } from '../helpers';
 import t from '../locale';
+import Icon from './Icon';
 
 function TreeItems(props) {
   const sorted = () => [...props.items].sort((a, b) => {
@@ -27,8 +28,8 @@ function TreeItems(props) {
             <span class={`method-badge ${item.method || 'GET'}`}>{item.method || 'GET'}</span>
             <span class="item-name">{item.name}</span>
             <div class="item-actions">
-              <button data-action="rename" onClick={(e) => { e.stopPropagation(); props.onRename(item.id); }} title={t.sidebar.renameItemTitle}>&hellip;</button>
-              <button data-action="delete" onClick={(e) => { e.stopPropagation(); props.onDelete(item.id); }} title={t.sidebar.deleteItemTitle}>&times;</button>
+              <button data-action="rename" onClick={(e) => { e.stopPropagation(); props.onRename(item.id); }} title={t.sidebar.renameItemTitle}><Icon name="fa-solid fa-ellipsis" /></button>
+              <button data-action="delete" onClick={(e) => { e.stopPropagation(); props.onDelete(item.id); }} title={t.sidebar.deleteItemTitle}><Icon name="fa-solid fa-xmark" /></button>
             </div>
           </div>
         }>
@@ -44,12 +45,12 @@ function TreeItems(props) {
               onDragLeave={(e) => props.onDragLeave(e)}
               onDrop={(e) => props.onDrop(e, item.id)}
             >
-              <span innerHTML={item.collapsed ? '&#9654;' : '&#9660;'} />
+              <Icon name={item.collapsed ? 'fa-solid fa-caret-right' : 'fa-solid fa-caret-down'} />
               <span>{item.name}</span>
               <div class="folder-actions">
-                <button onClick={(e) => { e.stopPropagation(); props.onAddToFolder(item.id); }} title={t.sidebar.addToFolderTitle}>+</button>
-                <button onClick={(e) => { e.stopPropagation(); props.onRename(item.id); }} title={t.sidebar.renameItemTitle}>&hellip;</button>
-                <button onClick={(e) => { e.stopPropagation(); props.onDelete(item.id); }} title={t.sidebar.deleteItemTitle}>&times;</button>
+                <button onClick={(e) => { e.stopPropagation(); props.onAddToFolder(item.id); }} title={t.sidebar.addToFolderTitle}><Icon name="fa-solid fa-plus" /></button>
+                <button onClick={(e) => { e.stopPropagation(); props.onRename(item.id); }} title={t.sidebar.renameItemTitle}><Icon name="fa-solid fa-ellipsis" /></button>
+                <button onClick={(e) => { e.stopPropagation(); props.onDelete(item.id); }} title={t.sidebar.deleteItemTitle}><Icon name="fa-solid fa-xmark" /></button>
               </div>
             </div>
             <Show when={!item.collapsed}>
@@ -84,12 +85,12 @@ export default function Sidebar(props) {
     <div class="sidebar" ref={sidebarRef}>
       <div class="sidebar-header">
         <div class="back-row">
-          <button class="back-btn" onClick={props.onBack} title={t.sidebar.backTitle}>&larr;</button>
+          <button class="back-btn" onClick={props.onBack} title={t.sidebar.backTitle}><Icon name="fa-solid fa-arrow-left" /></button>
           <span class="collection-name" onClick={props.onRenameCollection} title={t.sidebar.renameTitle}>{props.name}</span>
         </div>
         <div class="sidebar-actions">
-          <button class="btn btn-primary btn-sm" onClick={props.onAddRequest}>{t.sidebar.addRequestButton}</button>
-          <button class="btn btn-ghost btn-sm" onClick={props.onAddFolder}>{t.sidebar.addFolderButton}</button>
+          <button class="btn btn-primary btn-sm" onClick={props.onAddRequest}><Icon name="fa-solid fa-plus" /> {t.sidebar.addRequestButton}</button>
+          <button class="btn btn-ghost btn-sm" onClick={props.onAddFolder}><Icon name="fa-solid fa-folder-plus" /> {t.sidebar.addFolderButton}</button>
         </div>
       </div>
       <div class="tree">

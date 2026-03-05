@@ -1,6 +1,7 @@
 import { createSignal, For, Index, Show } from 'solid-js';
 import { buildUrlWithParams, detectFormat, formatBytes, resolveVariables } from '../helpers';
 import t from '../locale';
+import Icon from './Icon';
 import { highlightFlat } from '../highlight';
 
 function useDragReorder(onReorder) {
@@ -68,7 +69,7 @@ function UrlPreview(props) {
       <span class="url-preview-label">{t.requestPane.urlPreview.label}</span>
       <div class="url-preview-row">
         <span class="url-preview-value">{previewUrl() || t.requestPane.urlPreview.noUrl}</span>
-        <button class="btn btn-ghost btn-sm" onClick={copy}>{copied() ? t.requestPane.urlPreview.copiedButton : t.requestPane.urlPreview.copyButton}</button>
+        <button class="btn btn-ghost btn-sm" onClick={copy}>{copied() ? <><Icon name="fa-solid fa-check" /> {t.requestPane.urlPreview.copiedButton}</> : <><Icon name="fa-regular fa-copy" /> {t.requestPane.urlPreview.copyButton}</>}</button>
       </div>
     </div>
   );
@@ -141,11 +142,11 @@ export default function RequestPane(props) {
                   onDrop={(e) => paramDrag.onDrop(e, i)}
                   onDragEnd={paramDrag.onDragEnd}
                 >
-                  <span class="drag-handle">&#8942;</span>
+                  <span class="drag-handle"><Icon name="fa-solid fa-grip-vertical" /></span>
                   <input type="checkbox" checked={p().enabled} onChange={(e) => props.onParamChange(i, 'enabled', e.target.checked)} />
                   <input type="text" placeholder={t.requestPane.paramNamePlaceholder} value={p().key} onInput={(e) => props.onParamChange(i, 'key', e.target.value)} />
                   <input type="text" placeholder={t.requestPane.valuePlaceholder} value={p().value} onInput={(e) => props.onParamChange(i, 'value', e.target.value)} />
-                  <button class="btn btn-danger btn-sm" onClick={() => props.onRemoveParam(i)}>&times;</button>
+                  <button class="btn btn-danger btn-sm" onClick={() => props.onRemoveParam(i)}><Icon name="fa-solid fa-xmark" /></button>
                 </div>
               )}
             </Index>
@@ -167,11 +168,11 @@ export default function RequestPane(props) {
                   onDrop={(e) => headerDrag.onDrop(e, i)}
                   onDragEnd={headerDrag.onDragEnd}
                 >
-                  <span class="drag-handle">&#8942;</span>
+                  <span class="drag-handle"><Icon name="fa-solid fa-grip-vertical" /></span>
                   <input type="checkbox" checked={h().enabled} onChange={(e) => props.onHeaderChange(i, 'enabled', e.target.checked)} />
                   <input type="text" class="header-key" placeholder={t.requestPane.headerNamePlaceholder} value={h().key} onInput={(e) => { e.target.value = e.target.value.toLowerCase(); props.onHeaderChange(i, 'key', e.target.value); }} />
                   <input type="text" placeholder={t.requestPane.valuePlaceholder} value={h().value} onInput={(e) => props.onHeaderChange(i, 'value', e.target.value)} />
-                  <button class="btn btn-danger btn-sm" onClick={() => props.onRemoveHeader(i)}>&times;</button>
+                  <button class="btn btn-danger btn-sm" onClick={() => props.onRemoveHeader(i)}><Icon name="fa-solid fa-xmark" /></button>
                 </div>
               )}
             </Index>
@@ -242,7 +243,7 @@ export default function RequestPane(props) {
                     onDrop={(e) => formDrag.onDrop(e, i)}
                     onDragEnd={formDrag.onDragEnd}
                   >
-                    <span class="drag-handle">&#8942;</span>
+                    <span class="drag-handle"><Icon name="fa-solid fa-grip-vertical" /></span>
                     <input type="text" placeholder={t.requestPane.namePlaceholder} value={f().key} onInput={(e) => props.onFormFieldChange(i, 'key', e.target.value)} />
                     <select value={f().type} onChange={(e) => props.onFormFieldChange(i, 'type', e.target.value)}>
                       <option value="text">{t.requestPane.formFieldTypes.text}</option>
@@ -253,7 +254,7 @@ export default function RequestPane(props) {
                     }>
                       <input type="text" placeholder={t.requestPane.valuePlaceholder} value={f().value} onInput={(e) => props.onFormFieldChange(i, 'value', e.target.value)} />
                     </Show>
-                    <button class="btn btn-danger btn-sm" onClick={() => props.onRemoveFormField(i)}>&times;</button>
+                    <button class="btn btn-danger btn-sm" onClick={() => props.onRemoveFormField(i)}><Icon name="fa-solid fa-xmark" /></button>
                   </div>
                 )}
               </Index>
@@ -277,10 +278,10 @@ export default function RequestPane(props) {
                   onDrop={(e) => variableDrag.onDrop(e, i)}
                   onDragEnd={variableDrag.onDragEnd}
                 >
-                  <span class="drag-handle">&#8942;</span>
+                  <span class="drag-handle"><Icon name="fa-solid fa-grip-vertical" /></span>
                   <input type="text" placeholder={t.requestPane.variableNamePlaceholder} value={v().key} onInput={(e) => props.onVariableChange(i, 'key', e.target.value)} />
                   <input type="text" placeholder={t.requestPane.valuePlaceholder} value={v().value} onInput={(e) => props.onVariableChange(i, 'value', e.target.value)} />
-                  <button class="btn btn-danger btn-sm" onClick={() => props.onRemoveVariable(i)}>&times;</button>
+                  <button class="btn btn-danger btn-sm" onClick={() => props.onRemoveVariable(i)}><Icon name="fa-solid fa-xmark" /></button>
                 </div>
               )}
             </Index>
