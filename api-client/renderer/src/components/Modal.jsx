@@ -4,31 +4,35 @@ let modalResolve = null;
 const [modalVisible, setModalVisible] = createSignal(false);
 const [modalTitle, setModalTitle] = createSignal('');
 const [modalValue, setModalValue] = createSignal('');
+const [modalDescription, setModalDescription] = createSignal('');
 const [modalType, setModalType] = createSignal('prompt'); // 'prompt' | 'confirm'
 
-export function showPrompt(title, defaultValue = '') {
+export function showPrompt(title, defaultValue = '', description = '') {
   return new Promise((resolve) => {
     modalResolve = resolve;
     setModalTitle(title);
+    setModalDescription(description);
     setModalValue(defaultValue);
     setModalType('prompt');
     setModalVisible(true);
   });
 }
 
-export function showConfirm(title) {
+export function showConfirm(title, description = '') {
   return new Promise((resolve) => {
     modalResolve = resolve;
     setModalTitle(title);
+    setModalDescription(description);
     setModalType('confirm');
     setModalVisible(true);
   });
 }
 
-export function showTextarea(title, placeholder = '') {
+export function showTextarea(title, placeholder = '', description = '') {
   return new Promise((resolve) => {
     modalResolve = resolve;
     setModalTitle(title);
+    setModalDescription(description);
     setModalValue('');
     setModalType('textarea');
     setModalVisible(true);
@@ -53,6 +57,9 @@ export default function Modal() {
       <div class="modal-overlay visible" onKeyDown={onKeyDown}>
         <div class="modal">
           <div class="modal-title">{modalTitle()}</div>
+          <Show when={modalDescription()}>
+            <div class="modal-description">{modalDescription()}</div>
+          </Show>
           <Show when={modalType() === 'prompt'}>
             <input
               ref={inputRef}

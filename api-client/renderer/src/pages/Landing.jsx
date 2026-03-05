@@ -76,7 +76,8 @@ export default function Landing(props) {
 
   async function removeCategory(e, id, name) {
     e.stopPropagation();
-    if (await showConfirm(`Delete category "${name}"? Collections will be uncategorized.`)) {
+    let future = await showConfirm(`Delete category "${name}"?`, `Collections will be uncategorized.`)
+    if (future) {
       await window.api.deleteCategory(id);
       load();
     }
@@ -120,16 +121,12 @@ export default function Landing(props) {
     load();
   }
 
-  function pinnedCollections() {
-    return collections().filter(c => c.pinned);
-  }
-
   function uncategorizedCollections() {
-    return collections().filter(c => !c.pinned && !c.category_id);
+    return collections().filter(c => !c.category_id).sort((a, b) => b.pinned - a.pinned);
   }
 
   function collectionsInCategory(catId) {
-    return collections().filter(c => c.category_id === catId);
+    return collections().filter(c => c.category_id === catId).sort((a, b) => b.pinned - a.pinned);
   }
 
   function CollectionCard(props) {
@@ -174,18 +171,6 @@ export default function Landing(props) {
       <div class="landing-content">
         <Show when={collections().length === 0 && categories().length === 0}>
           <div class="empty-state">No collections yet. Create one to get started.</div>
-        </Show>
-
-        {/* Pinned section */}
-        <Show when={pinnedCollections().length > 0}>
-          <div class="landing-section">
-            <div class="landing-section-header">Pinned</div>
-            <div class="collection-list">
-              <For each={pinnedCollections()}>
-                {(c) => <CollectionCard c={c} onOpen={props.onOpen} />}
-              </For>
-            </div>
-          </div>
         </Show>
 
         {/* Category sections */}
