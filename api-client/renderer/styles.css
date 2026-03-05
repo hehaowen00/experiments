@@ -556,6 +556,8 @@ body {
   font-family: var(--mono);
   font-size: 13px;
   line-height: 1.5;
+  flex: 1;
+  min-height: 0;
 }
 
 .response-lined > .line-numbers {
@@ -570,6 +572,7 @@ body {
 .response-lined > .response-pre {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   padding-left: 12px;
   overflow: auto;
 }
@@ -618,6 +621,105 @@ body {
   flex: 1;
   overflow: auto;
   padding: 16px;
+}
+
+#restab-body {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
+#restab-body > #response-body-container,
+#restab-body > #search-results-container {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+#restab-body > #response-body-container > .response-lined {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+#restab-body > #response-placeholder {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Response search bar */
+.response-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 0;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 8px;
+}
+
+.response-search-bar .search-input {
+  flex: 1;
+  padding: 5px 10px;
+  font-size: 13px;
+}
+
+.search-info {
+  font-size: 12px;
+  color: var(--text-dim);
+  font-family: var(--mono);
+  white-space: nowrap;
+  min-width: 60px;
+  text-align: center;
+}
+
+.search-highlight {
+  background: rgba(240, 160, 48, 0.35);
+  border-radius: 2px;
+}
+
+.search-highlight.active {
+  background: rgba(240, 160, 48, 0.7);
+  outline: 1px solid var(--warning);
+}
+
+/* Search results (JSONPath/XPath) */
+.search-results {
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.search-result-item {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.search-result-item:last-child {
+  border-bottom: none;
+}
+
+.search-result-path {
+  color: var(--accent);
+  font-size: 11px;
+  margin-bottom: 4px;
+}
+
+.search-result-value {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.search-result-error {
+  color: var(--danger);
+  padding: 12px;
+  font-family: var(--mono);
+  font-size: 13px;
 }
 
 .response-pre {

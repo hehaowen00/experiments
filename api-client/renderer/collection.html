@@ -102,8 +102,21 @@
               <button class="section-tab" data-restab="history">History</button>
             </div>
             <div class="response-tab-content" id="restab-body">
+              <div class="response-search-bar" id="response-search-bar" style="display:none">
+                <select class="body-type-select" id="search-mode">
+                  <option value="text">Text</option>
+                  <option value="jsonpath">JSONPath</option>
+                  <option value="xpath">XPath</option>
+                </select>
+                <input type="text" class="url-input search-input" id="search-input" placeholder="Search..." />
+                <span class="search-info" id="search-info"></span>
+                <button class="btn btn-ghost btn-sm" id="search-prev" title="Previous">&uarr;</button>
+                <button class="btn btn-ghost btn-sm" id="search-next" title="Next">&darr;</button>
+                <button class="btn btn-ghost btn-sm" id="search-close" title="Close">&times;</button>
+              </div>
               <div class="response-placeholder" id="response-placeholder">Send a request to see the response</div>
               <div id="response-body-container" style="display:none"></div>
+              <div id="search-results-container" style="display:none"></div>
             </div>
             <div class="response-tab-content" id="restab-messages" style="display:none">
               <div class="stream-log" id="stream-log"></div>
