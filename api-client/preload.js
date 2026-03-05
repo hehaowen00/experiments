@@ -14,12 +14,14 @@ contextBridge.exposeInMainWorld('api', {
   loadResponse: (id) => ipcRenderer.invoke('response:load', id),
   pickFile: () => ipcRenderer.invoke('file:pick'),
   readFile: (path) => ipcRenderer.invoke('file:read', path),
+
   // SSE
   sseDisconnect: (id) => ipcRenderer.invoke('sse:disconnect', id),
   onSseOpen: (cb) => ipcRenderer.on('sse:open', (_, d) => cb(d)),
   onSseEvent: (cb) => ipcRenderer.on('sse:event', (_, d) => cb(d)),
   onSseError: (cb) => ipcRenderer.on('sse:error', (_, d) => cb(d)),
   onSseClose: (cb) => ipcRenderer.on('sse:close', (_, d) => cb(d)),
+
   // WebSocket
   wsConnect: (opts) => ipcRenderer.invoke('ws:connect', opts),
   wsSend: (opts) => ipcRenderer.invoke('ws:send', opts),

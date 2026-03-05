@@ -67,6 +67,18 @@ function showConfirm(title) {
 
 // --- Render ---
 
+function formatLastUsed(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr + 'Z');
+  const now = new Date();
+  const diff = now - d;
+  if (diff < 60000) return 'Just now';
+  if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+  if (diff < 604800000) return `${Math.floor(diff / 86400000)}d ago`;
+  return d.toLocaleDateString();
+}
+
 async function render() {
   const collections = await window.api.listCollections();
   if (collections.length === 0) {
@@ -76,6 +88,7 @@ async function render() {
   collectionsEl.innerHTML = collections.map(c => `
     <div class="collection-item" data-id="${c.id}">
       <span class="name">${escapeHtml(c.name)}</span>
+      <span class="last-used">${formatLastUsed(c.last_used)}</span>
       <div class="actions">
         <button class="btn btn-ghost btn-sm rename-btn" data-id="${c.id}" data-name="${escapeAttr(c.name)}">Rename</button>
         <button class="btn btn-danger btn-sm delete-btn" data-id="${c.id}" data-name="${escapeAttr(c.name)}">Delete</button>

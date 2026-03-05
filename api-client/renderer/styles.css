@@ -33,9 +33,11 @@ body {
 
 /* Landing page */
 .landing {
-  max-width: 700px;
-  margin: 0 auto;
-  padding: 60px 24px;
+  padding: 40px 40px 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .landing h1 {
@@ -106,15 +108,19 @@ body {
 .btn-sm { padding: 4px 10px; font-size: 12px; }
 
 .collection-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  align-content: start;
+  gap: 10px;
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: 24px;
 }
 
 .collection-item {
   display: flex;
-  align-items: center;
-  padding: 14px 16px;
+  flex-direction: column;
+  padding: 12px 14px;
   background: var(--surface);
   border-radius: var(--radius);
   cursor: pointer;
@@ -126,11 +132,19 @@ body {
 .collection-item .name {
   flex: 1;
   font-weight: 500;
+  word-break: break-word;
+}
+
+.collection-item .last-used {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 4px;
 }
 
 .collection-item .actions {
   display: flex;
   gap: 4px;
+  margin-top: 4px;
   opacity: 0;
   transition: opacity 0.15s;
 }
@@ -303,6 +317,28 @@ body {
 .folder-children { padding-left: 16px; }
 
 .folder-children.collapsed { display: none; }
+
+/* Drag and drop */
+.tree-item.dragging,
+.folder-header.dragging {
+  opacity: 0.4;
+}
+
+.tree-item.drag-over-above,
+.folder-header.drag-over-above {
+  box-shadow: 0 -2px 0 0 var(--accent);
+}
+
+.tree-item.drag-over-below,
+.folder-header.drag-over-below {
+  box-shadow: 0 2px 0 0 var(--accent);
+}
+
+.folder-header.drag-over-inside {
+  background: var(--surface2);
+  outline: 1px dashed var(--accent);
+  outline-offset: -1px;
+}
 
 /* Resize handles */
 .resize-handle {
@@ -720,6 +756,13 @@ body {
   padding: 12px;
   font-family: var(--mono);
   font-size: 13px;
+}
+
+.response-image {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  padding: 12px;
 }
 
 .response-pre {

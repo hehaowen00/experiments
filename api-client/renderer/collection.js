@@ -102,6 +102,23 @@ function removeItem(items, id) {
   return false;
 }
 
+function findParentArray(items, id) {
+  for (let i = 0; i < items.length; i++) {
+    if (items[i].id === id) return { arr: items, index: i };
+    if (items[i].type === 'folder' && items[i].children) {
+      const r = findParentArray(items[i].children, id);
+      if (r) return r;
+    }
+  }
+  return null;
+}
+
+function isDescendant(items, ancestorId, descendantId) {
+  const ancestor = findItem(items, ancestorId);
+  if (!ancestor || ancestor.type !== 'folder') return false;
+  return !!findItem(ancestor.children || [], descendantId);
+}
+
 function formatBytes(b) {
   if (b < 1024) return b + ' B';
   if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
@@ -410,6 +427,16 @@ function renderResponseBody(body, contentType) {
   lastResponseContentType = contentType;
   if (!body) { responseBodyContainer.innerHTML = '<div class="response-placeholder">Empty response</div>'; return; }
 
+  // Image response
+  if (contentType && contentType.startsWith('image/')) {
+    const img = document.createElement('img');
+    img.className = 'response-image';
+    img.src = `data:${contentType};base64,${body}`;
+    img.alt = 'Response image';
+    responseBodyContainer.appendChild(img);
+    return;
+  }
+
   const format = contentTypeToFormat(contentType);
 
   if (format === 'json') {
@@ -419,7 +446,7 @@ function renderResponseBody(body, contentType) {
       const foldEl = renderFoldableJson(JSON.parse(body));
       responseBodyContainer.appendChild(wrapWithLineNumbers(foldEl, lineCount));
       return;
-    } catch {}
+    } catch { }
   }
 
   if (format === 'xml' || format === 'html') {
@@ -1009,9 +1036,9 @@ function renderFormFields() {
         <option value="file" ${f.type === 'file' ? 'selected' : ''}>File</option>
       </select>
       ${f.type === 'text'
-        ? `<input type="text" placeholder="Value" value="${esc(f.value)}" data-form-idx="${i}" data-form-field="value" />`
-        : `<button class="btn btn-ghost btn-sm form-pick-file" data-form-idx="${i}">${f.fileName ? esc(f.fileName) : 'Choose...'}</button>`
-      }
+      ? `<input type="text" placeholder="Value" value="${esc(f.value)}" data-form-idx="${i}" data-form-field="value" />`
+      : `<button class="btn btn-ghost btn-sm form-pick-file" data-form-idx="${i}">${f.fileName ? esc(f.fileName) : 'Choose...'}</button>`
+    }
       <button class="btn btn-danger btn-sm" data-remove-form="${i}">&times;</button>
     </div>
   `).join('');
@@ -1111,7 +1138,7 @@ function renderItems(items, depth) {
     if (item.type === 'folder') {
       const collapsed = item.collapsed ? 'collapsed' : '';
       const arrow = item.collapsed ? '&#9654;' : '&#9660;';
-      return `<div class="folder-header" data-id="${item.id}" style="padding-left:${12 + depth * 16}px">
+      return `<div class="folder-header" data-id="${item.id}" draggable="true" style="padding-left:${12 + depth * 16}px">
           <span>${arrow}</span><span>${esc(item.name)}</span>
           <div class="folder-actions">
             <button data-action="add-request" data-folder="${item.id}" title="Add request">+</button>
@@ -1121,7 +1148,7 @@ function renderItems(items, depth) {
         <div class="folder-children ${collapsed}" data-folder-children="${item.id}">${renderItems(item.children || [], depth + 1)}</div>`;
     }
     const isActive = item.id === activeRequestId ? 'active' : '';
-    return `<div class="tree-item ${isActive}" data-id="${item.id}" style="padding-left:${12 + depth * 16}px">
+    return `<div class="tree-item ${isActive}" data-id="${item.id}" draggable="true" style="padding-left:${12 + depth * 16}px">
         <span class="method-badge ${item.method || 'GET'}">${item.method || 'GET'}</span>
         <span class="item-name">${esc(item.name)}</span>
         <div class="item-actions">
@@ -1173,6 +1200,102 @@ treeEl.addEventListener('click', async (e) => {
   }
   const treeItem = e.target.closest('.tree-item');
   if (treeItem) selectRequest(treeItem.dataset.id);
+});
+
+// === Drag and drop ===
+
+let dragItemId = null;
+
+treeEl.addEventListener('dragstart', (e) => {
+  const el = e.target.closest('.tree-item, .folder-header');
+  if (!el) return;
+  dragItemId = el.dataset.id;
+  el.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', dragItemId);
+});
+
+treeEl.addEventListener('dragend', (e) => {
+  dragItemId = null;
+  treeEl.querySelectorAll('.dragging, .drag-over-above, .drag-over-below, .drag-over-inside').forEach(el => {
+    el.classList.remove('dragging', 'drag-over-above', 'drag-over-below', 'drag-over-inside');
+  });
+});
+
+treeEl.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+
+  const el = e.target.closest('.tree-item, .folder-header');
+  if (!el || el.dataset.id === dragItemId) return;
+
+  // Clear previous indicators
+  treeEl.querySelectorAll('.drag-over-above, .drag-over-below, .drag-over-inside').forEach(n => {
+    n.classList.remove('drag-over-above', 'drag-over-below', 'drag-over-inside');
+  });
+
+  const rect = el.getBoundingClientRect();
+  const y = e.clientY - rect.top;
+  const ratio = y / rect.height;
+  const isFolder = el.classList.contains('folder-header');
+
+  if (isFolder) {
+    if (ratio < 0.25) el.classList.add('drag-over-above');
+    else if (ratio > 0.75) el.classList.add('drag-over-below');
+    else el.classList.add('drag-over-inside');
+  } else {
+    if (ratio < 0.5) el.classList.add('drag-over-above');
+    else el.classList.add('drag-over-below');
+  }
+});
+
+treeEl.addEventListener('dragleave', (e) => {
+  const el = e.target.closest('.tree-item, .folder-header');
+  if (el) el.classList.remove('drag-over-above', 'drag-over-below', 'drag-over-inside');
+});
+
+treeEl.addEventListener('drop', async (e) => {
+  e.preventDefault();
+  const el = e.target.closest('.tree-item, .folder-header');
+  if (!el || !dragItemId || el.dataset.id === dragItemId) return;
+
+  const targetId = el.dataset.id;
+
+  // Prevent dropping a folder into itself
+  if (isDescendant(collection.items, dragItemId, targetId)) return;
+
+  const zone = el.classList.contains('drag-over-above') ? 'above'
+    : el.classList.contains('drag-over-below') ? 'below'
+      : el.classList.contains('drag-over-inside') ? 'inside'
+        : null;
+
+  if (!zone) return;
+
+  // Remove from old position
+  const dragItem = findItem(collection.items, dragItemId);
+  if (!dragItem) return;
+  removeItem(collection.items, dragItemId);
+
+  if (zone === 'inside') {
+    // Drop into folder
+    const folder = findItem(collection.items, targetId);
+    if (folder && folder.type === 'folder') {
+      folder.children = folder.children || [];
+      folder.children.push(dragItem);
+      folder.collapsed = false;
+    }
+  } else {
+    // Drop above or below target
+    const parent = findParentArray(collection.items, targetId);
+    if (parent) {
+      const insertIdx = zone === 'above' ? parent.index : parent.index + 1;
+      parent.arr.splice(insertIdx, 0, dragItem);
+    }
+  }
+
+  dragItemId = null;
+  await save();
+  renderTree();
 });
 
 async function selectRequest(id) {
@@ -1282,6 +1405,7 @@ function switchRequestTab(activeTab) {
   document.querySelectorAll('.section-tab[data-tab]').forEach(t => t.classList.toggle('active', t.dataset.tab === activeTab));
   document.getElementById('tab-headers').style.display = activeTab === 'headers' ? '' : 'none';
   document.getElementById('tab-body').style.display = activeTab === 'body' ? '' : 'none';
+  if (activeTab === 'body') switchBodyType(currentBodyType);
 }
 
 document.querySelectorAll('.section-tab[data-tab]').forEach(tab => {
@@ -1600,6 +1724,18 @@ document.getElementById('add-folder-btn').addEventListener('click', async () => 
   await save(); renderTree();
 });
 
+// === Copy response ===
+
+const copyResponseBtn = document.getElementById('copy-response-btn');
+
+copyResponseBtn.addEventListener('click', () => {
+  if (!lastResponseBody) return;
+  navigator.clipboard.writeText(lastResponseBody).then(() => {
+    copyResponseBtn.textContent = 'Copied!';
+    setTimeout(() => { copyResponseBtn.textContent = 'Copy'; }, 1500);
+  });
+});
+
 // === Keyboard shortcuts ===
 
 document.addEventListener('keydown', (e) => {
@@ -1699,6 +1835,7 @@ window.matchMedia('(min-aspect-ratio: 1/1)').addEventListener('change', () => {
 
 // === Init ===
 
+setStreamUI(false);
 window.addEventListener('beforeunload', () => { if (streamConnectionId) disconnectStream(); });
 
 load();
