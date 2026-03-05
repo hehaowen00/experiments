@@ -667,6 +667,8 @@ async function selectRequest(id) {
 function showResponse(result) {
   responseMetaEl.style.display = 'flex';
   responseTabsEl.style.display = 'flex';
+  messagesTabBtn.style.display = 'none';
+  streamComposeEl.style.display = 'none';
   timelineContentEl.innerHTML = renderTimeline(result.timeline);
 
   if (result.error) {
@@ -847,9 +849,15 @@ async function ensureActiveRequest(method, url) {
 }
 
 sendBtn.addEventListener('click', async () => {
-  const method = methodEl.value;
+  let method = methodEl.value;
   const url = urlEl.value.trim();
   if (!url) { urlEl.focus(); return; }
+
+  // Auto-detect WebSocket from URL scheme
+  if (method !== 'WS' && (url.startsWith('ws://') || url.startsWith('wss://'))) {
+    method = 'WS';
+    methodEl.value = 'WS';
+  }
 
   // Disconnect any existing stream
   if (streamConnectionId) await disconnectStream();

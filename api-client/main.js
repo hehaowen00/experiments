@@ -7,6 +7,7 @@ const WebSocket = require('ws');
 
 let db;
 const DB_PATH = path.join(app.getPath('userData'), 'api-client.db');
+console.log(DB_PATH)
 
 function initDb() {
   db = new Database(DB_PATH);
@@ -60,7 +61,7 @@ function migrateJsonFiles() {
       try {
         const data = JSON.parse(fs.readFileSync(path.join(oldDir, f), 'utf-8'));
         insert.run(data.id, data.name, JSON.stringify(data.items || []));
-      } catch {}
+      } catch { }
     }
   });
   tx();
@@ -91,6 +92,8 @@ function deleteCollection(id) {
 // --- Response CRUD ---
 
 function saveResponse(data) {
+  // Delete previous responses for this request, keep only the new one
+  db.prepare('DELETE FROM responses WHERE request_id = ?').run(data.request_id);
   const result = db.prepare(`
     INSERT INTO responses (request_id, collection_id, status, status_text,
       response_headers, response_body, timeline, time_ms, request_method,
@@ -103,50 +106,47 @@ function saveResponse(data) {
     data.request_url, JSON.stringify(data.request_headers || []),
     data.request_body || '', data.content_type || '', data.error || null
   );
-  return result.lastInsertRowid;
+  return Number(result.lastInsertRowid);
 }
 
 function getLatestResponse(requestId) {
   const row = db.prepare('SELECT * FROM responses WHERE request_id = ? ORDER BY created_at DESC LIMIT 1').get(requestId);
   if (!row) return null;
-  return {
-    id: row.id,
-    request_id: row.request_id,
-    status: row.status,
-    statusText: row.status_text,
-    headers: JSON.parse(row.response_headers || '{}'),
-    body: row.response_body,
-    timeline: JSON.parse(row.timeline || '[]'),
-    time: row.time_ms,
-    contentType: row.content_type || '',
-    error: row.error,
-    requestMethod: row.request_method,
-    requestUrl: row.request_url,
-    requestHeaders: JSON.parse(row.request_headers || '[]'),
-    requestBody: row.request_body,
-    createdAt: row.created_at,
-  };
+  return formatResponseRow(row);
 }
 
 function getResponseHistory(requestId, limit = 50) {
   return db.prepare(`
     SELECT id, status, status_text, time_ms, request_method, request_url, error, created_at
     FROM responses WHERE request_id = ? ORDER BY created_at DESC LIMIT ?
-  `).all(requestId, limit);
+  `).all(requestId, limit).map(row => ({
+    id: Number(row.id),
+    status: Number(row.status),
+    status_text: row.status_text,
+    time_ms: Number(row.time_ms),
+    request_method: row.request_method,
+    request_url: row.request_url,
+    error: row.error,
+    created_at: row.created_at,
+  }));
 }
 
 function loadResponse(id) {
   const row = db.prepare('SELECT * FROM responses WHERE id = ?').get(id);
   if (!row) return null;
+  return formatResponseRow(row);
+}
+
+function formatResponseRow(row) {
   return {
-    id: row.id,
+    id: Number(row.id),
     request_id: row.request_id,
-    status: row.status,
+    status: Number(row.status),
     statusText: row.status_text,
     headers: JSON.parse(row.response_headers || '{}'),
     body: row.response_body,
     timeline: JSON.parse(row.timeline || '[]'),
-    time: row.time_ms,
+    time: Number(row.time_ms),
     contentType: row.content_type || '',
     error: row.error,
     requestMethod: row.request_method,
@@ -290,9 +290,11 @@ ipcMain.handle('request:send', async (_, opts) => {
         reqBody = fs.readFileSync(filePath);
         if (!h['Content-Type'] && !h['content-type']) {
           const ext = path.extname(filePath).toLowerCase();
-          const mimeMap = { '.json': 'application/json', '.xml': 'application/xml', '.html': 'text/html',
+          const mimeMap = {
+            '.json': 'application/json', '.xml': 'application/xml', '.html': 'text/html',
             '.txt': 'text/plain', '.csv': 'text/csv', '.png': 'image/png', '.jpg': 'image/jpeg',
-            '.gif': 'image/gif', '.pdf': 'application/pdf', '.zip': 'application/zip' };
+            '.gif': 'image/gif', '.pdf': 'application/pdf', '.zip': 'application/zip'
+          };
           h['Content-Type'] = mimeMap[ext] || 'application/octet-stream';
         }
       }
@@ -393,7 +395,7 @@ ipcMain.handle('request:send', async (_, opts) => {
         const rawBody = Buffer.concat(chunks).toString('utf-8');
         let responseBody = rawBody;
         if (ct.includes('json')) {
-          try { responseBody = JSON.stringify(JSON.parse(rawBody), null, 2); } catch {}
+          try { responseBody = JSON.stringify(JSON.parse(rawBody), null, 2); } catch { }
         }
         timeline.push({ t: totalTime, type: 'info', text: `Response body received (${Buffer.concat(chunks).length} bytes)` });
         timeline.push({ t: totalTime, type: 'info', text: `Request completed in ${totalTime}ms` });
@@ -437,8 +439,8 @@ ipcMain.handle('request:send', async (_, opts) => {
       const totalTime = ts();
       timeline.push({ t: totalTime, type: 'error', text: `${err.code || 'Error'}: ${err.message}` });
       if (err.code === 'UNABLE_TO_VERIFY_LEAF_SIGNATURE' || err.code === 'CERT_HAS_EXPIRED' ||
-          err.code === 'ERR_TLS_CERT_ALTNAME_INVALID' || err.code === 'DEPTH_ZERO_SELF_SIGNED_CERT' ||
-          err.code === 'SELF_SIGNED_CERT_IN_CHAIN') {
+        err.code === 'ERR_TLS_CERT_ALTNAME_INVALID' || err.code === 'DEPTH_ZERO_SELF_SIGNED_CERT' ||
+        err.code === 'SELF_SIGNED_CERT_IN_CHAIN') {
         timeline.push({ t: totalTime, type: 'error', text: `SSL certificate verification failed` });
       }
       if (err.code === 'ECONNREFUSED') {
