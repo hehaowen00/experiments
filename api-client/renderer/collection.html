@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html>
+
 <head>
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src *">
   <link rel="stylesheet" href="styles.css">
   <title>API Client</title>
 </head>
+
 <body>
   <div class="collection-view">
     <div class="sidebar">
@@ -66,10 +68,12 @@
               </div>
               <div id="body-panel-text">
                 <div class="code-editor" id="request-editor">
-                  <div class="line-numbers" id="request-line-numbers" aria-hidden="true"><span class="line-num">1</span></div>
+                  <div class="line-numbers" id="request-line-numbers" aria-hidden="true"><span class="line-num">1</span>
+                  </div>
                   <div class="code-editor-inner">
                     <pre class="code-highlight" aria-hidden="true"><code id="request-body-highlight"></code></pre>
-                    <textarea id="request-body" class="code-input" placeholder="Request body (JSON, XML, text...)" spellcheck="false"></textarea>
+                    <textarea id="request-body" class="code-input" placeholder="Request body (JSON, XML, text...)"
+                      spellcheck="false"></textarea>
                   </div>
                 </div>
               </div>
@@ -93,10 +97,12 @@
             <div class="response-meta" id="response-meta" style="display:none">
               <span class="response-status" id="response-status"></span>
               <span class="response-time" id="response-time"></span>
+              <button class="btn btn-ghost btn-sm" id="copy-response-btn" title="Copy response body">Copy</button>
             </div>
             <div class="response-tabs" id="response-tabs" style="display:none">
               <button class="section-tab active" data-restab="body">Body</button>
-              <button class="section-tab" data-restab="messages" style="display:none" id="messages-tab-btn">Messages</button>
+              <button class="section-tab" data-restab="messages" style="display:none"
+                id="messages-tab-btn">Messages</button>
               <button class="section-tab" data-restab="resp-headers">Headers</button>
               <button class="section-tab" data-restab="timeline">Timeline</button>
               <button class="section-tab" data-restab="history">History</button>
@@ -159,4 +165,5 @@
 
   <script src="collection.js"></script>
 </body>
+
 </html>

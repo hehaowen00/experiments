@@ -13,6 +13,13 @@ function initDb() {
   db = new Database(DB_PATH);
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
+  db.pragma('synchronous = NORMAL');
+  db.pragma('cache_size = -64000');    // 64MB cache
+  db.pragma('busy_timeout = 5000');
+  db.pragma('temp_store = MEMORY');
+  db.pragma('mmap_size = 268435456');  // 256MB mmap
+  db.pragma('page_size = 4096');
+  db.pragma('wal_autocheckpoint = 1000');
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS collections (
@@ -46,6 +53,13 @@ function initDb() {
     CREATE INDEX IF NOT EXISTS idx_responses_collection ON responses(collection_id);
   `);
 
+  // Migrate: add last_used column
+  const cols = db.prepare("PRAGMA table_info(collections)").all().map(c => c.name);
+  if (!cols.includes('last_used')) {
+    db.exec("ALTER TABLE collections ADD COLUMN last_used TEXT DEFAULT ''");
+    db.exec("UPDATE collections SET last_used = created_at WHERE last_used = ''");
+  }
+
   migrateJsonFiles();
 }
 
@@ -71,18 +85,25 @@ function migrateJsonFiles() {
 // --- Collection CRUD ---
 
 function loadCollections() {
-  return db.prepare('SELECT id, name FROM collections ORDER BY name').all();
+  return db.prepare('SELECT id, name, last_used FROM collections ORDER BY last_used DESC').all();
 }
 
 function loadCollection(id) {
   const row = db.prepare('SELECT * FROM collections WHERE id = ?').get(id);
   if (!row) return null;
+  db.prepare("UPDATE collections SET last_used = datetime('now') WHERE id = ?").run(id);
   return { id: row.id, name: row.name, items: JSON.parse(row.items) };
 }
 
 function saveCollection(collection) {
-  db.prepare('INSERT OR REPLACE INTO collections (id, name, items) VALUES (?, ?, ?)')
-    .run(collection.id, collection.name, JSON.stringify(collection.items));
+  const existing = db.prepare('SELECT id FROM collections WHERE id = ?').get(collection.id);
+  if (existing) {
+    db.prepare('UPDATE collections SET name = ?, items = ? WHERE id = ?')
+      .run(collection.name, JSON.stringify(collection.items), collection.id);
+  } else {
+    db.prepare("INSERT INTO collections (id, name, items, last_used) VALUES (?, ?, ?, datetime('now'))")
+      .run(collection.id, collection.name, JSON.stringify(collection.items));
+  }
 }
 
 function deleteCollection(id) {
@@ -181,6 +202,7 @@ app.whenReady().then(() => {
 });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
+app.on('will-quit', () => { if (db) { db.close(); db = null; } });
 
 // --- IPC: Collections ---
 
@@ -392,12 +414,18 @@ ipcMain.handle('request:send', async (_, opts) => {
       res.on('data', (chunk) => chunks.push(chunk));
       res.on('end', () => {
         const totalTime = ts();
-        const rawBody = Buffer.concat(chunks).toString('utf-8');
-        let responseBody = rawBody;
-        if (ct.includes('json')) {
-          try { responseBody = JSON.stringify(JSON.parse(rawBody), null, 2); } catch { }
+        const buf = Buffer.concat(chunks);
+        const isImage = ct.startsWith('image/');
+        let responseBody;
+        if (isImage) {
+          responseBody = buf.toString('base64');
+        } else {
+          responseBody = buf.toString('utf-8');
+          if (ct.includes('json')) {
+            try { responseBody = JSON.stringify(JSON.parse(responseBody), null, 2); } catch { }
+          }
         }
-        timeline.push({ t: totalTime, type: 'info', text: `Response body received (${Buffer.concat(chunks).length} bytes)` });
+        timeline.push({ t: totalTime, type: 'info', text: `Response body received (${buf.length} bytes)` });
         timeline.push({ t: totalTime, type: 'info', text: `Request completed in ${totalTime}ms` });
         resolve({
           status: res.statusCode,
@@ -407,6 +435,7 @@ ipcMain.handle('request:send', async (_, opts) => {
           time: totalTime,
           contentType: ct,
           timeline,
+          isImage,
         });
       });
     });
