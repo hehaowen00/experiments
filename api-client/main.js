@@ -193,7 +193,7 @@ function createWindow() {
     },
   });
   mainWindow.maximize();
-  mainWindow.loadFile('renderer/index.html');
+  mainWindow.loadFile('renderer/dist/index-solid.html');
 }
 
 app.whenReady().then(() => {

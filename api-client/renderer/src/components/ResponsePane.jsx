@@ -1,0 +1,650 @@
+import { createSignal, createEffect, Show, For, onMount, onCleanup } from 'solid-js';
+import { esc, contentTypeToFormat } from '../helpers';
+import { highlightXmlFlat } from '../highlight';
+import { evaluateJsonPath, searchXPathResults } from '../search';
+
+// Foldable JSON renderer (DOM-based for performance with large responses)
+function renderFoldableJson(value) {
+  const el = document.createElement('div');
+  el.className = 'fold-tree';
+  el.appendChild(buildJsonNode(value, 0));
+  el.addEventListener('click', (e) => {
+    const toggle = e.target.closest('.fold-toggle');
+    if (!toggle) return;
+    const block = toggle.closest('.fold-block');
+    if (!block.classList.contains('open') && block._lazyRender) {
+      block._lazyRender();
+      block._lazyRender = null;
+    }
+    block.classList.toggle('open');
+  });
+  return el;
+}
+
+const JSON_CHUNK_SIZE = 100;
+
+function spanText(text, cls) {
+  const s = document.createElement('span');
+  s.className = cls;
+  s.textContent = text;
+  return s;
+}
+
+function buildJsonNode(value, depth) {
+  if (value === null) return spanText('null', 'hl-bool');
+  if (typeof value === 'string') return spanText(JSON.stringify(value), 'hl-str');
+  if (typeof value === 'number') return spanText(String(value), 'hl-num');
+  if (typeof value === 'boolean') return spanText(String(value), 'hl-bool');
+
+  const isArray = Array.isArray(value);
+  const entries = isArray ? value.map((v, i) => [i, v]) : Object.entries(value);
+  const open = isArray ? '[' : '{';
+  const close = isArray ? ']' : '}';
+
+  if (entries.length === 0) return spanText(`${open}${close}`, 'hl-punct');
+
+  const block = document.createElement('span');
+  block.className = depth === 0 ? 'fold-block open' : 'fold-block';
+
+  const toggle = document.createElement('span');
+  toggle.className = 'fold-toggle';
+  block.appendChild(toggle);
+  block.appendChild(spanText(open, 'hl-punct'));
+
+  const preview = document.createElement('span');
+  preview.className = 'fold-preview';
+  preview.textContent = ` ${entries.length} ${isArray ? 'items' : 'keys'} `;
+  block.appendChild(preview);
+
+  const previewClose = document.createElement('span');
+  previewClose.className = 'fold-preview';
+  previewClose.appendChild(spanText(close, 'hl-punct'));
+  block.appendChild(previewClose);
+
+  const content = document.createElement('div');
+  content.className = 'fold-content';
+  block.appendChild(content);
+
+  const closeSpan = document.createElement('span');
+  closeSpan.className = 'fold-close';
+  closeSpan.appendChild(spanText(close, 'hl-punct'));
+  block.appendChild(closeSpan);
+
+  function renderEntries() {
+    const frag = document.createDocumentFragment();
+    let rendered = 0;
+    function renderChunk() {
+      const end = Math.min(rendered + JSON_CHUNK_SIZE, entries.length);
+      for (let i = rendered; i < end; i++) {
+        const [k, v] = entries[i];
+        const line = document.createElement('div');
+        line.className = 'fold-line';
+        if (!isArray) {
+          line.appendChild(spanText(JSON.stringify(String(k)), 'hl-key'));
+          line.appendChild(spanText(': ', 'hl-punct'));
+        }
+        line.appendChild(buildJsonNode(v, depth + 1));
+        if (i < entries.length - 1) line.appendChild(spanText(',', 'hl-punct'));
+        frag.appendChild(line);
+      }
+      rendered = end;
+      content.appendChild(frag);
+      if (rendered < entries.length) requestAnimationFrame(renderChunk);
+    }
+    renderChunk();
+  }
+
+  if (depth === 0) renderEntries();
+  else block._lazyRender = renderEntries;
+
+  return block;
+}
+
+// Foldable XML renderer
+function renderFoldableXml(str) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(str, 'text/xml');
+  if (doc.querySelector('parsererror')) {
+    const pre = document.createElement('pre');
+    pre.className = 'response-pre';
+    pre.innerHTML = highlightXmlFlat(str);
+    return pre;
+  }
+  const el = document.createElement('div');
+  el.className = 'fold-tree';
+  el.appendChild(buildXmlNode(doc.documentElement, 0));
+  el.addEventListener('click', (e) => {
+    const toggle = e.target.closest('.fold-toggle');
+    if (!toggle) return;
+    const block = toggle.closest('.fold-block');
+    if (!block.classList.contains('open') && block._lazyRender) {
+      block._lazyRender();
+      block._lazyRender = null;
+    }
+    block.classList.toggle('open');
+  });
+  return el;
+}
+
+function buildXmlNode(node, depth) {
+  if (node.nodeType === 3) {
+    const text = node.textContent.trim();
+    if (!text) return null;
+    return document.createTextNode(text);
+  }
+  if (node.nodeType === 8) return spanText(`<!--${node.textContent}-->`, 'hl-comment');
+  if (node.nodeType !== 1) return null;
+
+  const tag = node.tagName;
+  const attrs = Array.from(node.attributes).map(a =>
+    ` <span class="hl-attr">${esc(a.name)}</span>=<span class="hl-str">"${esc(a.value)}"</span>`
+  ).join('');
+
+  const children = Array.from(node.childNodes).filter(c =>
+    c.nodeType === 1 || (c.nodeType === 3 && c.textContent.trim())
+  );
+
+  if (children.length === 0) {
+    const s = document.createElement('span');
+    s.innerHTML = `<span class="hl-tag">&lt;${esc(tag)}</span>${attrs}<span class="hl-tag"> /&gt;</span>`;
+    return s;
+  }
+
+  if (children.length === 1 && children[0].nodeType === 3) {
+    const s = document.createElement('span');
+    s.innerHTML = `<span class="hl-tag">&lt;${esc(tag)}</span>${attrs}<span class="hl-tag">&gt;</span>${esc(children[0].textContent.trim())}<span class="hl-tag">&lt;/${esc(tag)}&gt;</span>`;
+    return s;
+  }
+
+  const block = document.createElement('span');
+  block.className = depth === 0 ? 'fold-block open' : 'fold-block';
+
+  const toggle = document.createElement('span');
+  toggle.className = 'fold-toggle';
+  block.appendChild(toggle);
+
+  const openTag = document.createElement('span');
+  openTag.innerHTML = `<span class="hl-tag">&lt;${esc(tag)}</span>${attrs}<span class="hl-tag">&gt;</span>`;
+  block.appendChild(openTag);
+
+  const preview = document.createElement('span');
+  preview.className = 'fold-preview';
+  preview.textContent = '...';
+  block.appendChild(preview);
+
+  const previewClose = document.createElement('span');
+  previewClose.className = 'fold-preview';
+  previewClose.innerHTML = `<span class="hl-tag">&lt;/${esc(tag)}&gt;</span>`;
+  block.appendChild(previewClose);
+
+  const content = document.createElement('div');
+  content.className = 'fold-content';
+  block.appendChild(content);
+
+  const closeTag = document.createElement('span');
+  closeTag.className = 'fold-close';
+  closeTag.innerHTML = `<span class="hl-tag">&lt;/${esc(tag)}&gt;</span>`;
+  block.appendChild(closeTag);
+
+  function renderChildren() {
+    const frag = document.createDocumentFragment();
+    children.forEach(c => {
+      const built = buildXmlNode(c, depth + 1);
+      if (built) {
+        const line = document.createElement('div');
+        line.className = 'fold-line';
+        line.appendChild(built);
+        frag.appendChild(line);
+      }
+    });
+    content.appendChild(frag);
+  }
+
+  if (depth === 0) renderChildren();
+  else block._lazyRender = renderChildren;
+
+  return block;
+}
+
+function generateLineNumbersHtml(count) {
+  const nums = [];
+  for (let i = 1; i <= count; i++) nums.push(`<span class="line-num">${i}</span>`);
+  return nums.join('');
+}
+
+function wrapWithLineNumbers(contentEl, lineCount) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'response-lined';
+  const gutter = document.createElement('div');
+  gutter.className = 'line-numbers';
+  gutter.innerHTML = generateLineNumbersHtml(lineCount);
+  wrapper.appendChild(gutter);
+  wrapper.appendChild(contentEl);
+  contentEl.addEventListener('scroll', () => { gutter.scrollTop = contentEl.scrollTop; });
+  return wrapper;
+}
+
+const timelineIcons = { 'info': '\u2022', 'req-header': '\u25B6', 'res-status': '\u25C0', 'res-header': '\u25C0', 'tls': '\u26BF', 'error': '\u2716' };
+
+export default function ResponsePane(props) {
+  const [activeTab, setActiveTab] = createSignal('body');
+  const [searchVisible, setSearchVisible] = createSignal(false);
+  const [searchMode, setSearchMode] = createSignal('text');
+  const [searchQuery, setSearchQuery] = createSignal('');
+  const [searchInfo, setSearchInfo] = createSignal('');
+  const [searchResults, setSearchResults] = createSignal(null);
+  const [history, setHistory] = createSignal([]);
+
+  let bodyContainerRef;
+  let searchResultsRef;
+  let searchMatchEls = [];
+  let searchActiveIdx = -1;
+
+  // Load history when response changes
+  createEffect(async () => {
+    if (props.activeRequestId) {
+      const h = await window.api.getResponseHistory(props.activeRequestId);
+      setHistory(h || []);
+    }
+  });
+
+  function renderBodyToContainer(body, contentType) {
+    if (!bodyContainerRef) return;
+    bodyContainerRef.innerHTML = '';
+    if (!body) {
+      bodyContainerRef.innerHTML = '<div class="response-placeholder">Empty response</div>';
+      return;
+    }
+
+    if (contentType && contentType.startsWith('image/')) {
+      const img = document.createElement('img');
+      img.className = 'response-image';
+      img.src = `data:${contentType};base64,${body}`;
+      img.alt = 'Response image';
+      bodyContainerRef.appendChild(img);
+      return;
+    }
+
+    const format = contentTypeToFormat(contentType);
+
+    if (format === 'json') {
+      try {
+        const formatted = JSON.stringify(JSON.parse(body), null, 2);
+        const lineCount = formatted.split('\n').length;
+        const foldEl = renderFoldableJson(JSON.parse(body));
+        bodyContainerRef.appendChild(wrapWithLineNumbers(foldEl, lineCount));
+        return;
+      } catch {}
+    }
+
+    if (format === 'xml' || format === 'html') {
+      const lineCount = body.split('\n').length;
+      const foldEl = renderFoldableXml(body);
+      bodyContainerRef.appendChild(wrapWithLineNumbers(foldEl, lineCount));
+      return;
+    }
+
+    const lineCount = body.split('\n').length;
+    const pre = document.createElement('pre');
+    pre.className = 'response-pre';
+    pre.textContent = body;
+    bodyContainerRef.appendChild(wrapWithLineNumbers(pre, lineCount));
+  }
+
+  createEffect(() => {
+    const r = props.response;
+    if (r && !r.error && r.body) {
+      // Wait for DOM to be ready
+      queueMicrotask(() => renderBodyToContainer(r.body, r.contentType));
+    } else if (r && r.error) {
+      queueMicrotask(() => {
+        if (bodyContainerRef) {
+          bodyContainerRef.innerHTML = `<pre class="response-pre" style="color:var(--danger)">${esc(r.error)}</pre>`;
+        }
+      });
+    }
+  });
+
+  function statusClass(status) {
+    if (!status) return 'error';
+    if (status < 300) return 'ok';
+    if (status < 400) return 'redirect';
+    return 'error';
+  }
+
+  // Search
+  function openSearch() {
+    if (!props.response?.body) return;
+    setSearchVisible(true);
+  }
+
+  function closeSearch() {
+    setSearchVisible(false);
+    setSearchQuery('');
+    setSearchInfo('');
+    setSearchResults(null);
+    searchMatchEls = [];
+    searchActiveIdx = -1;
+    clearTextHighlights();
+  }
+
+  function clearTextHighlights() {
+    if (!bodyContainerRef) return;
+    bodyContainerRef.querySelectorAll('.search-highlight').forEach(el => {
+      const parent = el.parentNode;
+      parent.replaceChild(document.createTextNode(el.textContent), el);
+      parent.normalize();
+    });
+  }
+
+  let searchDebounce = null;
+  function onSearchInput(query) {
+    setSearchQuery(query);
+    clearTimeout(searchDebounce);
+    searchDebounce = setTimeout(() => executeSearch(query), 200);
+  }
+
+  function executeSearch(query) {
+    const mode = searchMode();
+    searchMatchEls = [];
+    searchActiveIdx = -1;
+    setSearchInfo('');
+    setSearchResults(null);
+    clearTextHighlights();
+
+    if (!props.response?.body) return;
+    if (!query) { setSearchInfo(''); return; }
+
+    if (mode === 'text') searchText(query);
+    else if (mode === 'jsonpath') searchJsonPath(query);
+    else if (mode === 'xpath') searchXPath(query);
+  }
+
+  function searchText(query) {
+    const lower = query.toLowerCase();
+    const walker = document.createTreeWalker(bodyContainerRef, NodeFilter.SHOW_TEXT);
+    const textNodes = [];
+    let node;
+    while ((node = walker.nextNode())) textNodes.push(node);
+
+    const marks = [];
+    for (const tn of textNodes) {
+      const text = tn.textContent;
+      const textLower = text.toLowerCase();
+      let idx = 0;
+      while ((idx = textLower.indexOf(lower, idx)) !== -1) {
+        marks.push({ node: tn, start: idx, length: query.length });
+        idx += query.length;
+      }
+    }
+
+    for (let i = marks.length - 1; i >= 0; i--) {
+      const { node: tn, start, length } = marks[i];
+      const range = document.createRange();
+      range.setStart(tn, start);
+      range.setEnd(tn, start + length);
+      const mark = document.createElement('span');
+      mark.className = 'search-highlight';
+      range.surroundContents(mark);
+    }
+
+    searchMatchEls = Array.from(bodyContainerRef.querySelectorAll('.search-highlight'));
+    setSearchInfo(searchMatchEls.length ? `${searchMatchEls.length} found` : 'No matches');
+    if (searchMatchEls.length > 0) {
+      searchActiveIdx = 0;
+      highlightActive();
+    }
+  }
+
+  function highlightActive() {
+    searchMatchEls.forEach((el, i) => el.classList.toggle('active', i === searchActiveIdx));
+    if (searchMatchEls[searchActiveIdx]) {
+      searchMatchEls[searchActiveIdx].scrollIntoView({ block: 'center', behavior: 'smooth' });
+      setSearchInfo(`${searchActiveIdx + 1} / ${searchMatchEls.length}`);
+    }
+  }
+
+  function navigateSearch(dir) {
+    if (searchMatchEls.length === 0) return;
+    searchActiveIdx = (searchActiveIdx + dir + searchMatchEls.length) % searchMatchEls.length;
+    highlightActive();
+  }
+
+  function searchJsonPath(query) {
+    const fmt = contentTypeToFormat(props.response?.contentType);
+    if (fmt !== 'json') { setSearchInfo('Not JSON'); return; }
+    let data;
+    try { data = JSON.parse(props.response.body); } catch { setSearchInfo('Parse error'); return; }
+    try {
+      const results = evaluateJsonPath(data, query);
+      if (results.length === 0) { setSearchInfo('No matches'); return; }
+      setSearchInfo(`${results.length} result${results.length > 1 ? 's' : ''}`);
+      setSearchResults(results);
+    } catch (e) {
+      setSearchInfo('Error');
+      setSearchResults([{ path: 'Error', value: e.message }]);
+    }
+  }
+
+  function searchXPath(query) {
+    const fmt = contentTypeToFormat(props.response?.contentType);
+    if (fmt !== 'xml' && fmt !== 'html') { setSearchInfo('Not XML'); return; }
+    try {
+      const results = searchXPathResults(props.response.body, query);
+      if (results.length === 0) { setSearchInfo('No matches'); return; }
+      setSearchInfo(`${results.length} result${results.length > 1 ? 's' : ''}`);
+      setSearchResults(results);
+    } catch (e) {
+      setSearchInfo('Error');
+      setSearchResults([{ path: 'Error', value: e.message }]);
+    }
+  }
+
+  // Keyboard shortcuts
+  function onKeyDown(e) {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
+      e.preventDefault();
+      openSearch();
+    }
+    if (e.key === 'Escape' && searchVisible()) closeSearch();
+  }
+
+  onMount(() => document.addEventListener('keydown', onKeyDown));
+  onCleanup(() => document.removeEventListener('keydown', onKeyDown));
+
+  async function loadHistoryResponse(id) {
+    const resp = await window.api.loadResponse(id);
+    if (resp) {
+      props.onShowResponse(resp);
+      setActiveTab('body');
+    }
+  }
+
+  function copyResponse() {
+    if (!props.response?.body) return;
+    navigator.clipboard.writeText(props.response.body);
+  }
+
+  const r = () => props.response;
+  const hasResponse = () => !!r();
+  const isStreaming = () => !!props.streamStatus;
+
+  return (
+    <div class="response-pane" style={{ display: props.visible ? 'flex' : 'none' }}>
+      <div class="response-section">
+        {/* Response meta */}
+        <Show when={hasResponse() || isStreaming()}>
+          <div class="response-meta">
+            <Show when={isStreaming()}>
+              <span class="response-status" innerHTML={props.streamStatus} />
+            </Show>
+            <Show when={hasResponse() && !isStreaming()}>
+              <span class={`response-status ${r().error ? 'error' : statusClass(r().status)}`}>
+                {r().error ? 'Error' : `${r().status} ${r().statusText}`}
+              </span>
+            </Show>
+            <span class="response-time">{r()?.time || props.streamTime ? `${r()?.time || props.streamTime}ms` : ''}</span>
+            <button class="btn btn-ghost btn-sm" onClick={copyResponse} title="Copy response body">Copy</button>
+          </div>
+        </Show>
+
+        {/* Tabs */}
+        <Show when={hasResponse() || isStreaming()}>
+          <div class="response-tabs">
+            <button class={`section-tab ${activeTab() === 'body' ? 'active' : ''}`} onClick={() => setActiveTab('body')}>Body</button>
+            <Show when={isStreaming()}>
+              <button class={`section-tab ${activeTab() === 'messages' ? 'active' : ''}`} onClick={() => setActiveTab('messages')}>Messages</button>
+            </Show>
+            <button class={`section-tab ${activeTab() === 'resp-headers' ? 'active' : ''}`} onClick={() => setActiveTab('resp-headers')}>Headers</button>
+            <button class={`section-tab ${activeTab() === 'timeline' ? 'active' : ''}`} onClick={() => setActiveTab('timeline')}>Timeline</button>
+            <button class={`section-tab ${activeTab() === 'history' ? 'active' : ''}`} onClick={() => setActiveTab('history')}>History</button>
+          </div>
+        </Show>
+
+        {/* Body tab */}
+        <div class="response-tab-content" id="restab-body" style={{ display: activeTab() === 'body' ? 'flex' : 'none' }}>
+          {/* Search bar */}
+          <Show when={searchVisible()}>
+            <div class="response-search-bar" style={{ display: 'flex' }}>
+              <select class="body-type-select" value={searchMode()} onChange={(e) => { setSearchMode(e.target.value); executeSearch(searchQuery()); }}>
+                <option value="text">Text</option>
+                <option value="jsonpath">JSONPath</option>
+                <option value="xpath">XPath</option>
+              </select>
+              <input
+                type="text"
+                class="url-input search-input"
+                placeholder="Search..."
+                value={searchQuery()}
+                onInput={(e) => onSearchInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') { e.preventDefault(); navigateSearch(e.shiftKey ? -1 : 1); }
+                }}
+                autofocus
+              />
+              <span class="search-info">{searchInfo()}</span>
+              <button class="btn btn-ghost btn-sm" onClick={() => navigateSearch(-1)} title="Previous">&uarr;</button>
+              <button class="btn btn-ghost btn-sm" onClick={() => navigateSearch(1)} title="Next">&darr;</button>
+              <button class="btn btn-ghost btn-sm" onClick={closeSearch} title="Close">&times;</button>
+            </div>
+          </Show>
+
+          <Show when={!hasResponse() && !props.sending}>
+            <div class="response-placeholder">Send a request to see the response</div>
+          </Show>
+          <Show when={props.sending}>
+            <div class="response-placeholder"><span class="spinner" /> Sending...</div>
+          </Show>
+
+          {/* Search results */}
+          <Show when={searchResults()}>
+            <div class="search-results" ref={searchResultsRef}>
+              <For each={searchResults()}>
+                {(r) => (
+                  <div class="search-result-item">
+                    <div class="search-result-path">{r.path}</div>
+                    <div class="search-result-value">{typeof r.value === 'object' ? JSON.stringify(r.value, null, 2) : String(r.value)}</div>
+                  </div>
+                )}
+              </For>
+            </div>
+          </Show>
+
+          {/* Body container */}
+          <div
+            ref={bodyContainerRef}
+            id="response-body-container"
+            style={{ display: hasResponse() && !props.sending && !searchResults() ? 'flex' : 'none' }}
+          />
+        </div>
+
+        {/* Messages tab (streaming) */}
+        <div class="response-tab-content" id="restab-messages" style={{ display: activeTab() === 'messages' ? 'flex' : 'none' }}>
+          <div class="stream-log">
+            <For each={props.streamMessages || []}>
+              {(msg) => (
+                <div class="stream-entry">
+                  <span class={`stream-dir ${msg.dir}`}>{msg.dir === 'in' ? '\u25C0' : msg.dir === 'out' ? '\u25B6' : '\u2022'}</span>
+                  <span class="stream-type">{msg.type}</span>
+                  <span class={`stream-body${msg.isError ? ' error' : ''}`}>{msg.body}</span>
+                  <span class="stream-time">{msg.time}</span>
+                </div>
+              )}
+            </For>
+          </div>
+          <Show when={props.streamType === 'ws' && props.streamConnected}>
+            <div class="stream-compose">
+              <input
+                type="text"
+                class="url-input"
+                placeholder="Type a message..."
+                value={props.wsInput || ''}
+                onInput={(e) => props.onWsInputChange(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') props.onWsSend(); }}
+              />
+              <button class="btn btn-primary btn-sm" onClick={props.onWsSend}>Send</button>
+            </div>
+          </Show>
+        </div>
+
+        {/* Headers tab */}
+        <div class="response-tab-content" style={{ display: activeTab() === 'resp-headers' ? '' : 'none' }}>
+          <Show when={r()?.headers && Object.keys(r().headers).length > 0} fallback={
+            <div class="response-placeholder">No headers</div>
+          }>
+            <div class="resp-headers-list">
+              <For each={Object.entries(r()?.headers || {})}>
+                {([k, v]) => (
+                  <div><span class="resp-header-name">{k}</span>: <span class="resp-header-value">{String(v)}</span></div>
+                )}
+              </For>
+            </div>
+          </Show>
+        </div>
+
+        {/* Timeline tab */}
+        <div class="response-tab-content" style={{ display: activeTab() === 'timeline' ? '' : 'none' }}>
+          <Show when={r()?.timeline?.length > 0} fallback={
+            <div class="response-placeholder">No timeline data</div>
+          }>
+            <div class="timeline">
+              <For each={r()?.timeline || []}>
+                {(e) => (
+                  <div class={`timeline-entry type-${e.type}`}>
+                    <span class="timeline-time">{e.t}ms</span>
+                    <span class="timeline-icon">{timelineIcons[e.type] || '\u2022'}</span>
+                    <span class="timeline-text">{e.text}</span>
+                  </div>
+                )}
+              </For>
+            </div>
+          </Show>
+        </div>
+
+        {/* History tab */}
+        <div class="response-tab-content" style={{ display: activeTab() === 'history' ? '' : 'none' }}>
+          <Show when={history().length > 0} fallback={
+            <div class="response-placeholder">No history yet</div>
+          }>
+            <div class="history-list">
+              <For each={history()}>
+                {(h) => {
+                  const sc = h.error ? 'error' : (h.status < 300 ? 'ok' : h.status < 400 ? 'redirect' : 'error');
+                  const label = h.error ? 'Error' : `${h.status} ${h.status_text}`;
+                  return (
+                    <div class="history-item" onClick={() => loadHistoryResponse(h.id)}>
+                      <span class={`history-status ${sc}`}>{label}</span>
+                      <span class="history-method">{h.request_method}</span>
+                      <span class="history-time">{h.time_ms}ms</span>
+                      <span class="history-date">{new Date(h.created_at + 'Z').toLocaleString()}</span>
+                    </div>
+                  );
+                }}
+              </For>
+            </div>
+          </Show>
+        </div>
+      </div>
+    </div>
+  );
+}
