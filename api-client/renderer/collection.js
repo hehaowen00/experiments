@@ -10,6 +10,10 @@ let currentFormFields = [{ key: '', value: '', type: 'text', filePath: '', fileN
 let autoSaveTimer = null;
 let streamConnectionId = null; // active SSE or WS connection ID
 let streamType = null; // 'sse' or 'ws'
+let lastResponseBody = null;
+let lastResponseContentType = '';
+let searchMatches = [];
+let searchActiveIdx = -1;
 
 const treeEl = document.getElementById('tree');
 const nameEl = document.getElementById('collection-name');
@@ -166,15 +170,24 @@ function contentTypeToFormat(ct) {
 function renderFoldableJson(value) {
   const el = document.createElement('div');
   el.className = 'fold-tree';
-  el.appendChild(buildJsonNode(value));
+  el.appendChild(buildJsonNode(value, 0));
   el.addEventListener('click', (e) => {
     const toggle = e.target.closest('.fold-toggle');
-    if (toggle) { toggle.closest('.fold-block').classList.toggle('open'); }
+    if (!toggle) return;
+    const block = toggle.closest('.fold-block');
+    // Lazy render: populate content on first expand
+    if (!block.classList.contains('open') && block._lazyRender) {
+      block._lazyRender();
+      block._lazyRender = null;
+    }
+    block.classList.toggle('open');
   });
   return el;
 }
 
-function buildJsonNode(value) {
+const JSON_CHUNK_SIZE = 100; // render in batches for large arrays/objects
+
+function buildJsonNode(value, depth) {
   if (value === null) return spanText('null', 'hl-bool');
   if (typeof value === 'string') return spanText(JSON.stringify(value), 'hl-str');
   if (typeof value === 'number') return spanText(String(value), 'hl-num');
@@ -188,7 +201,8 @@ function buildJsonNode(value) {
   if (entries.length === 0) return spanText(`${open}${close}`, 'hl-punct');
 
   const block = document.createElement('span');
-  block.className = 'fold-block open';
+  // Only auto-open root level
+  block.className = depth === 0 ? 'fold-block open' : 'fold-block';
 
   const toggle = document.createElement('span');
   toggle.className = 'fold-toggle';
@@ -208,25 +222,46 @@ function buildJsonNode(value) {
 
   const content = document.createElement('div');
   content.className = 'fold-content';
-
-  entries.forEach(([k, v], i) => {
-    const line = document.createElement('div');
-    line.className = 'fold-line';
-    if (!isArray) {
-      line.appendChild(spanText(JSON.stringify(String(k)), 'hl-key'));
-      line.appendChild(spanText(': ', 'hl-punct'));
-    }
-    line.appendChild(buildJsonNode(v));
-    if (i < entries.length - 1) line.appendChild(spanText(',', 'hl-punct'));
-    content.appendChild(line);
-  });
-
   block.appendChild(content);
 
   const closeSpan = document.createElement('span');
   closeSpan.className = 'fold-close';
   closeSpan.appendChild(spanText(close, 'hl-punct'));
   block.appendChild(closeSpan);
+
+  function renderEntries() {
+    const frag = document.createDocumentFragment();
+    let rendered = 0;
+
+    function renderChunk() {
+      const end = Math.min(rendered + JSON_CHUNK_SIZE, entries.length);
+      for (let i = rendered; i < end; i++) {
+        const [k, v] = entries[i];
+        const line = document.createElement('div');
+        line.className = 'fold-line';
+        if (!isArray) {
+          line.appendChild(spanText(JSON.stringify(String(k)), 'hl-key'));
+          line.appendChild(spanText(': ', 'hl-punct'));
+        }
+        line.appendChild(buildJsonNode(v, depth + 1));
+        if (i < entries.length - 1) line.appendChild(spanText(',', 'hl-punct'));
+        frag.appendChild(line);
+      }
+      rendered = end;
+      content.appendChild(frag);
+      if (rendered < entries.length) {
+        requestAnimationFrame(renderChunk);
+      }
+    }
+    renderChunk();
+  }
+
+  // Lazy: defer child rendering until first expand (except root)
+  if (depth === 0) {
+    renderEntries();
+  } else {
+    block._lazyRender = renderEntries;
+  }
 
   return block;
 }
@@ -237,7 +272,6 @@ function renderFoldableXml(str) {
   const parser = new DOMParser();
   const doc = parser.parseFromString(str, 'text/xml');
   if (doc.querySelector('parsererror')) {
-    // Fallback to flat highlighting
     const pre = document.createElement('pre');
     pre.className = 'response-pre';
     pre.innerHTML = highlightXmlFlat(str);
@@ -248,12 +282,18 @@ function renderFoldableXml(str) {
   el.appendChild(buildXmlNode(doc.documentElement, 0));
   el.addEventListener('click', (e) => {
     const toggle = e.target.closest('.fold-toggle');
-    if (toggle) toggle.closest('.fold-block').classList.toggle('open');
+    if (!toggle) return;
+    const block = toggle.closest('.fold-block');
+    if (!block.classList.contains('open') && block._lazyRender) {
+      block._lazyRender();
+      block._lazyRender = null;
+    }
+    block.classList.toggle('open');
   });
   return el;
 }
 
-function buildXmlNode(node) {
+function buildXmlNode(node, depth) {
   if (node.nodeType === 3) {
     const text = node.textContent.trim();
     if (!text) return null;
@@ -286,7 +326,7 @@ function buildXmlNode(node) {
   }
 
   const block = document.createElement('span');
-  block.className = 'fold-block open';
+  block.className = depth === 0 ? 'fold-block open' : 'fold-block';
 
   const toggle = document.createElement('span');
   toggle.className = 'fold-toggle';
@@ -308,21 +348,32 @@ function buildXmlNode(node) {
 
   const content = document.createElement('div');
   content.className = 'fold-content';
-  children.forEach(c => {
-    const built = buildXmlNode(c);
-    if (built) {
-      const line = document.createElement('div');
-      line.className = 'fold-line';
-      line.appendChild(built);
-      content.appendChild(line);
-    }
-  });
   block.appendChild(content);
 
   const closeTag = document.createElement('span');
   closeTag.className = 'fold-close';
   closeTag.innerHTML = `<span class="hl-tag">&lt;/${esc(tag)}&gt;</span>`;
   block.appendChild(closeTag);
+
+  function renderChildren() {
+    const frag = document.createDocumentFragment();
+    children.forEach(c => {
+      const built = buildXmlNode(c, depth + 1);
+      if (built) {
+        const line = document.createElement('div');
+        line.className = 'fold-line';
+        line.appendChild(built);
+        frag.appendChild(line);
+      }
+    });
+    content.appendChild(frag);
+  }
+
+  if (depth === 0) {
+    renderChildren();
+  } else {
+    block._lazyRender = renderChildren;
+  }
 
   return block;
 }
@@ -355,6 +406,8 @@ function wrapWithLineNumbers(contentEl, lineCount) {
 
 function renderResponseBody(body, contentType) {
   responseBodyContainer.innerHTML = '';
+  lastResponseBody = body;
+  lastResponseContentType = contentType;
   if (!body) { responseBodyContainer.innerHTML = '<div class="response-placeholder">Empty response</div>'; return; }
 
   const format = contentTypeToFormat(contentType);
@@ -381,6 +434,485 @@ function renderResponseBody(body, contentType) {
   pre.className = 'response-pre';
   pre.textContent = body;
   responseBodyContainer.appendChild(wrapWithLineNumbers(pre, lineCount));
+}
+
+// === Response search ===
+
+const searchBarEl = document.getElementById('response-search-bar');
+const searchModeEl = document.getElementById('search-mode');
+const searchInputEl = document.getElementById('search-input');
+const searchInfoEl = document.getElementById('search-info');
+const searchResultsEl = document.getElementById('search-results-container');
+
+function openSearch() {
+  if (!lastResponseBody) return;
+  searchBarEl.style.display = 'flex';
+  searchInputEl.focus();
+  // Auto-select mode based on content type
+  const fmt = contentTypeToFormat(lastResponseContentType);
+  if (fmt === 'json') searchModeEl.value = 'text';
+  else if (fmt === 'xml' || fmt === 'html') searchModeEl.value = 'text';
+}
+
+function closeSearch() {
+  searchBarEl.style.display = 'none';
+  searchInputEl.value = '';
+  searchInfoEl.textContent = '';
+  searchResultsEl.style.display = 'none';
+  searchResultsEl.innerHTML = '';
+  searchMatches = [];
+  searchActiveIdx = -1;
+  clearTextHighlights();
+  if (lastResponseBody) responseBodyContainer.style.display = 'flex';
+}
+
+document.getElementById('search-close').addEventListener('click', closeSearch);
+
+document.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
+    e.preventDefault();
+    openSearch();
+  }
+  if (e.key === 'Escape' && searchBarEl.style.display !== 'none') {
+    closeSearch();
+  }
+});
+
+let searchDebounce = null;
+searchInputEl.addEventListener('input', () => {
+  clearTimeout(searchDebounce);
+  searchDebounce = setTimeout(executeSearch, 200);
+});
+searchModeEl.addEventListener('change', () => executeSearch());
+searchInputEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    if (e.shiftKey) navigateSearch(-1);
+    else navigateSearch(1);
+  }
+});
+document.getElementById('search-prev').addEventListener('click', () => navigateSearch(-1));
+document.getElementById('search-next').addEventListener('click', () => navigateSearch(1));
+
+function executeSearch() {
+  const query = searchInputEl.value;
+  const mode = searchModeEl.value;
+
+  searchMatches = [];
+  searchActiveIdx = -1;
+  searchInfoEl.textContent = '';
+  searchResultsEl.style.display = 'none';
+  searchResultsEl.innerHTML = '';
+  clearTextHighlights();
+
+  if (!lastResponseBody) return;
+
+  // Empty query: show full document
+  if (!query) {
+    responseBodyContainer.style.display = 'flex';
+    searchInfoEl.textContent = '';
+    return;
+  }
+
+  if (mode === 'text') {
+    searchText(query);
+  } else if (mode === 'jsonpath') {
+    searchJsonPath(query);
+  } else if (mode === 'xpath') {
+    searchXPath(query);
+  }
+}
+
+// --- Text search with highlighting ---
+
+function clearTextHighlights() {
+  responseBodyContainer.querySelectorAll('.search-highlight').forEach(el => {
+    const parent = el.parentNode;
+    parent.replaceChild(document.createTextNode(el.textContent), el);
+    parent.normalize();
+  });
+}
+
+function searchText(query) {
+  const lower = query.toLowerCase();
+
+  // Walk text nodes in responseBodyContainer
+  const walker = document.createTreeWalker(responseBodyContainer, NodeFilter.SHOW_TEXT);
+  const textNodes = [];
+  let node;
+  while ((node = walker.nextNode())) textNodes.push(node);
+
+  const marks = [];
+  for (const tn of textNodes) {
+    const text = tn.textContent;
+    const textLower = text.toLowerCase();
+    let idx = 0;
+    while ((idx = textLower.indexOf(lower, idx)) !== -1) {
+      marks.push({ node: tn, start: idx, length: query.length });
+      idx += query.length;
+    }
+  }
+
+  // Apply highlights in reverse to not invalidate offsets
+  for (let i = marks.length - 1; i >= 0; i--) {
+    const { node: tn, start, length } = marks[i];
+    const range = document.createRange();
+    range.setStart(tn, start);
+    range.setEnd(tn, start + length);
+    const mark = document.createElement('span');
+    mark.className = 'search-highlight';
+    range.surroundContents(mark);
+  }
+
+  searchMatches = Array.from(responseBodyContainer.querySelectorAll('.search-highlight'));
+  searchInfoEl.textContent = searchMatches.length ? `${searchMatches.length} found` : 'No matches';
+
+  if (searchMatches.length > 0) {
+    searchActiveIdx = 0;
+    highlightActive();
+  }
+}
+
+function highlightActive() {
+  searchMatches.forEach((el, i) => el.classList.toggle('active', i === searchActiveIdx));
+  if (searchMatches[searchActiveIdx]) {
+    searchMatches[searchActiveIdx].scrollIntoView({ block: 'center', behavior: 'smooth' });
+    searchInfoEl.textContent = `${searchActiveIdx + 1} / ${searchMatches.length}`;
+  }
+}
+
+function navigateSearch(dir) {
+  if (searchMatches.length === 0) return;
+  searchActiveIdx = (searchActiveIdx + dir + searchMatches.length) % searchMatches.length;
+  highlightActive();
+}
+
+// --- JSONPath search ---
+
+function searchJsonPath(query) {
+  const fmt = contentTypeToFormat(lastResponseContentType);
+  if (fmt !== 'json') {
+    searchInfoEl.textContent = 'Not JSON';
+    return;
+  }
+
+  let data;
+  try { data = JSON.parse(lastResponseBody); } catch {
+    searchInfoEl.textContent = 'Parse error';
+    return;
+  }
+
+  try {
+    const results = evaluateJsonPath(data, query);
+    if (results.length === 0) {
+      searchInfoEl.textContent = 'No matches';
+      return;
+    }
+
+    searchInfoEl.textContent = `${results.length} result${results.length > 1 ? 's' : ''}`;
+    searchResultsEl.style.display = '';
+    responseBodyContainer.style.display = 'none';
+
+    const container = document.createElement('div');
+    container.className = 'search-results';
+    results.forEach(r => {
+      const item = document.createElement('div');
+      item.className = 'search-result-item';
+      const pathEl = document.createElement('div');
+      pathEl.className = 'search-result-path';
+      pathEl.textContent = r.path;
+      item.appendChild(pathEl);
+      const valEl = document.createElement('div');
+      valEl.className = 'search-result-value';
+      valEl.textContent = typeof r.value === 'object' ? JSON.stringify(r.value, null, 2) : String(r.value);
+      item.appendChild(valEl);
+      container.appendChild(item);
+    });
+    searchResultsEl.innerHTML = '';
+    searchResultsEl.appendChild(container);
+  } catch (e) {
+    searchInfoEl.textContent = 'Error';
+    searchResultsEl.style.display = '';
+    searchResultsEl.innerHTML = `<div class="search-result-error">${esc(e.message)}</div>`;
+  }
+}
+
+// Minimal JSONPath evaluator: supports $, ., [], *, .., [n], [n:m], [?()]
+function evaluateJsonPath(data, path) {
+  const results = [];
+
+  if (!path.startsWith('$')) path = '$' + (path.startsWith('.') || path.startsWith('[') ? '' : '.') + path;
+
+  const tokens = tokenizeJsonPath(path);
+  if (!tokens) throw new Error('Invalid JSONPath syntax');
+
+  function walk(obj, tIdx, currentPath) {
+    if (tIdx >= tokens.length) {
+      results.push({ path: currentPath, value: obj });
+      return;
+    }
+
+    const token = tokens[tIdx];
+
+    if (token.type === 'root') {
+      walk(obj, tIdx + 1, '$');
+      return;
+    }
+
+    if (token.type === 'child') {
+      if (obj == null || typeof obj !== 'object') return;
+      const key = token.value;
+      if (key === '*') {
+        const entries = Array.isArray(obj) ? obj.map((v, i) => [i, v]) : Object.entries(obj);
+        for (const [k, v] of entries) {
+          walk(v, tIdx + 1, `${currentPath}[${JSON.stringify(k)}]`);
+        }
+      } else if (Array.isArray(obj)) {
+        const idx = parseInt(key);
+        if (!isNaN(idx) && idx >= 0 && idx < obj.length) {
+          walk(obj[idx], tIdx + 1, `${currentPath}[${idx}]`);
+        }
+      } else if (key in obj) {
+        walk(obj[key], tIdx + 1, `${currentPath}.${key}`);
+      }
+      return;
+    }
+
+    if (token.type === 'recursive') {
+      // Apply remaining tokens at current level and all descendants
+      walk(obj, tIdx + 1, currentPath);
+      if (obj != null && typeof obj === 'object') {
+        const entries = Array.isArray(obj) ? obj.map((v, i) => [i, v]) : Object.entries(obj);
+        for (const [k, v] of entries) {
+          const nextPath = Array.isArray(obj) ? `${currentPath}[${k}]` : `${currentPath}.${k}`;
+          walk(v, tIdx, nextPath);
+        }
+      }
+      return;
+    }
+
+    if (token.type === 'index') {
+      if (!Array.isArray(obj)) return;
+      const idx = token.value < 0 ? obj.length + token.value : token.value;
+      if (idx >= 0 && idx < obj.length) {
+        walk(obj[idx], tIdx + 1, `${currentPath}[${idx}]`);
+      }
+      return;
+    }
+
+    if (token.type === 'slice') {
+      if (!Array.isArray(obj)) return;
+      const start = (token.start ?? 0) < 0 ? Math.max(0, obj.length + token.start) : (token.start ?? 0);
+      const end = (token.end ?? obj.length) < 0 ? Math.max(0, obj.length + token.end) : (token.end ?? obj.length);
+      for (let i = start; i < Math.min(end, obj.length); i++) {
+        walk(obj[i], tIdx + 1, `${currentPath}[${i}]`);
+      }
+      return;
+    }
+
+    if (token.type === 'filter') {
+      if (obj == null || typeof obj !== 'object') return;
+      const entries = Array.isArray(obj) ? obj.map((v, i) => [i, v]) : Object.entries(obj);
+      for (const [k, v] of entries) {
+        if (evalFilter(v, token.expr)) {
+          const nextPath = Array.isArray(obj) ? `${currentPath}[${k}]` : `${currentPath}.${k}`;
+          walk(v, tIdx + 1, nextPath);
+        }
+      }
+      return;
+    }
+  }
+
+  walk(data, 0, '');
+  return results;
+}
+
+function tokenizeJsonPath(path) {
+  const tokens = [];
+  let i = 0;
+
+  while (i < path.length) {
+    if (path[i] === '$') {
+      tokens.push({ type: 'root' });
+      i++;
+    } else if (path[i] === '.' && path[i + 1] === '.') {
+      tokens.push({ type: 'recursive' });
+      i += 2;
+    } else if (path[i] === '.') {
+      i++;
+      let key = '';
+      while (i < path.length && path[i] !== '.' && path[i] !== '[') {
+        key += path[i++];
+      }
+      if (key) tokens.push({ type: 'child', value: key });
+    } else if (path[i] === '[') {
+      i++;
+      if (path[i] === '?') {
+        // Filter [?(...)]
+        i++; // skip ?
+        if (path[i] !== '(') return null;
+        i++; // skip (
+        let depth = 1, expr = '';
+        while (i < path.length && depth > 0) {
+          if (path[i] === '(') depth++;
+          else if (path[i] === ')') { depth--; if (depth === 0) break; }
+          expr += path[i++];
+        }
+        i++; // skip )
+        if (path[i] === ']') i++;
+        tokens.push({ type: 'filter', expr });
+      } else if (path[i] === '\'' || path[i] === '"') {
+        const q = path[i++];
+        let key = '';
+        while (i < path.length && path[i] !== q) key += path[i++];
+        i++; // skip closing quote
+        if (path[i] === ']') i++;
+        tokens.push({ type: 'child', value: key });
+      } else if (path[i] === '*') {
+        i++;
+        if (path[i] === ']') i++;
+        tokens.push({ type: 'child', value: '*' });
+      } else {
+        let num = '';
+        while (i < path.length && path[i] !== ']' && path[i] !== ':') num += path[i++];
+        if (path[i] === ':') {
+          i++;
+          let end = '';
+          while (i < path.length && path[i] !== ']') end += path[i++];
+          if (path[i] === ']') i++;
+          tokens.push({ type: 'slice', start: num ? parseInt(num) : null, end: end ? parseInt(end) : null });
+        } else {
+          if (path[i] === ']') i++;
+          tokens.push({ type: 'index', value: parseInt(num) });
+        }
+      }
+    } else {
+      i++; // skip unexpected
+    }
+  }
+  return tokens;
+}
+
+function evalFilter(value, expr) {
+  // Simple filter: @.key op val
+  const m = expr.match(/^@\.(\w+)\s*(==|!=|>=|<=|>|<)\s*(.+)$/);
+  if (!m) {
+    // Existence: @.key
+    const em = expr.match(/^@\.(\w+)$/);
+    if (em && value != null && typeof value === 'object') return em[1] in value;
+    return false;
+  }
+  if (value == null || typeof value !== 'object') return false;
+  const left = value[m[1]];
+  let right = m[3].trim();
+  // Parse right side
+  if ((right.startsWith('"') && right.endsWith('"')) || (right.startsWith("'") && right.endsWith("'"))) {
+    right = right.slice(1, -1);
+  } else if (right === 'true') right = true;
+  else if (right === 'false') right = false;
+  else if (right === 'null') right = null;
+  else if (!isNaN(Number(right))) right = Number(right);
+
+  switch (m[2]) {
+    case '==': return left == right;
+    case '!=': return left != right;
+    case '>': return left > right;
+    case '<': return left < right;
+    case '>=': return left >= right;
+    case '<=': return left <= right;
+  }
+  return false;
+}
+
+// --- XPath search ---
+
+function searchXPath(query) {
+  const fmt = contentTypeToFormat(lastResponseContentType);
+  if (fmt !== 'xml' && fmt !== 'html') {
+    searchInfoEl.textContent = 'Not XML';
+    return;
+  }
+
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(lastResponseBody, 'text/xml');
+    if (doc.querySelector('parsererror')) {
+      searchInfoEl.textContent = 'Parse error';
+      return;
+    }
+
+    const xpResult = doc.evaluate(query, doc, null, XPathResult.ANY_TYPE, null);
+    const results = [];
+
+    switch (xpResult.resultType) {
+      case XPathResult.NUMBER_TYPE:
+        results.push({ path: query, value: xpResult.numberValue });
+        break;
+      case XPathResult.STRING_TYPE:
+        results.push({ path: query, value: xpResult.stringValue });
+        break;
+      case XPathResult.BOOLEAN_TYPE:
+        results.push({ path: query, value: xpResult.booleanValue });
+        break;
+      default: {
+        let node;
+        while ((node = xpResult.iterateNext())) {
+          const path = getXmlNodePath(node);
+          const value = node.nodeType === 1 ? node.outerHTML || node.textContent : node.textContent;
+          results.push({ path, value });
+        }
+      }
+    }
+
+    if (results.length === 0) {
+      searchInfoEl.textContent = 'No matches';
+      return;
+    }
+
+    searchInfoEl.textContent = `${results.length} result${results.length > 1 ? 's' : ''}`;
+    searchResultsEl.style.display = '';
+    responseBodyContainer.style.display = 'none';
+
+    const container = document.createElement('div');
+    container.className = 'search-results';
+    results.forEach(r => {
+      const item = document.createElement('div');
+      item.className = 'search-result-item';
+      const pathEl = document.createElement('div');
+      pathEl.className = 'search-result-path';
+      pathEl.textContent = r.path;
+      item.appendChild(pathEl);
+      const valEl = document.createElement('div');
+      valEl.className = 'search-result-value';
+      valEl.textContent = String(r.value);
+      item.appendChild(valEl);
+      container.appendChild(item);
+    });
+    searchResultsEl.innerHTML = '';
+    searchResultsEl.appendChild(container);
+  } catch (e) {
+    searchInfoEl.textContent = 'Error';
+    searchResultsEl.style.display = '';
+    searchResultsEl.innerHTML = `<div class="search-result-error">${esc(e.message)}</div>`;
+  }
+}
+
+function getXmlNodePath(node) {
+  const parts = [];
+  let current = node;
+  while (current && current.nodeType === 1) {
+    let name = current.tagName;
+    const parent = current.parentNode;
+    if (parent) {
+      const siblings = Array.from(parent.children).filter(c => c.tagName === name);
+      if (siblings.length > 1) {
+        name += `[${siblings.indexOf(current) + 1}]`;
+      }
+    }
+    parts.unshift(name);
+    current = current.parentNode;
+  }
+  return '/' + parts.join('/');
 }
 
 // === Request body editor overlay ===
@@ -665,6 +1197,7 @@ async function selectRequest(id) {
 }
 
 function showResponse(result) {
+  closeSearch();
   responseMetaEl.style.display = 'flex';
   responseTabsEl.style.display = 'flex';
   messagesTabBtn.style.display = 'none';
@@ -673,7 +1206,7 @@ function showResponse(result) {
 
   if (result.error) {
     responsePlaceholderEl.style.display = 'none';
-    responseBodyContainer.style.display = '';
+    responseBodyContainer.style.display = 'flex';
     responseBodyContainer.innerHTML = `<pre class="response-pre" style="color:var(--danger)">${esc(result.error)}</pre>`;
     responseStatusEl.textContent = 'Error';
     responseStatusEl.className = 'response-status error';
@@ -681,7 +1214,7 @@ function showResponse(result) {
     respHeadersContentEl.innerHTML = '<div class="response-placeholder">No headers</div>';
   } else {
     responsePlaceholderEl.style.display = 'none';
-    responseBodyContainer.style.display = '';
+    responseBodyContainer.style.display = 'flex';
     renderResponseBody(result.body, result.contentType);
     responseStatusEl.textContent = `${result.status} ${result.statusText}`;
     responseStatusEl.className = 'response-status ' + (result.status < 300 ? 'ok' : result.status < 400 ? 'redirect' : 'error');
@@ -700,9 +1233,12 @@ function clearEditor() {
 }
 
 function resetResponse() {
+  lastResponseBody = null; lastResponseContentType = '';
+  closeSearch();
   responseMetaEl.style.display = 'none'; responseTabsEl.style.display = 'none';
   responsePlaceholderEl.style.display = ''; responsePlaceholderEl.textContent = 'Send a request to see the response';
   responseBodyContainer.style.display = 'none'; responseBodyContainer.innerHTML = '';
+  searchResultsEl.style.display = 'none'; searchResultsEl.innerHTML = '';
   respHeadersContentEl.innerHTML = ''; timelineContentEl.innerHTML = ''; historyContentEl.innerHTML = '';
   document.getElementById('stream-log').innerHTML = '';
   document.getElementById('messages-tab-btn').style.display = 'none';
@@ -753,8 +1289,8 @@ switchRequestTab('headers');
 
 function switchResponseTab(tab) {
   document.querySelectorAll('[data-restab]').forEach(t => t.classList.toggle('active', t.dataset.restab === tab));
-  document.getElementById('restab-body').style.display = tab === 'body' ? '' : 'none';
-  document.getElementById('restab-messages').style.display = tab === 'messages' ? '' : 'none';
+  document.getElementById('restab-body').style.display = tab === 'body' ? 'flex' : 'none';
+  document.getElementById('restab-messages').style.display = tab === 'messages' ? 'flex' : 'none';
   document.getElementById('restab-resp-headers').style.display = tab === 'resp-headers' ? '' : 'none';
   document.getElementById('restab-timeline').style.display = tab === 'timeline' ? '' : 'none';
   document.getElementById('restab-history').style.display = tab === 'history' ? '' : 'none';
