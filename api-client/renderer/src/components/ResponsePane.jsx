@@ -2,6 +2,7 @@ import { createSignal, createEffect, Show, For, onMount, onCleanup } from 'solid
 import { esc, contentTypeToFormat } from '../helpers';
 import { highlightXmlFlat } from '../highlight';
 import { evaluateJsonPath, searchXPathResults } from '../search';
+import t from '../locale';
 
 // Foldable JSON renderer (DOM-based for performance with large responses)
 function renderFoldableJson(value) {
@@ -226,8 +227,34 @@ function wrapWithLineNumbers(contentEl, lineCount) {
 
 const timelineIcons = { 'info': '\u2022', 'req-header': '\u25B6', 'res-status': '\u25C0', 'res-header': '\u25C0', 'tls': '\u26BF', 'error': '\u2716' };
 
+function parseCookies(headers) {
+  if (!headers) return [];
+  const raw = headers['set-cookie'];
+  if (!raw) return [];
+  const cookies = Array.isArray(raw) ? raw : [raw];
+  return cookies.map(str => {
+    const parts = str.split(';').map(s => s.trim());
+    const [nameVal, ...attrs] = parts;
+    const eqIdx = nameVal.indexOf('=');
+    const name = eqIdx > -1 ? nameVal.slice(0, eqIdx) : nameVal;
+    const value = eqIdx > -1 ? nameVal.slice(eqIdx + 1) : '';
+    let domain = '', path = '', expires = '';
+    const flags = [];
+    for (const attr of attrs) {
+      const lower = attr.toLowerCase();
+      if (lower.startsWith('domain=')) domain = attr.slice(7);
+      else if (lower.startsWith('path=')) path = attr.slice(5);
+      else if (lower.startsWith('expires=')) expires = attr.slice(8);
+      else if (lower.startsWith('max-age=')) expires = `max-age: ${attr.slice(8)}s`;
+      else if (lower === 'secure' || lower === 'httponly' || lower.startsWith('samesite')) flags.push(attr);
+    }
+    return { name, value, domain, path, expires, flags };
+  });
+}
+
 export default function ResponsePane(props) {
   const [activeTab, setActiveTab] = createSignal('body');
+  const [bodyView, setBodyView] = createSignal('pretty'); // 'pretty' | 'raw'
   const [searchVisible, setSearchVisible] = createSignal(false);
   const [searchMode, setSearchMode] = createSignal('text');
   const [searchQuery, setSearchQuery] = createSignal('');
@@ -240,23 +267,24 @@ export default function ResponsePane(props) {
   let searchMatchEls = [];
   let searchActiveIdx = -1;
 
-  // Load history when response changes
+  // Load history when request changes or new response arrives
   createEffect(async () => {
+    const _track = props.response;
     if (props.activeRequestId) {
       const h = await window.api.getResponseHistory(props.activeRequestId);
       setHistory(h || []);
     }
   });
 
-  function renderBodyToContainer(body, contentType) {
+  function renderBodyToContainer(body, contentType, raw) {
     if (!bodyContainerRef) return;
     bodyContainerRef.innerHTML = '';
     if (!body) {
-      bodyContainerRef.innerHTML = '<div class="response-placeholder">Empty response</div>';
+      bodyContainerRef.innerHTML = `<div class="response-placeholder">${t.responsePane.emptyResponse}</div>`;
       return;
     }
 
-    if (contentType && contentType.startsWith('image/')) {
+    if (!raw && contentType && contentType.startsWith('image/')) {
       const img = document.createElement('img');
       img.className = 'response-image';
       img.src = `data:${contentType};base64,${body}`;
@@ -265,23 +293,25 @@ export default function ResponsePane(props) {
       return;
     }
 
-    const format = contentTypeToFormat(contentType);
+    if (!raw) {
+      const format = contentTypeToFormat(contentType);
 
-    if (format === 'json') {
-      try {
-        const formatted = JSON.stringify(JSON.parse(body), null, 2);
-        const lineCount = formatted.split('\n').length;
-        const foldEl = renderFoldableJson(JSON.parse(body));
+      if (format === 'json') {
+        try {
+          const formatted = JSON.stringify(JSON.parse(body), null, 2);
+          const lineCount = formatted.split('\n').length;
+          const foldEl = renderFoldableJson(JSON.parse(body));
+          bodyContainerRef.appendChild(wrapWithLineNumbers(foldEl, lineCount));
+          return;
+        } catch { }
+      }
+
+      if (format === 'xml' || format === 'html') {
+        const lineCount = body.split('\n').length;
+        const foldEl = renderFoldableXml(body);
         bodyContainerRef.appendChild(wrapWithLineNumbers(foldEl, lineCount));
         return;
-      } catch { }
-    }
-
-    if (format === 'xml' || format === 'html') {
-      const lineCount = body.split('\n').length;
-      const foldEl = renderFoldableXml(body);
-      bodyContainerRef.appendChild(wrapWithLineNumbers(foldEl, lineCount));
-      return;
+      }
     }
 
     const lineCount = body.split('\n').length;
@@ -293,9 +323,10 @@ export default function ResponsePane(props) {
 
   createEffect(() => {
     const r = props.response;
+    const raw = bodyView() === 'raw';
     if (r && !r.error && r.body) {
       // Wait for DOM to be ready
-      queueMicrotask(() => renderBodyToContainer(r.body, r.contentType));
+      queueMicrotask(() => renderBodyToContainer(r.body, r.contentType, raw));
     } else if (r && r.error) {
       queueMicrotask(() => {
         if (bodyContainerRef) {
@@ -316,6 +347,15 @@ export default function ResponsePane(props) {
   function openSearch() {
     if (!props.response?.body) return;
     setSearchVisible(true);
+  }
+
+  function selectAllBody() {
+    if (!bodyContainerRef) return;
+    const sel = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(bodyContainerRef);
+    sel.removeAllRanges();
+    sel.addRange(range);
   }
 
   function closeSearch() {
@@ -360,8 +400,19 @@ export default function ResponsePane(props) {
     else if (mode === 'xpath') searchXPath(query);
   }
 
+  function expandAllLazyNodes(root) {
+    root.querySelectorAll('.fold-block').forEach(block => {
+      if (block._lazyRender) {
+        block._lazyRender();
+        block._lazyRender = null;
+      }
+      block.classList.add('open');
+    });
+  }
+
   function searchText(query) {
     const lower = query.toLowerCase();
+    expandAllLazyNodes(bodyContainerRef);
     const walker = document.createTreeWalker(bodyContainerRef, NodeFilter.SHOW_TEXT);
     const textNodes = [];
     let node;
@@ -389,7 +440,7 @@ export default function ResponsePane(props) {
     }
 
     searchMatchEls = Array.from(bodyContainerRef.querySelectorAll('.search-highlight'));
-    setSearchInfo(searchMatchEls.length ? `${searchMatchEls.length} found` : 'No matches');
+    setSearchInfo(searchMatchEls.length ? t.responsePane.search.found(searchMatchEls.length) : t.responsePane.search.noMatches);
     if (searchMatchEls.length > 0) {
       searchActiveIdx = 0;
       highlightActive();
@@ -400,7 +451,7 @@ export default function ResponsePane(props) {
     searchMatchEls.forEach((el, i) => el.classList.toggle('active', i === searchActiveIdx));
     if (searchMatchEls[searchActiveIdx]) {
       searchMatchEls[searchActiveIdx].scrollIntoView({ block: 'center', behavior: 'smooth' });
-      setSearchInfo(`${searchActiveIdx + 1} / ${searchMatchEls.length}`);
+      setSearchInfo(t.responsePane.search.position(searchActiveIdx + 1, searchMatchEls.length));
     }
   }
 
@@ -412,31 +463,31 @@ export default function ResponsePane(props) {
 
   function searchJsonPath(query) {
     const fmt = contentTypeToFormat(props.response?.contentType);
-    if (fmt !== 'json') { setSearchInfo('Not JSON'); return; }
+    if (fmt !== 'json') { setSearchInfo(t.responsePane.search.notJson); return; }
     let data;
-    try { data = JSON.parse(props.response.body); } catch { setSearchInfo('Parse error'); return; }
+    try { data = JSON.parse(props.response.body); } catch { setSearchInfo(t.responsePane.search.parseError); return; }
     try {
       const results = evaluateJsonPath(data, query);
-      if (results.length === 0) { setSearchInfo('No matches'); return; }
-      setSearchInfo(`${results.length} result${results.length > 1 ? 's' : ''}`);
+      if (results.length === 0) { setSearchInfo(t.responsePane.search.noMatches); return; }
+      setSearchInfo(t.responsePane.search.results(results.length));
       setSearchResults(results);
     } catch (e) {
-      setSearchInfo('Error');
-      setSearchResults([{ path: 'Error', value: e.message }]);
+      setSearchInfo(t.responsePane.search.error);
+      setSearchResults([{ path: t.responsePane.search.error, value: e.message }]);
     }
   }
 
   function searchXPath(query) {
     const fmt = contentTypeToFormat(props.response?.contentType);
-    if (fmt !== 'xml' && fmt !== 'html') { setSearchInfo('Not XML'); return; }
+    if (fmt !== 'xml' && fmt !== 'html') { setSearchInfo(t.responsePane.search.notXml); return; }
     try {
       const results = searchXPathResults(props.response.body, query);
-      if (results.length === 0) { setSearchInfo('No matches'); return; }
-      setSearchInfo(`${results.length} result${results.length > 1 ? 's' : ''}`);
+      if (results.length === 0) { setSearchInfo(t.responsePane.search.noMatches); return; }
+      setSearchInfo(t.responsePane.search.results(results.length));
       setSearchResults(results);
     } catch (e) {
-      setSearchInfo('Error');
-      setSearchResults([{ path: 'Error', value: e.message }]);
+      setSearchInfo(t.responsePane.search.error);
+      setSearchResults([{ path: t.responsePane.search.error, value: e.message }]);
     }
   }
 
@@ -460,11 +511,6 @@ export default function ResponsePane(props) {
     }
   }
 
-  function copyResponse() {
-    if (!props.response?.body) return;
-    navigator.clipboard.writeText(props.response.body);
-  }
-
   const r = () => props.response;
   const hasResponse = () => !!r();
   const isStreaming = () => !!props.streamStatus;
@@ -480,24 +526,34 @@ export default function ResponsePane(props) {
             </Show>
             <Show when={hasResponse() && !isStreaming()}>
               <span class={`response-status ${r().error ? 'error' : statusClass(r().status)}`}>
-                {r().error ? 'Error' : `${r().status} ${r().statusText}`}
+                {r().error ? t.responsePane.error : `${r().status} ${r().statusText}`}
               </span>
             </Show>
             <span class="response-time">{r()?.time || props.streamTime ? `${r()?.time || props.streamTime}ms` : ''}</span>
-            <button class="btn btn-ghost btn-sm" onClick={copyResponse} title="Copy response body">Copy</button>
+            <div class="response-meta-actions">
+              <div class="body-view-toggle">
+                <button class={`btn btn-ghost btn-sm ${bodyView() === 'pretty' ? 'active' : ''}`} onClick={() => { setBodyView('pretty'); setActiveTab('body'); }}>{t.responsePane.prettyButton}</button>
+                <button class={`btn btn-ghost btn-sm ${bodyView() === 'raw' ? 'active' : ''}`} onClick={() => { setBodyView('raw'); setActiveTab('body'); }}>{t.responsePane.rawButton}</button>
+              </div>
+              <Show when={bodyView() === 'raw' && hasResponse() && !r().error}>
+                <button class="btn btn-ghost btn-sm" onClick={selectAllBody} title={t.responsePane.selectAllButton}>{t.responsePane.selectAllButton}</button>
+              </Show>
+              <button class="btn btn-ghost btn-sm" onClick={() => { openSearch(); setActiveTab('body'); }} title={`${t.responsePane.searchButton} (Cmd+F)`}>{t.responsePane.searchButton}</button>
+            </div>
           </div>
         </Show>
 
         {/* Tabs */}
         <Show when={hasResponse() || isStreaming()}>
           <div class="response-tabs">
-            <button class={`section-tab ${activeTab() === 'body' ? 'active' : ''}`} onClick={() => setActiveTab('body')}>Body</button>
+            <button class={`section-tab ${activeTab() === 'body' ? 'active' : ''}`} onClick={() => setActiveTab('body')}>{t.responsePane.tabs.body}</button>
             <Show when={isStreaming()}>
-              <button class={`section-tab ${activeTab() === 'messages' ? 'active' : ''}`} onClick={() => setActiveTab('messages')}>Messages</button>
+              <button class={`section-tab ${activeTab() === 'messages' ? 'active' : ''}`} onClick={() => setActiveTab('messages')}>{t.responsePane.tabs.messages}</button>
             </Show>
-            <button class={`section-tab ${activeTab() === 'resp-headers' ? 'active' : ''}`} onClick={() => setActiveTab('resp-headers')}>Headers</button>
-            <button class={`section-tab ${activeTab() === 'timeline' ? 'active' : ''}`} onClick={() => setActiveTab('timeline')}>Timeline</button>
-            <button class={`section-tab ${activeTab() === 'history' ? 'active' : ''}`} onClick={() => setActiveTab('history')}>History</button>
+            <button class={`section-tab ${activeTab() === 'resp-headers' ? 'active' : ''}`} onClick={() => setActiveTab('resp-headers')}>{t.responsePane.tabs.headers}</button>
+            <button class={`section-tab ${activeTab() === 'cookies' ? 'active' : ''}`} onClick={() => setActiveTab('cookies')}>{t.responsePane.tabs.cookies}</button>
+            <button class={`section-tab ${activeTab() === 'timeline' ? 'active' : ''}`} onClick={() => setActiveTab('timeline')}>{t.responsePane.tabs.timeline}</button>
+            <button class={`section-tab ${activeTab() === 'history' ? 'active' : ''}`} onClick={() => setActiveTab('history')}>{t.responsePane.tabs.history}</button>
           </div>
         </Show>
 
@@ -507,14 +563,14 @@ export default function ResponsePane(props) {
           <Show when={searchVisible()}>
             <div class="response-search-bar" style={{ display: 'flex' }}>
               <select class="body-type-select" value={searchMode()} onChange={(e) => { setSearchMode(e.target.value); executeSearch(searchQuery()); }}>
-                <option value="text">Text</option>
-                <option value="jsonpath">JSONPath</option>
-                <option value="xpath">XPath</option>
+                <option value="text">{t.responsePane.search.textMode}</option>
+                <option value="jsonpath">{t.responsePane.search.jsonpathMode}</option>
+                <option value="xpath">{t.responsePane.search.xpathMode}</option>
               </select>
               <input
                 type="text"
                 class="url-input search-input"
-                placeholder="Search..."
+                placeholder={t.responsePane.searchPlaceholder}
                 value={searchQuery()}
                 onInput={(e) => onSearchInput(e.target.value)}
                 onKeyDown={(e) => {
@@ -523,17 +579,17 @@ export default function ResponsePane(props) {
                 autofocus
               />
               <span class="search-info">{searchInfo()}</span>
-              <button class="btn btn-ghost btn-sm" onClick={() => navigateSearch(-1)} title="Previous">&uarr;</button>
-              <button class="btn btn-ghost btn-sm" onClick={() => navigateSearch(1)} title="Next">&darr;</button>
-              <button class="btn btn-ghost btn-sm" onClick={closeSearch} title="Close">&times;</button>
+              <button class="btn btn-ghost btn-sm" onClick={() => navigateSearch(-1)} title={t.responsePane.search.previousTitle}>&uarr;</button>
+              <button class="btn btn-ghost btn-sm" onClick={() => navigateSearch(1)} title={t.responsePane.search.nextTitle}>&darr;</button>
+              <button class="btn btn-ghost btn-sm" onClick={closeSearch} title={t.responsePane.search.closeTitle}>&times;</button>
             </div>
           </Show>
 
           <Show when={!hasResponse() && !props.sending}>
-            <div class="response-placeholder">Send a request to see the response</div>
+            <div class="response-placeholder">{t.responsePane.sendPrompt}</div>
           </Show>
           <Show when={props.sending}>
-            <div class="response-placeholder"><span class="spinner" /> Sending...</div>
+            <div class="response-placeholder"><span class="spinner" /> {t.responsePane.sending}</div>
           </Show>
 
           {/* Search results */}
@@ -577,12 +633,12 @@ export default function ResponsePane(props) {
               <input
                 type="text"
                 class="url-input"
-                placeholder="Type a message..."
+                placeholder={t.responsePane.stream.messagePlaceholder}
                 value={props.wsInput || ''}
                 onInput={(e) => props.onWsInputChange(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') props.onWsSend(); }}
               />
-              <button class="btn btn-primary btn-sm" onClick={props.onWsSend}>Send</button>
+              <button class="btn btn-primary btn-sm" onClick={props.onWsSend}>{t.responsePane.stream.sendButton}</button>
             </div>
           </Show>
         </div>
@@ -590,12 +646,42 @@ export default function ResponsePane(props) {
         {/* Headers tab */}
         <div class="response-tab-content" style={{ display: activeTab() === 'resp-headers' ? '' : 'none' }}>
           <Show when={r()?.headers && Object.keys(r().headers).length > 0} fallback={
-            <div class="response-placeholder">No headers</div>
+            <div class="response-placeholder">{t.responsePane.noHeaders}</div>
           }>
             <div class="resp-headers-list">
-              <For each={Object.entries(r()?.headers || {})}>
+              <For each={Object.entries(r()?.headers || {}).sort((a, b) => a[0].localeCompare(b[0]))}>
                 {([k, v]) => (
                   <div><span class="resp-header-name">{k}</span>: <span class="resp-header-value">{String(v)}</span></div>
+                )}
+              </For>
+            </div>
+          </Show>
+        </div>
+
+        {/* Cookies tab */}
+        <div class="response-tab-content" style={{ display: activeTab() === 'cookies' ? '' : 'none' }}>
+          <Show when={parseCookies(r()?.headers).length > 0} fallback={
+            <div class="response-placeholder">{t.responsePane.noCookies}</div>
+          }>
+            <div class="cookies-table">
+              <div class="cookies-header">
+                <span class="cookie-col cookie-name">{t.responsePane.cookieColumns.name}</span>
+                <span class="cookie-col cookie-value">{t.responsePane.cookieColumns.value}</span>
+                <span class="cookie-col cookie-domain">{t.responsePane.cookieColumns.domain}</span>
+                <span class="cookie-col cookie-path">{t.responsePane.cookieColumns.path}</span>
+                <span class="cookie-col cookie-expires">{t.responsePane.cookieColumns.expires}</span>
+                <span class="cookie-col cookie-flags">{t.responsePane.cookieColumns.flags}</span>
+              </div>
+              <For each={parseCookies(r()?.headers)}>
+                {(c) => (
+                  <div class="cookies-row">
+                    <span class="cookie-col cookie-name" title={c.name}>{c.name}</span>
+                    <span class="cookie-col cookie-value" title={c.value}>{c.value}</span>
+                    <span class="cookie-col cookie-domain">{c.domain}</span>
+                    <span class="cookie-col cookie-path">{c.path}</span>
+                    <span class="cookie-col cookie-expires">{c.expires}</span>
+                    <span class="cookie-col cookie-flags">{c.flags.join(', ')}</span>
+                  </div>
                 )}
               </For>
             </div>
@@ -605,7 +691,7 @@ export default function ResponsePane(props) {
         {/* Timeline tab */}
         <div class="response-tab-content" style={{ display: activeTab() === 'timeline' ? '' : 'none' }}>
           <Show when={r()?.timeline?.length > 0} fallback={
-            <div class="response-placeholder">No timeline data</div>
+            <div class="response-placeholder">{t.responsePane.noTimeline}</div>
           }>
             <div class="timeline">
               <For each={r()?.timeline || []}>
@@ -624,13 +710,13 @@ export default function ResponsePane(props) {
         {/* History tab */}
         <div class="response-tab-content" style={{ display: activeTab() === 'history' ? '' : 'none' }}>
           <Show when={history().length > 0} fallback={
-            <div class="response-placeholder">No history yet</div>
+            <div class="response-placeholder">{t.responsePane.noHistory}</div>
           }>
             <div class="history-list">
               <For each={history()}>
                 {(h) => {
                   const sc = h.error ? 'error' : (h.status < 300 ? 'ok' : h.status < 400 ? 'redirect' : 'error');
-                  const label = h.error ? 'Error' : `${h.status} ${h.status_text}`;
+                  const label = h.error ? t.responsePane.error : `${h.status} ${h.status_text}`;
                   return (
                     <div class="history-item" onClick={() => loadHistoryResponse(h.id)}>
                       <span class={`history-status ${sc}`}>{label}</span>

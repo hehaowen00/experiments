@@ -532,7 +532,7 @@ body {
 .section-tabs {
   display: flex;
   gap: 0;
-  margin-bottom: 12px;
+  margin-bottom: 6px;
 }
 
 .section-tab {

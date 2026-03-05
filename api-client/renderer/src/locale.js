@@ -1,0 +1,168 @@
+const strings = {
+  app: {
+    name: 'API Client',
+    subtitle: 'Organize and send HTTP requests',
+  },
+
+  landing: {
+    newCollectionPlaceholder: 'New Collection',
+    createButton: 'Create',
+    addCategoryButton: 'Category',
+    emptyState: 'No collections yet. Create one to get started.',
+    uncategorized: 'Uncategorized',
+    dropHint: 'Drop collections here',
+    pinButton: 'Pin',
+    unpinButton: 'Unpin',
+    renameButton: 'Rename',
+    deleteButton: 'Delete',
+    renameCollectionModal: {
+      title: 'Rename collection:',
+    },
+    renameCategoryModal: {
+      title: 'Rename category:',
+    },
+    newCategoryModal: {
+      title: 'Category name:',
+      defaultValue: 'New Category',
+    },
+    deleteCollectionModal: {
+      title: (name) => `Delete "${name}"?`,
+      description: 'This cannot be undone.',
+    },
+    deleteCategoryModal: {
+      title: (name) => `Delete category "${name}"?`,
+      description: 'Collections will be uncategorized.',
+    },
+  },
+
+  sidebar: {
+    addRequestButton: '+ Request',
+    addFolderButton: '+ Folder',
+    backTitle: 'Back to collections',
+    renameTitle: 'Click to rename',
+    addToFolderTitle: 'Add request',
+    renameItemTitle: 'Rename',
+    deleteItemTitle: 'Delete',
+    renameModal: {
+      title: 'Rename:',
+    },
+  },
+
+  collection: {
+    urlPlaceholder: 'Enter URL...',
+    curlButton: 'cURL',
+    curlButtonTitle: 'Import from cURL',
+    disconnectButton: 'Disconnect',
+    disconnectedByUser: 'Disconnected by user',
+    sendButton: 'Send',
+    importCurlModal: {
+      title: 'Import from cURL',
+    },
+  },
+
+  requestPane: {
+    tabs: {
+      headers: 'Headers',
+      params: 'Params',
+      variables: 'Variables',
+      body: 'Body',
+    },
+    paramNamePlaceholder: 'Parameter name',
+    headerNamePlaceholder: 'Header name',
+    variableNamePlaceholder: 'Variable name',
+    valuePlaceholder: 'Value',
+    namePlaceholder: 'Name',
+    addParameterButton: '+ Add Parameter',
+    addHeaderButton: '+ Add Header',
+    addVariableButton: '+ Add Variable',
+    addFieldButton: '+ Add Field',
+    bodyTypes: {
+      text: 'Text',
+      file: 'File',
+      form: 'Form Data',
+    },
+    contentTypes: {
+      auto: 'Auto',
+      json: 'JSON',
+      xml: 'XML',
+      html: 'HTML',
+      text: 'Plain Text',
+    },
+    bodyPlaceholder: 'Request body (JSON, XML, text...)',
+    chooseFileButton: 'Choose File',
+    noFileSelected: 'No file selected',
+    clearButton: 'Clear',
+    chooseButton: 'Choose...',
+    formFieldTypes: {
+      text: 'Text',
+      file: 'File',
+    },
+    urlPreview: {
+      label: 'URL Preview',
+      noUrl: 'No URL',
+      copyButton: 'Copy',
+      copiedButton: 'Copied',
+    },
+  },
+
+  responsePane: {
+    tabs: {
+      body: 'Body',
+      messages: 'Messages',
+      headers: 'Headers',
+      cookies: 'Cookies',
+      timeline: 'Timeline',
+      history: 'History',
+    },
+    prettyButton: 'Pretty',
+    rawButton: 'Raw',
+    selectAllButton: 'Select All',
+    searchButton: 'Search',
+    searchPlaceholder: 'Search...',
+    emptyResponse: 'Empty response',
+    sendPrompt: 'Send a request to see the response',
+    sending: 'Sending...',
+    noHeaders: 'No headers',
+    noCookies: 'No cookies',
+    noTimeline: 'No timeline data',
+    noHistory: 'No history yet',
+    error: 'Error',
+    cookieColumns: {
+      name: 'Name',
+      value: 'Value',
+      domain: 'Domain',
+      path: 'Path',
+      expires: 'Expires',
+      flags: 'Flags',
+    },
+    search: {
+      textMode: 'Text',
+      jsonpathMode: 'JSONPath',
+      xpathMode: 'XPath',
+      noMatches: 'No matches',
+      notJson: 'Not JSON',
+      notXml: 'Not XML',
+      parseError: 'Parse error',
+      error: 'Error',
+      found: (n) => `${n} found`,
+      results: (n) => `${n} result${n > 1 ? 's' : ''}`,
+      position: (current, total) => `${current} / ${total}`,
+      previousTitle: 'Previous',
+      nextTitle: 'Next',
+      closeTitle: 'Close',
+    },
+    stream: {
+      messagePlaceholder: 'Type a message...',
+      sendButton: 'Send',
+    },
+  },
+
+  modal: {
+    cancelButton: 'Cancel',
+    okButton: 'OK',
+    deleteButton: 'Delete',
+    curlPlaceholder: 'Paste curl command here...',
+  },
+};
+
+export default strings;

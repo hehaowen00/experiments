@@ -6,6 +6,7 @@ import Sidebar from '../components/Sidebar';
 import Variables from '../components/Variables';
 import RequestPane from '../components/RequestPane';
 import ResponsePane from '../components/ResponsePane';
+import t from '../locale';
 
 export default function Collection(props) {
   const [collection, setCollection] = createSignal(null);
@@ -43,7 +44,7 @@ export default function Collection(props) {
     if (!c) { props.onBack(); return; }
     setCollection(c);
     setVariables(c.variables?.length > 0 ? c.variables.map(v => ({ ...v })) : [{ key: '', value: '' }]);
-    document.title = `${c.name} - API Client`;
+    document.title = `${t.app.name} - ${c.name}`;
   });
 
   async function save() {
@@ -164,7 +165,7 @@ export default function Collection(props) {
     const c = collection();
     const item = findItem(c.items, id);
     if (!item) return;
-    const n = await showPrompt('Rename:', item.name);
+    const n = await showPrompt(t.sidebar.renameModal.title, item.name);
     if (n && n.trim()) {
       item.name = n.trim();
       setCollection({ ...c, items: structuredClone(c.items) });
@@ -230,11 +231,11 @@ export default function Collection(props) {
 
   async function renameCollection() {
     const c = collection();
-    const name = await showPrompt('Rename collection:', c.name);
+    const name = await showPrompt(t.landing.renameCollectionModal.title, c.name);
     if (name && name.trim()) {
       c.name = name.trim();
       setCollection({ ...c, items: structuredClone(c.items) });
-      document.title = `${c.name} - API Client`;
+      document.title = `${t.app.name} - ${c.name}`;
       save();
     }
   }
@@ -403,7 +404,7 @@ export default function Collection(props) {
   }
 
   async function importCurl() {
-    const input = await showTextarea('Import from cURL');
+    const input = await showTextarea(t.collection.importCurlModal.title);
     if (!input) return;
     const parsed = parseCurl(input);
     if (!parsed) return;
@@ -580,7 +581,6 @@ export default function Collection(props) {
 
   async function sendHttpRequest(m, u) {
     setSending(true);
-    setResponse(null);
     setStreamMessages([]);
     setStreamStatus('');
 
@@ -764,24 +764,25 @@ export default function Collection(props) {
               <input
                 type="text"
                 class="url-input"
-                placeholder="Enter URL..."
+                placeholder={t.collection.urlPlaceholder}
                 value={url()}
                 onInput={(e) => { setUrl(e.target.value); scheduleAutoSave(); }}
                 onPaste={handleUrlPaste}
                 onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') sendRequest(); }}
               />
-              <button class="btn btn-ghost" onClick={importCurl} title="Import from cURL">cURL</button>
+              <button class="btn btn-ghost" onClick={importCurl} title={t.collection.curlButtonTitle}>{t.collection.curlButton}</button>
               {streamConnectionId() ? (
                 <button class="btn btn-danger" onClick={() => {
-                  appendStreamMessage('sys', 'system', 'Disconnected by user');
+                  appendStreamMessage('sys', 'system', t.collection.disconnectedByUser);
                   disconnectStream();
-                }}>Disconnect</button>
+                }}>{t.collection.disconnectButton}</button>
               ) : (
-                <button class="btn btn-primary" onClick={sendRequest}>Send</button>
+                <button class="btn btn-primary" onClick={sendRequest}>{t.collection.sendButton}</button>
               )}
             </div>
             <div class="request-response-split">
               <RequestPane
+                url={url()}
                 headers={headers()}
                 body={body()}
                 bodyType={bodyType()}
