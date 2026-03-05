@@ -36,8 +36,8 @@ const strings = {
   },
 
   sidebar: {
-    addRequestButton: '+ Request',
-    addFolderButton: '+ Folder',
+    addRequestButton: 'Request',
+    addFolderButton: 'Folder',
     backTitle: 'Back to collections',
     renameTitle: 'Click to rename',
     addToFolderTitle: 'Add request',
@@ -72,10 +72,10 @@ const strings = {
     variableNamePlaceholder: 'Variable name',
     valuePlaceholder: 'Value',
     namePlaceholder: 'Name',
-    addParameterButton: '+ Add Parameter',
-    addHeaderButton: '+ Add Header',
-    addVariableButton: '+ Add Variable',
-    addFieldButton: '+ Add Field',
+    addParameterButton: 'Add Parameter',
+    addHeaderButton: 'Add Header',
+    addVariableButton: 'Add Variable',
+    addFieldButton: 'Add Field',
     bodyTypes: {
       text: 'Text',
       file: 'File',

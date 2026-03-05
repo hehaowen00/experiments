@@ -103,6 +103,11 @@ body {
   border-color: var(--accent);
 }
 
+.btn i.fa-solid:not(:only-child),
+.btn i.fa-regular:not(:only-child) {
+  margin-right: 4px;
+}
+
 .btn {
   padding: 8px 16px;
   border: none;
@@ -753,7 +758,7 @@ body {
 .drag-handle {
   cursor: grab;
   color: var(--text-dim);
-  font-size: 14px;
+  font-size: 11px;
   user-select: none;
   flex-shrink: 0;
   width: 12px;

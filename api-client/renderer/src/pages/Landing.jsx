@@ -2,6 +2,7 @@ import { createSignal, For, onMount, Show } from 'solid-js';
 import Modal, { showConfirm, showPrompt } from '../components/Modal';
 import { formatLastUsed } from '../helpers';
 import t from '../locale';
+import Icon from '../components/Icon';
 
 export default function Landing(props) {
   const [collections, setCollections] = createSignal([]);
@@ -165,8 +166,8 @@ export default function Landing(props) {
           onInput={(e) => setNewName(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') create(); }}
         />
-        <button class="btn btn-primary" onClick={create}>{t.landing.createButton}</button>
-        <button class="btn btn-ghost" onClick={addCategory}>{t.landing.addCategoryButton}</button>
+        <button class="btn btn-primary" onClick={create}><Icon name="fa-solid fa-plus" /> {t.landing.createButton}</button>
+        <button class="btn btn-ghost" onClick={addCategory}><Icon name="fa-solid fa-folder-plus" /> {t.landing.addCategoryButton}</button>
       </div>
 
       <div class="landing-content">
@@ -184,11 +185,11 @@ export default function Landing(props) {
               onDrop={(e) => onCategoryDrop(e, cat.id)}
             >
               <div class="landing-section-header category-header" onClick={() => toggleCategoryCollapse(cat.id, cat.collapsed)}>
-                <span innerHTML={cat.collapsed ? '&#9654;' : '&#9660;'} />
+                <Icon name={cat.collapsed ? 'fa-solid fa-caret-right' : 'fa-solid fa-caret-down'} />
                 <span class="category-name">{cat.name}</span>
                 <div class="category-actions">
-                  <button class="btn btn-ghost btn-sm" onClick={(e) => renameCategory(e, cat.id, cat.name)}>{t.landing.renameButton}</button>
-                  <button class="btn btn-danger btn-sm" onClick={(e) => removeCategory(e, cat.id, cat.name)}>{t.landing.deleteButton}</button>
+                  <button class="btn btn-ghost btn-sm" onClick={(e) => renameCategory(e, cat.id, cat.name)}><Icon name="fa-solid fa-pen" /> {t.landing.renameButton}</button>
+                  <button class="btn btn-danger btn-sm" onClick={(e) => removeCategory(e, cat.id, cat.name)}><Icon name="fa-solid fa-trash" /> {t.landing.deleteButton}</button>
                 </div>
                 <span class="category-count">{collectionsInCategory(cat.id).length}</span>
               </div>

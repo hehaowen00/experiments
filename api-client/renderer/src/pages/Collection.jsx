@@ -6,6 +6,7 @@ import Sidebar from '../components/Sidebar';
 import Variables from '../components/Variables';
 import RequestPane from '../components/RequestPane';
 import ResponsePane from '../components/ResponsePane';
+import Icon from '../components/Icon';
 import t from '../locale';
 
 export default function Collection(props) {
@@ -770,14 +771,14 @@ export default function Collection(props) {
                 onPaste={handleUrlPaste}
                 onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') sendRequest(); }}
               />
-              <button class="btn btn-ghost" onClick={importCurl} title={t.collection.curlButtonTitle}>{t.collection.curlButton}</button>
+              <button class="btn btn-ghost" onClick={importCurl} title={t.collection.curlButtonTitle}><Icon name="fa-solid fa-terminal" /> {t.collection.curlButton}</button>
               {streamConnectionId() ? (
                 <button class="btn btn-danger" onClick={() => {
                   appendStreamMessage('sys', 'system', t.collection.disconnectedByUser);
                   disconnectStream();
-                }}>{t.collection.disconnectButton}</button>
+                }}><Icon name="fa-solid fa-plug-circle-xmark" /> {t.collection.disconnectButton}</button>
               ) : (
-                <button class="btn btn-primary" onClick={sendRequest}>{t.collection.sendButton}</button>
+                <button class="btn btn-primary" onClick={sendRequest}><Icon name="fa-solid fa-paper-plane" /> {t.collection.sendButton}</button>
               )}
             </div>
             <div class="request-response-split">

@@ -3,6 +3,7 @@ import { esc, contentTypeToFormat } from '../helpers';
 import { highlightXmlFlat } from '../highlight';
 import { evaluateJsonPath, searchXPathResults } from '../search';
 import t from '../locale';
+import Icon from './Icon';
 
 // Foldable JSON renderer (DOM-based for performance with large responses)
 function renderFoldableJson(value) {
@@ -538,7 +539,7 @@ export default function ResponsePane(props) {
               <Show when={bodyView() === 'raw' && hasResponse() && !r().error}>
                 <button class="btn btn-ghost btn-sm" onClick={selectAllBody} title={t.responsePane.selectAllButton}>{t.responsePane.selectAllButton}</button>
               </Show>
-              <button class="btn btn-ghost btn-sm" onClick={() => { openSearch(); setActiveTab('body'); }} title={`${t.responsePane.searchButton} (Cmd+F)`}>{t.responsePane.searchButton}</button>
+              <button class="btn btn-ghost btn-sm" onClick={() => { openSearch(); setActiveTab('body'); }} title={`${t.responsePane.searchButton} (Cmd+F)`}><Icon name="fa-solid fa-magnifying-glass" /> {t.responsePane.searchButton}</button>
             </div>
           </div>
         </Show>
@@ -579,9 +580,9 @@ export default function ResponsePane(props) {
                 autofocus
               />
               <span class="search-info">{searchInfo()}</span>
-              <button class="btn btn-ghost btn-sm" onClick={() => navigateSearch(-1)} title={t.responsePane.search.previousTitle}>&uarr;</button>
-              <button class="btn btn-ghost btn-sm" onClick={() => navigateSearch(1)} title={t.responsePane.search.nextTitle}>&darr;</button>
-              <button class="btn btn-ghost btn-sm" onClick={closeSearch} title={t.responsePane.search.closeTitle}>&times;</button>
+              <button class="btn btn-ghost btn-sm" onClick={() => navigateSearch(-1)} title={t.responsePane.search.previousTitle}><Icon name="fa-solid fa-chevron-up" /></button>
+              <button class="btn btn-ghost btn-sm" onClick={() => navigateSearch(1)} title={t.responsePane.search.nextTitle}><Icon name="fa-solid fa-chevron-down" /></button>
+              <button class="btn btn-ghost btn-sm" onClick={closeSearch} title={t.responsePane.search.closeTitle}><Icon name="fa-solid fa-xmark" /></button>
             </div>
           </Show>
 
@@ -638,7 +639,7 @@ export default function ResponsePane(props) {
                 onInput={(e) => props.onWsInputChange(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') props.onWsSend(); }}
               />
-              <button class="btn btn-primary btn-sm" onClick={props.onWsSend}>{t.responsePane.stream.sendButton}</button>
+              <button class="btn btn-primary btn-sm" onClick={props.onWsSend}><Icon name="fa-solid fa-paper-plane" /> {t.responsePane.stream.sendButton}</button>
             </div>
           </Show>
         </div>
