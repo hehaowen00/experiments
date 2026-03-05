@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const Database = require('better-sqlite3');
+const WebSocket = require('ws');
 
 let db;
 const DB_PATH = path.join(app.getPath('userData'), 'api-client.db');
@@ -346,13 +347,50 @@ ipcMain.handle('request:send', async (_, opts) => {
 
       const respHeaders = {};
       res.headers && Object.entries(res.headers).forEach(([k, v]) => { respHeaders[k] = v; });
+      const ct = res.headers['content-type'] || '';
+
+      // SSE: stream events instead of buffering
+      if (ct.includes('text/event-stream')) {
+        const sseId = opts._requestId || Date.now().toString(36);
+        activeSseConnections.set(sseId, req);
+        resolve({
+          status: res.statusCode,
+          statusText: res.statusMessage,
+          headers: respHeaders,
+          time: ts(),
+          contentType: ct,
+          timeline,
+          sse: true,
+          sseId,
+        });
+
+        mainWindow.webContents.send('sse:open', { id: sseId, status: res.statusCode, statusText: res.statusMessage });
+
+        let buffer = '';
+        res.on('data', (chunk) => {
+          buffer += chunk.toString('utf-8');
+          const parts = buffer.split('\n\n');
+          buffer = parts.pop();
+          for (const raw of parts) {
+            if (!raw.trim()) continue;
+            const event = parseSseEvent(raw);
+            mainWindow.webContents.send('sse:event', { id: sseId, event, raw: raw.trim() });
+          }
+        });
+
+        res.on('end', () => {
+          activeSseConnections.delete(sseId);
+          mainWindow.webContents.send('sse:close', { id: sseId });
+        });
+
+        return;
+      }
 
       const chunks = [];
       res.on('data', (chunk) => chunks.push(chunk));
       res.on('end', () => {
         const totalTime = ts();
         const rawBody = Buffer.concat(chunks).toString('utf-8');
-        const ct = res.headers['content-type'] || '';
         let responseBody = rawBody;
         if (ct.includes('json')) {
           try { responseBody = JSON.stringify(JSON.parse(rawBody), null, 2); } catch {}
@@ -418,4 +456,82 @@ ipcMain.handle('request:send', async (_, opts) => {
     }
     req.end();
   });
+});
+
+// --- IPC: SSE ---
+
+const activeSseConnections = new Map();
+
+
+ipcMain.handle('sse:disconnect', (_, id) => {
+  const req = activeSseConnections.get(id);
+  if (req) { req.destroy(); activeSseConnections.delete(id); }
+});
+
+function parseSseEvent(raw) {
+  const lines = raw.split('\n');
+  const event = { type: 'message', data: '', id: '', retry: null };
+  for (const line of lines) {
+    if (line.startsWith('event:')) event.type = line.slice(6).trim();
+    else if (line.startsWith('data:')) event.data += (event.data ? '\n' : '') + line.slice(5).trimStart();
+    else if (line.startsWith('id:')) event.id = line.slice(3).trim();
+    else if (line.startsWith('retry:')) event.retry = parseInt(line.slice(6).trim());
+  }
+  return event;
+}
+
+// --- IPC: WebSocket ---
+
+const activeWsConnections = new Map();
+
+ipcMain.handle('ws:connect', (event, opts) => {
+  const { id, url, headers, protocols } = opts;
+  const h = {};
+  if (headers) {
+    for (const { key, value, enabled } of headers) {
+      if (enabled && key) h[key] = value;
+    }
+  }
+
+  try {
+    const ws = new WebSocket(url, protocols || [], { headers: h, rejectUnauthorized: true });
+
+    ws.on('open', () => {
+      mainWindow.webContents.send('ws:open', { id });
+    });
+
+    ws.on('message', (data, isBinary) => {
+      const payload = isBinary ? `[Binary: ${data.length} bytes]` : data.toString('utf-8');
+      mainWindow.webContents.send('ws:message', { id, data: payload, isBinary, time: Date.now() });
+    });
+
+    ws.on('close', (code, reason) => {
+      activeWsConnections.delete(id);
+      mainWindow.webContents.send('ws:close', { id, code, reason: reason.toString() });
+    });
+
+    ws.on('error', (err) => {
+      activeWsConnections.delete(id);
+      mainWindow.webContents.send('ws:error', { id, error: err.message });
+    });
+
+    activeWsConnections.set(id, ws);
+  } catch (e) {
+    mainWindow.webContents.send('ws:error', { id, error: e.message });
+  }
+});
+
+ipcMain.handle('ws:send', (_, opts) => {
+  const { id, data } = opts;
+  const ws = activeWsConnections.get(id);
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(data);
+    return true;
+  }
+  return false;
+});
+
+ipcMain.handle('ws:disconnect', (_, id) => {
+  const ws = activeWsConnections.get(id);
+  if (ws) { ws.close(); activeWsConnections.delete(id); }
 });

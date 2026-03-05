@@ -32,9 +32,11 @@
           <option>DELETE</option>
           <option>HEAD</option>
           <option>OPTIONS</option>
+          <option>WS</option>
         </select>
         <input type="text" class="url-input" id="url" placeholder="Enter URL..." />
         <button class="btn btn-primary" id="send-btn">Send</button>
+        <button class="btn btn-danger" id="disconnect-btn" style="display:none">Disconnect</button>
       </div>
       <div class="request-response-split">
         <div class="request-pane" id="request-pane">
@@ -94,6 +96,7 @@
             </div>
             <div class="response-tabs" id="response-tabs" style="display:none">
               <button class="section-tab active" data-restab="body">Body</button>
+              <button class="section-tab" data-restab="messages" style="display:none" id="messages-tab-btn">Messages</button>
               <button class="section-tab" data-restab="resp-headers">Headers</button>
               <button class="section-tab" data-restab="timeline">Timeline</button>
               <button class="section-tab" data-restab="history">History</button>
@@ -101,6 +104,13 @@
             <div class="response-tab-content" id="restab-body">
               <div class="response-placeholder" id="response-placeholder">Send a request to see the response</div>
               <div id="response-body-container" style="display:none"></div>
+            </div>
+            <div class="response-tab-content" id="restab-messages" style="display:none">
+              <div class="stream-log" id="stream-log"></div>
+              <div class="stream-compose" id="stream-compose" style="display:none">
+                <input type="text" class="url-input" id="ws-message-input" placeholder="Type a message..." />
+                <button class="btn btn-primary btn-sm" id="ws-send-msg-btn">Send</button>
+              </div>
             </div>
             <div class="response-tab-content" id="restab-resp-headers" style="display:none"></div>
             <div class="response-tab-content" id="restab-timeline" style="display:none"></div>
