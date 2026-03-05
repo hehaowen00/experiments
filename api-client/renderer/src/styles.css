@@ -1354,6 +1354,13 @@ body {
   margin-bottom: 16px;
 }
 
+.modal-description {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 16px;
+  margin-top: -12px;
+}
+
 .modal-input {
   width: 100%;
   padding: 8px 12px;
