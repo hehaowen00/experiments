@@ -22,6 +22,7 @@ const urlEl = document.getElementById('url');
 const bodyEl = document.getElementById('request-body');
 const bodyHighlightEl = document.getElementById('request-body-highlight');
 const bodyTypeEl = document.getElementById('body-type');
+const responsePaneEl = document.getElementById('response-pane');
 const responseMetaEl = document.getElementById('response-meta');
 const responseTabsEl = document.getElementById('response-tabs');
 const responseStatusEl = document.getElementById('response-status');
@@ -1318,6 +1319,8 @@ async function selectRequest(id) {
   renderFileInfo();
   renderFormFields();
   renderTree();
+  paneHandle.style.display = '';
+  responsePaneEl.style.display = 'flex';
 
   const lastResp = await window.api.getLatestResponse(id);
   if (lastResp) showResponse(lastResp);
@@ -1325,6 +1328,7 @@ async function selectRequest(id) {
 }
 
 function showResponse(result) {
+  responsePaneEl.style.display = 'flex';
   closeSearch();
   responseMetaEl.style.display = 'flex';
   responseTabsEl.style.display = 'flex';

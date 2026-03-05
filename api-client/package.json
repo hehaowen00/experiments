@@ -4,7 +4,9 @@
   "description": "",
   "main": "main.js",
   "scripts": {
-    "start": "electron ."
+    "build": "cd renderer && npx vite build",
+    "start": "cd renderer && npx vite build && cd .. && electron .",
+    "dev": "cd renderer && npx vite"
   },
   "keywords": [],
   "author": "",
