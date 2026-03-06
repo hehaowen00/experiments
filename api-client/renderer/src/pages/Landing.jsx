@@ -1,9 +1,8 @@
 import { createSignal, For, onMount, Show } from 'solid-js';
-import Modal, { showConfirm, showPrompt } from '../components/Modal';
+import Modal, { showConfirm, showPrompt, showSettings } from '../components/Modal';
 import { formatLastUsed } from '../helpers';
 import t from '../locale';
 import Icon from '../components/Icon';
-import { applyTheme, getStoredThemeId, getThemeList } from '../themes';
 
 export default function Landing(props) {
   const [collections, setCollections] = createSignal([]);
@@ -286,16 +285,8 @@ export default function Landing(props) {
           </div>
         </Show>
       </div>
-      <div class="theme-selector">
-        <Icon name="fa-solid fa-palette" />
-        <For each={getThemeList()}>
-          {(theme) => (
-            <button
-              class={`btn btn-ghost btn-sm ${getStoredThemeId() === theme.id ? 'active' : ''}`}
-              onClick={() => { applyTheme(theme.id); load(); }}
-            >{theme.name}</button>
-          )}
-        </For>
+      <div class="settings-bar">
+        <button class="btn btn-ghost" onClick={() => showSettings()}><Icon name="fa-solid fa-gear" /> {t.landing.settingsButton}</button>
       </div>
       <Modal />
     </div>

@@ -8,6 +8,7 @@ const strings = {
     newCollectionPlaceholder: 'New Collection',
     createButton: 'Create',
     addCategoryButton: 'Category',
+    settingsButton: 'Settings',
     emptyState: 'No collections yet. Create one to get started.',
     uncategorized: 'Uncategorized',
     dropHint: 'Drop collections here',
@@ -174,7 +175,10 @@ const strings = {
     cancelButton: 'Cancel',
     okButton: 'OK',
     deleteButton: 'Delete',
+    closeButton: 'Close',
     curlPlaceholder: 'Paste curl command here...',
+    settingsTitle: 'Settings',
+    themeLabel: 'Theme',
   },
 };
 
