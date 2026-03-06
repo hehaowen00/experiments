@@ -569,7 +569,7 @@ export default function ResponsePane(props) {
                   <button class={`btn btn-ghost btn-sm ${bodyView() === 'pretty' ? 'active' : ''}`} onClick={() => { setBodyView('pretty'); setActiveTab('body'); }}>{t.responsePane.prettyButton}</button>
                   <button class={`btn btn-ghost btn-sm ${bodyView() === 'raw' ? 'active' : ''}`} onClick={() => { setBodyView('raw'); setActiveTab('body'); }}>{t.responsePane.rawButton}</button>
                 </div>
-                <Show when={bodyView() === 'raw' && hasResponse() && !r().error}>
+                <Show when={hasResponse() && !r().error}>
                   <button class="btn btn-ghost btn-sm" onClick={selectAllBody} title={t.responsePane.selectAllButton}>{t.responsePane.selectAllButton}</button>
                 </Show>
                 <button class="btn btn-ghost btn-sm" onClick={() => { openSearch(); setActiveTab('body'); }} title={`${t.responsePane.searchButton} (Cmd+F)`}><Icon name="fa-solid fa-magnifying-glass" /> {t.responsePane.searchButton}</button>
@@ -648,6 +648,7 @@ export default function ResponsePane(props) {
             ref={bodyContainerRef}
             id="response-body-container"
             style={{ display: hasResponse() && !props.sending && !searchResults() ? 'flex' : 'none' }}
+            onDblClick={selectAllBody}
           />
         </div>
 

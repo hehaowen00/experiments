@@ -24,6 +24,9 @@ contextBridge.exposeInMainWorld('api', {
   importCollection: () => ipcRenderer.invoke('import:pick'),
   importRequests: () => ipcRenderer.invoke('import:requests'),
   readFile: (path) => ipcRenderer.invoke('file:read', path),
+  getSetting: (key) => ipcRenderer.invoke('settings:get', key),
+  getAllSettings: () => ipcRenderer.invoke('settings:getAll'),
+  setSetting: (key, value) => ipcRenderer.invoke('settings:set', key, value),
 
   // SSE
   sseDisconnect: (id) => ipcRenderer.invoke('sse:disconnect', id),

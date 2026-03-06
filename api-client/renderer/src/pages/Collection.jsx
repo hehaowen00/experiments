@@ -26,6 +26,7 @@ export default function Collection(props) {
   const [sending, setSending] = createSignal(false);
   const [responsePaneVisible, setResponsePaneVisible] = createSignal(false);
   const [defaultTab, setDefaultTab] = createSignal('body');
+  const [sidebarOpen, setSidebarOpen] = createSignal(true);
 
   // Streaming state
   const [streamConnectionId, setStreamConnectionId] = createSignal(null);
@@ -403,6 +404,30 @@ export default function Collection(props) {
 
   function addHeader() {
     setHeaders(prev => [...prev, { key: '', value: '', enabled: true }]);
+  }
+
+  const contentTypeMimeMap = {
+    json: 'application/json',
+    xml: 'application/xml',
+    html: 'text/html',
+    text: 'text/plain',
+  };
+
+  function syncContentTypeHeader(ct) {
+    const mime = contentTypeMimeMap[ct];
+    setHeaders(prev => {
+      const next = [...prev];
+      const idx = next.findIndex(h => h.key === 'content-type');
+      if (!mime || ct === 'auto') {
+        if (idx >= 0) next.splice(idx, 1);
+        if (next.length === 0) next.push({ key: '', value: '', enabled: true });
+      } else if (idx >= 0) {
+        next[idx] = { ...next[idx], value: mime, enabled: true };
+      } else {
+        next.push({ key: 'content-type', value: mime, enabled: true });
+      }
+      return next;
+    });
   }
 
   function reorderHeaders(from, to) {
@@ -935,38 +960,51 @@ export default function Collection(props) {
   function onKeyDown(e) {
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') sendRequest();
   }
-  onMount(() => document.addEventListener('keydown', onKeyDown));
+  const mql = window.matchMedia('(max-aspect-ratio: 1/1)');
+  function onLayoutChange(e) { if (e.matches) setSidebarOpen(false); }
+  onMount(() => {
+    document.addEventListener('keydown', onKeyDown);
+    mql.addEventListener('change', onLayoutChange);
+    if (mql.matches) setSidebarOpen(false);
+  });
   onCleanup(() => {
     document.removeEventListener('keydown', onKeyDown);
+    mql.removeEventListener('change', onLayoutChange);
     if (streamConnectionId()) disconnectStream();
   });
 
   return (
-    <div class="collection-view">
+    <div class={`collection-view ${sidebarOpen() ? 'sidebar-open' : 'sidebar-closed'}`}>
       {collection() && (
         <>
-          <Sidebar
-            name={collection().name}
-            items={collection().items}
-            activeId={activeRequestId()}
-            onBack={props.onBack}
-            onSelect={selectRequest}
-            onRename={handleRename}
-            onDelete={handleDelete}
-            onToggleFolder={toggleFolder}
-            onAddToFolder={addToFolder}
-            onAddRequest={addRequest}
-            onAddFolder={addFolder}
-            onImportRequests={importRequests}
-            onRenameCollection={renameCollection}
-            onDragStart={onDragStart}
-            onDragOver={onDragOver}
-            onDragLeave={onDragLeave}
-            onDrop={onDrop}
-          />
-          <div class="resize-handle resize-handle-sidebar" onMouseDown={initSidebarResize} />
+          {sidebarOpen() && (
+            <>
+              <Sidebar
+                name={collection().name}
+                items={collection().items}
+                activeId={activeRequestId()}
+                onBack={props.onBack}
+                onToggleSidebar={() => setSidebarOpen(false)}
+                onSelect={(id) => { selectRequest(id); setSidebarOpen(window.matchMedia('(min-aspect-ratio: 1/1)').matches); }}
+                onRename={handleRename}
+                onDelete={handleDelete}
+                onToggleFolder={toggleFolder}
+                onAddToFolder={addToFolder}
+                onAddRequest={addRequest}
+                onAddFolder={addFolder}
+                onImportRequests={importRequests}
+                onRenameCollection={renameCollection}
+                onDragStart={onDragStart}
+                onDragOver={onDragOver}
+                onDragLeave={onDragLeave}
+                onDrop={onDrop}
+              />
+              <div class="resize-handle resize-handle-sidebar" onMouseDown={initSidebarResize} />
+            </>
+          )}
           <div class="main-panel">
             <div class="request-bar">
+              <button class="btn btn-ghost" onClick={() => setSidebarOpen(!sidebarOpen())} title="Toggle sidebar"><Icon name="fa-solid fa-bars" /></button>
               <select class="protocol-select" value={protocol()} onChange={(e) => { setProtocol(e.target.value); scheduleAutoSave(); }}>
                 <option value="http">{t.collection.protocols.http}</option>
                 <option value="ws">{t.collection.protocols.ws}</option>
@@ -991,14 +1029,14 @@ export default function Collection(props) {
                 onPaste={handleUrlPaste}
                 onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') sendRequest(); }}
               />
-              <button class="btn btn-ghost" onClick={importCurl} title={t.collection.curlButtonTitle}><Icon name="fa-solid fa-terminal" /> {t.collection.curlButton}</button>
+              <button class="btn btn-ghost" onClick={importCurl} title={t.collection.curlButtonTitle}><Icon name="fa-solid fa-terminal" /></button>
               {streamConnectionId() ? (
                 <button class="btn btn-danger" onClick={() => {
                   appendStreamMessage('sys', 'system', t.collection.disconnectedByUser);
                   disconnectStream();
-                }}><Icon name="fa-solid fa-plug-circle-xmark" /> {t.collection.disconnectButton}</button>
+                }}><Icon name="fa-solid fa-plug-circle-xmark" /></button>
               ) : (
-                <button class="btn btn-primary" onClick={sendRequest}><Icon name="fa-solid fa-paper-plane" /> {t.collection.sendButton}</button>
+                <button class="btn btn-primary" onClick={sendRequest}><Icon name="fa-solid fa-paper-plane" /></button>
               )}
             </div>
             <div class="request-response-split">
@@ -1021,7 +1059,7 @@ export default function Collection(props) {
                 onReorderParams={reorderParams}
                 onBodyChange={(v) => { setBody(v); scheduleAutoSave(); }}
                 onBodyTypeChange={(v) => { setBodyType(v); scheduleAutoSave(); }}
-                onContentTypeChange={(v) => { setContentType(v); scheduleAutoSave(); }}
+                onContentTypeChange={(v) => { setContentType(v); syncContentTypeHeader(v); scheduleAutoSave(); }}
                 onPickFile={pickFile}
                 onClearFile={clearFile}
                 onFormFieldChange={onFormFieldChange}

@@ -66,7 +66,6 @@ function UrlPreview(props) {
   }
   return (
     <div class="url-preview">
-      <span class="url-preview-label">{t.requestPane.urlPreview.label}</span>
       <div class="url-preview-row">
         <span class="url-preview-value">{previewUrl() || t.requestPane.urlPreview.noUrl}</span>
         <button class="btn btn-ghost btn-sm" onClick={copy}>{copied() ? <><Icon name="fa-solid fa-check" /> {t.requestPane.urlPreview.copiedButton}</> : <><Icon name="fa-regular fa-copy" /> {t.requestPane.urlPreview.copyButton}</>}</button>
@@ -132,6 +131,8 @@ export default function RequestPane(props) {
           <div class="headers-table">
             <UrlPreview url={props.url} params={props.params} variables={props.variables} />
             <div class="kv-bulk-actions">
+              <button class="btn btn-ghost btn-sm" onClick={props.onAddParam}>{t.requestPane.addParameterButton}</button>
+              <div class="kv-bulk-spacer" />
               <button class="btn btn-ghost btn-sm" onClick={() => props.params.forEach((_, i) => props.onParamChange(i, 'enabled', true))}>{t.requestPane.enableAllButton}</button>
               <button class="btn btn-ghost btn-sm" onClick={() => props.params.forEach((_, i) => props.onParamChange(i, 'enabled', false))}>{t.requestPane.disableAllButton}</button>
             </div>
@@ -155,13 +156,14 @@ export default function RequestPane(props) {
               )}
             </Index>
           </div>
-          <button class="btn btn-ghost btn-sm" onClick={props.onAddParam}>{t.requestPane.addParameterButton}</button>
         </Show>
 
         {/* Headers tab */}
         <Show when={activeTab() === 'headers'}>
           <div class="headers-table">
             <div class="kv-bulk-actions">
+              <button class="btn btn-ghost btn-sm" onClick={props.onAddHeader}>{t.requestPane.addHeaderButton}</button>
+              <div class="kv-bulk-spacer" />
               <button class="btn btn-ghost btn-sm" onClick={() => props.headers.forEach((_, i) => props.onHeaderChange(i, 'enabled', true))}>{t.requestPane.enableAllButton}</button>
               <button class="btn btn-ghost btn-sm" onClick={() => props.headers.forEach((_, i) => props.onHeaderChange(i, 'enabled', false))}>{t.requestPane.disableAllButton}</button>
             </div>
@@ -185,7 +187,6 @@ export default function RequestPane(props) {
               )}
             </Index>
           </div>
-          <button class="btn btn-ghost btn-sm" onClick={props.onAddHeader}>{t.requestPane.addHeaderButton}</button>
         </Show>
 
         {/* Body tab */}
@@ -275,6 +276,9 @@ export default function RequestPane(props) {
         <Show when={activeTab() === 'variables'}>
           <div class="headers-table">
             <UrlPreview url={props.url} params={props.params} variables={props.variables} />
+            <div class="kv-bulk-actions">
+              <button class="btn btn-ghost btn-sm" onClick={props.onAddVariable}>{t.requestPane.addVariableButton}</button>
+            </div>
             <Index each={props.variables}>
               {(v, i) => (
                 <div
@@ -294,7 +298,6 @@ export default function RequestPane(props) {
               )}
             </Index>
           </div>
-          <button class="btn btn-ghost btn-sm" onClick={props.onAddVariable}>{t.requestPane.addVariableButton}</button>
         </Show>
       </div>
     </div>

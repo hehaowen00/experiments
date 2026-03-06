@@ -114,6 +114,11 @@ function initDb() {
       sort_order INTEGER NOT NULL DEFAULT 0,
       collapsed INTEGER NOT NULL DEFAULT 0
     );
+
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
   `);
 
   migrateJsonFiles();
@@ -347,6 +352,25 @@ ipcMain.handle('categories:reorder', (_, orderedIds) => {
     orderedIds.forEach((id, i) => stmt.run(i, id));
   });
   tx();
+  return true;
+});
+
+// --- IPC: Settings ---
+
+ipcMain.handle('settings:get', (_, key) => {
+  const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key);
+  return row ? row.value : null;
+});
+
+ipcMain.handle('settings:getAll', () => {
+  const rows = db.prepare('SELECT key, value FROM settings').all();
+  const result = {};
+  for (const row of rows) result[row.key] = row.value;
+  return result;
+});
+
+ipcMain.handle('settings:set', (_, key, value) => {
+  db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(key, value);
   return true;
 });
 
