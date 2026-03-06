@@ -6,9 +6,9 @@ const strings = {
 
   landing: {
     newCollectionPlaceholder: 'New Collection',
-    searchPlaceholder: 'Search collections...',
+    searchPlaceholder: 'Search',
     newCollectionModal: {
-      title: 'Collection name:',
+      title: 'New Collection',
     },
     createButton: 'Create',
     importButton: 'Import',
@@ -24,14 +24,14 @@ const strings = {
     expandAllButton: 'Expand',
     deleteButton: 'Delete',
     renameCollectionModal: {
-      title: 'Rename collection:',
+      title: 'Rename Collection',
     },
     renameCategoryModal: {
-      title: 'Rename category:',
+      title: 'Rename Category',
     },
     newCategoryModal: {
-      title: 'Category name:',
-      defaultValue: 'New Category',
+      title: 'New Category',
+      defaultValue: 'Name',
     },
     deleteCollectionModal: {
       title: (name) => `Delete "${name}"?`,
@@ -52,13 +52,26 @@ const strings = {
     addToFolderTitle: 'Add request',
     renameItemTitle: 'Rename',
     deleteItemTitle: 'Delete',
+    closeSidebarTitle: 'Close sidebar',
+    toggleSidebarTitle: 'Toggle sidebar',
     renameModal: {
-      title: 'Rename:',
+      title: 'Rename',
     },
   },
 
   collection: {
-    urlPlaceholder: 'Enter URL...',
+    deleteItemModal: {
+      title: (name) => `Delete "${name}"?`,
+    },
+    addRequestModal: {
+      title: 'New Request',
+      defaultValue: 'Name',
+    },
+    addFolderModal: {
+      title: 'New Folder',
+      defaultValue: 'Name',
+    },
+    urlPlaceholder: 'URL',
     curlButton: 'cURL',
     curlButtonTitle: 'Import from cURL',
     disconnectButton: 'Disconnect',
@@ -80,9 +93,9 @@ const strings = {
       variables: 'Variables',
       body: 'Body',
     },
-    paramNamePlaceholder: 'parameter name',
-    headerNamePlaceholder: 'header name',
-    variableNamePlaceholder: 'Variable name',
+    paramNamePlaceholder: 'name',
+    headerNamePlaceholder: 'name',
+    variableNamePlaceholder: 'name',
     valuePlaceholder: 'value',
     namePlaceholder: 'Name',
     addParameterButton: 'Add Parameter',
@@ -103,7 +116,7 @@ const strings = {
       html: 'HTML',
       text: 'Plain Text',
     },
-    bodyPlaceholder: 'Request body (JSON, XML, text...)',
+    bodyPlaceholder: 'Request Body (JSON, XML, text...)',
     chooseFileButton: 'Choose File',
     noFileSelected: 'No file selected',
     clearButton: 'Clear',
@@ -133,6 +146,7 @@ const strings = {
     selectAllButton: 'Select All',
     searchButton: 'Search',
     searchPlaceholder: 'Search...',
+    responseImageAlt: 'Response image',
     emptyResponse: 'Empty response',
     sendPrompt: 'Send a request to see the response',
     sending: 'Sending...',

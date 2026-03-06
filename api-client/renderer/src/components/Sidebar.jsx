@@ -1,5 +1,4 @@
 import { For, Show } from 'solid-js';
-import { esc } from '../helpers';
 import t from '../locale';
 import Icon from './Icon';
 
@@ -18,7 +17,7 @@ function TreeItems(props) {
             class={`tree-item ${item.id === props.activeId ? 'active' : ''}`}
             data-id={item.id}
             draggable="true"
-            style={props.depth > 0 ? { 'padding-left': `${props.depth * 10}px` } : {}}
+            style={props.depth > 0 ? { 'padding-left': `${12 + props.depth * 16}px` } : {}}
             onClick={() => props.onSelect(item.id)}
             onDragStart={(e) => props.onDragStart(e, item.id)}
             onDragOver={(e) => props.onDragOver(e, item.id, false)}
@@ -38,7 +37,7 @@ function TreeItems(props) {
               class="folder-header"
               data-id={item.id}
               draggable="true"
-  
+
               onClick={() => props.onToggleFolder(item.id)}
               onDragStart={(e) => props.onDragStart(e, item.id)}
               onDragOver={(e) => props.onDragOver(e, item.id, true)}
@@ -87,7 +86,7 @@ export default function Sidebar(props) {
         <div class="back-row">
           <button class="back-btn" onClick={props.onBack} title={t.sidebar.backTitle}><Icon name="fa-solid fa-arrow-left" /></button>
           <span class="collection-name" onClick={props.onRenameCollection} title={t.sidebar.renameTitle}>{props.name}</span>
-          <button class="back-btn sidebar-close-btn" onClick={props.onToggleSidebar} title="Close sidebar"><Icon name="fa-solid fa-xmark" /></button>
+          <button class="back-btn sidebar-close-btn" onClick={props.onToggleSidebar} title={t.sidebar.closeSidebarTitle}><Icon name="fa-solid fa-xmark" /></button>
         </div>
         <div class="sidebar-actions">
           <button class="btn btn-primary btn-sm" onClick={props.onAddRequest}><Icon name="fa-solid fa-plus" /> {t.sidebar.addRequestButton}</button>

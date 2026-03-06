@@ -302,7 +302,7 @@ export default function ResponsePane(props) {
       const img = document.createElement('img');
       img.className = 'response-image';
       img.src = `data:${contentType};base64,${body}`;
-      img.alt = 'Response image';
+      img.alt = t.responsePane.responseImageAlt;
       bodyContainerRef.appendChild(img);
       return;
     }

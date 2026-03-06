@@ -1,8 +1,8 @@
 import { createSignal, For, onMount, Show } from 'solid-js';
+import Icon from '../components/Icon';
 import Modal, { showConfirm, showPrompt, showSettings } from '../components/Modal';
 import { formatLastUsed } from '../helpers';
 import t from '../locale';
-import Icon from '../components/Icon';
 
 export default function Landing(props) {
   const [collections, setCollections] = createSignal([]);
@@ -71,7 +71,7 @@ export default function Landing(props) {
 
   async function renameCategory(e, id, oldName) {
     e.stopPropagation();
-    const name = await showPrompt(t.landing.renameCategoryModal.title, oldName);
+    const name = await showPrompt(t.landing.renameCategoryModal.title, oldName, 'Name');
     if (name && name.trim()) {
       await window.api.renameCategory(id, name.trim());
       load();
@@ -157,8 +157,8 @@ export default function Landing(props) {
     setDropIndicator({ catId, position: e.clientY < mid ? 'above' : 'below' });
   }
 
-  function onCategorySectionDragLeave(e) {
-  }
+  // function onCategorySectionDragLeave(e) {
+  // }
 
   async function onCategorySectionDrop(e, targetCatId) {
     e.preventDefault();
@@ -250,7 +250,7 @@ export default function Landing(props) {
               classList={{ 'cat-drop-above': dropIndicator()?.catId === String(cat.id) && dropIndicator()?.position === 'above', 'cat-drop-below': dropIndicator()?.catId === String(cat.id) && dropIndicator()?.position === 'below' }}
               data-cat-id={cat.id}
               onDragOver={(e) => { onCategoryDragOver(e); onCategorySectionDragOver(e); }}
-              onDragLeave={(e) => { onCategoryDragLeave(e); onCategorySectionDragLeave(e); }}
+              onDragLeave={(e) => { onCategoryDragLeave(e); }}
               onDrop={(e) => { onCategoryDrop(e, cat.id); onCategorySectionDrop(e, cat.id); }}
             >
               <div class="landing-section-header category-header" onClick={() => toggleCategoryCollapse(cat.id, cat.collapsed)}>

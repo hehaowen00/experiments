@@ -1,21 +1,23 @@
-import { createSignal, createEffect, Show, For } from 'solid-js';
+import { createEffect, createSignal, For, Show } from 'solid-js';
+import { applyEditorFontSize, applyUiFontSize } from '../index';
 import t from '../locale';
-import Icon from './Icon';
 import { applyTheme, getStoredThemeId, getThemeList } from '../themes';
-import { applyUiFontSize, applyEditorFontSize } from '../index';
+import Icon from './Icon';
 
 let modalResolve = null;
 const [modalVisible, setModalVisible] = createSignal(false);
 const [modalTitle, setModalTitle] = createSignal('');
 const [modalValue, setModalValue] = createSignal('');
+const [modalPlaceholder, setModalPlaceholder] = createSignal('');
 const [modalDescription, setModalDescription] = createSignal('');
 const [modalType, setModalType] = createSignal('prompt'); // 'prompt' | 'confirm'
 
-export function showPrompt(title, defaultValue = '', description = '') {
+export function showPrompt(title, defaultValue = '', description = '', placeholder = '',) {
   return new Promise((resolve) => {
     modalResolve = resolve;
     setModalTitle(title);
     setModalDescription(description);
+    setModalPlaceholder(placeholder);
     setModalValue(defaultValue);
     setModalType('prompt');
     setModalVisible(true);
@@ -39,6 +41,7 @@ export function showTextarea(title, placeholder = '', description = '') {
     setModalDescription(description);
     setModalValue('');
     setModalType('textarea');
+    setModalPlaceholder(placeholder);
     setModalVisible(true);
   });
 }
@@ -100,6 +103,7 @@ export default function Modal() {
               class="modal-input"
               value={modalValue()}
               onInput={(e) => setModalValue(e.target.value)}
+              placeholder={modalPlaceholder()}
               onKeyDown={onKeyDown}
               autofocus
             />
