@@ -12,6 +12,7 @@ import t from '../locale';
 export default function Collection(props) {
   const [collection, setCollection] = createSignal(null);
   const [activeRequestId, setActiveRequestId] = createSignal(null);
+  const [protocol, setProtocol] = createSignal('http');
   const [method, setMethod] = createSignal('GET');
   const [url, setUrl] = createSignal('');
   const [body, setBody] = createSignal('');
@@ -24,6 +25,7 @@ export default function Collection(props) {
   const [response, setResponse] = createSignal(null);
   const [sending, setSending] = createSignal(false);
   const [responsePaneVisible, setResponsePaneVisible] = createSignal(false);
+  const [defaultTab, setDefaultTab] = createSignal('body');
 
   // Streaming state
   const [streamConnectionId, setStreamConnectionId] = createSignal(null);
@@ -33,6 +35,15 @@ export default function Collection(props) {
   const [streamTime, setStreamTime] = createSignal(0);
   const [streamMessages, setStreamMessages] = createSignal([]);
   const [wsInput, setWsInput] = createSignal('');
+  const [wsFrameType, setWsFrameType] = createSignal('text');
+
+  let wsStartTime = null;
+  let wsTimeline = [];
+
+  // Track which request owns the active stream
+  let streamRequestId = null;
+  // Stashed stream state when switching away from a connected request
+  let stashedStream = null;
 
   const [variables, setVariables] = createSignal([{ key: '', value: '' }]);
 
@@ -44,7 +55,7 @@ export default function Collection(props) {
     const c = await window.api.loadCollection(props.id);
     if (!c) { props.onBack(); return; }
     setCollection(c);
-    setVariables(c.variables?.length > 0 ? c.variables.map(v => ({ ...v })) : [{ key: '', value: '' }]);
+    setVariables([{ key: '', value: '' }]);
     document.title = `${t.app.name} - ${c.name}`;
   });
 
@@ -61,7 +72,7 @@ export default function Collection(props) {
       if (!c) return;
       const item = findItem(c.items, activeRequestId());
       if (!item) return;
-      item.method = method();
+      item.method = protocol() === 'ws' ? 'WS' : method();
       item.url = url();
       item.headers = headers().filter(h => h.key);
       item.params = params().filter(p => p.key);
@@ -70,6 +81,7 @@ export default function Collection(props) {
       item.body = body();
       item.bodyFile = file();
       item.bodyForm = formFields().filter(f => f.key);
+      item.variables = variables().filter(v => v.key);
       setCollection({ ...c, items: structuredClone(c.items) });
       save();
     }, 500);
@@ -110,13 +122,7 @@ export default function Collection(props) {
   }
 
   function saveVariables() {
-    clearTimeout(autoSaveTimer);
-    autoSaveTimer = setTimeout(() => {
-      const c = collection();
-      if (!c) return;
-      c.variables = variables().filter(v => v.key);
-      save();
-    }, 500);
+    scheduleAutoSave();
   }
 
   function getVariables() {
@@ -125,13 +131,33 @@ export default function Collection(props) {
 
   // Select a request
   async function selectRequest(id) {
-    if (streamConnectionId()) await disconnectStream();
+    // Stash active stream if switching away from the connected request
+    if (streamConnectionId() && streamRequestId && streamRequestId !== id) {
+      stashedStream = {
+        requestId: streamRequestId,
+        connectionId: streamConnectionId(),
+        type: streamType(),
+        connected: streamConnected(),
+        status: streamStatus(),
+        time: streamTime(),
+        messages: streamMessages(),
+        response: response(),
+        wsStartTime,
+        wsTimeline: [...wsTimeline],
+        wsResponseHeaders: { ...wsResponseHeaders },
+      };
+    }
+
+    setResponse(null);
+    setSending(false);
     setActiveRequestId(id);
     const c = collection();
     const item = findItem(c.items, id);
     if (!item || item.type === 'folder') return;
 
-    setMethod(item.method || 'GET');
+    const m = item.method || 'GET';
+    setProtocol(m === 'WS' ? 'ws' : 'http');
+    setMethod(m);
     setUrl(item.url || '');
     setBody(item.body || '');
     setHeaders(item.headers?.length > 0 ? item.headers.map(h => ({ ...h })) : [{ key: '', value: '', enabled: true }]);
@@ -140,14 +166,43 @@ export default function Collection(props) {
     setContentType(item.contentType || 'auto');
     setFile(item.bodyFile || null);
     setFormFields(item.bodyForm?.length > 0 ? item.bodyForm.map(f => ({ ...f })) : [{ key: '', value: '', type: 'text', filePath: '', fileName: '', fileSize: 0 }]);
-    setResponsePaneVisible(true);
+    setVariables(item.variables?.length > 0 ? item.variables.map(v => ({ ...v })) : [{ key: '', value: '' }]);
+
+    // Restore stashed stream if switching back to the connected request
+    if (stashedStream && stashedStream.requestId === id) {
+      setStreamConnectionId(stashedStream.connectionId);
+      setStreamType(stashedStream.type);
+      setStreamConnected(stashedStream.connected);
+      setStreamStatus(stashedStream.status);
+      setStreamTime(stashedStream.time);
+      setStreamMessages(stashedStream.messages);
+      setResponse(stashedStream.response);
+      wsStartTime = stashedStream.wsStartTime;
+      wsTimeline = stashedStream.wsTimeline;
+      wsResponseHeaders = stashedStream.wsResponseHeaders;
+      stashedStream = null;
+      setDefaultTab('messages');
+      setResponsePaneVisible(true);
+      return;
+    }
+
+    // Clear stream state for non-stream requests
+    setStreamMessages([]);
+    setStreamStatus('');
+    setStreamType(null);
+    setStreamConnected(false);
 
     const lastResp = await window.api.getLatestResponse(id);
-    if (lastResp) setResponse(lastResp);
-    else { setResponse(null); setSending(false); }
+    setResponse(lastResp || null);
+    if (lastResp?.messages?.length > 0) {
+      setStreamMessages(lastResp.messages);
+    }
+    setDefaultTab(lastResp?.requestMethod === 'WS' ? 'messages' : 'body');
+    setResponsePaneVisible(true);
   }
 
   function clearEditor() {
+    setProtocol('http');
     setMethod('GET');
     setUrl('');
     setBody('');
@@ -157,6 +212,7 @@ export default function Collection(props) {
     setContentType('auto');
     setFile(null);
     setFormFields([{ key: '', value: '', type: 'text', filePath: '', fileName: '', fileSize: 0 }]);
+    setVariables([{ key: '', value: '' }]);
     setResponse(null);
     setSending(false);
   }
@@ -409,6 +465,7 @@ export default function Collection(props) {
     if (!input) return;
     const parsed = parseCurl(input);
     if (!parsed) return;
+    setProtocol('http');
     setMethod(parsed.method);
     setUrl(parsed.url);
     if (parsed.body) setBody(parsed.body);
@@ -476,11 +533,52 @@ export default function Collection(props) {
     setStreamMessages(prev => [...prev, { dir, type, body: msgBody, time, isError }]);
   }
 
+  function appendWsTimeline(type, text) {
+    const t = wsStartTime ? Date.now() - wsStartTime : 0;
+    wsTimeline.push({ t, type, text });
+    setResponse(prev => prev ? { ...prev, timeline: [...wsTimeline], time: t } : prev);
+  }
+
+  function stashAppendMessage(dir, type, body, isError = false) {
+    if (!stashedStream) return;
+    const time = new Date().toLocaleTimeString();
+    stashedStream.messages = [...stashedStream.messages, { dir, type, body, time, isError }];
+  }
+  function stashAppendTimeline(type, text) {
+    if (!stashedStream) return;
+    const t = stashedStream.wsStartTime ? Date.now() - stashedStream.wsStartTime : 0;
+    stashedStream.wsTimeline.push({ t, type, text });
+  }
+
   async function disconnectStream() {
+    // Disconnect stashed stream if any
+    if (stashedStream) {
+      await window.api.wsDisconnect(stashedStream.connectionId);
+      stashAppendTimeline('info', 'Disconnected by user');
+      const duration = stashedStream.wsStartTime ? Date.now() - stashedStream.wsStartTime : 0;
+      await window.api.saveResponse({
+        request_id: stashedStream.requestId, collection_id: props.id,
+        status: 200, status_text: 'OK',
+        response_headers: stashedStream.wsResponseHeaders || {}, response_body: null,
+        timeline: stashedStream.wsTimeline, time_ms: duration,
+        request_method: 'WS', request_url: '',
+        request_headers: [], request_body: '',
+        content_type: '', error: null,
+        messages: stashedStream.messages,
+      });
+      stashedStream = null;
+    }
+
     const connId = streamConnectionId();
     if (connId) {
+      const wasWs = streamType() === 'ws';
       if (streamType() === 'sse') await window.api.sseDisconnect(connId);
-      else if (streamType() === 'ws') await window.api.wsDisconnect(connId);
+      else if (wasWs) await window.api.wsDisconnect(connId);
+      if (wasWs) {
+        appendWsTimeline('info', 'Disconnected by user');
+        await saveWsHistory();
+      }
+      streamRequestId = null;
       setStreamConnectionId(null);
       setStreamType(null);
       setStreamConnected(false);
@@ -517,29 +615,112 @@ export default function Collection(props) {
       setStreamConnectionId(null); setStreamType(null); setStreamConnected(false);
     });
 
+    function isActiveConn(id) { return id === streamConnectionId(); }
+    function isStashedConn(id) { return stashedStream && id === stashedStream.connectionId; }
+
     window.api.onWsOpen((d) => {
-      if (d.id !== streamConnectionId()) return;
+      if (isStashedConn(d.id)) {
+        stashedStream.connected = true;
+        stashedStream.status = '<span class="stream-status"><span class="dot connected"></span> Connected</span>';
+        stashedStream.wsResponseHeaders = d.headers || {};
+        stashAppendTimeline('res-status', 'WebSocket connected — 101 Switching Protocols');
+        stashAppendMessage('sys', 'system', 'WebSocket connected');
+        stashedStream.response = { ...stashedStream.response, status: 200, statusText: 'OK', headers: stashedStream.wsResponseHeaders };
+        return;
+      }
+      if (!isActiveConn(d.id)) return;
       setStreamStatus(`<span class="stream-status"><span class="dot connected"></span> Connected</span>`);
       setStreamConnected(true);
+      wsResponseHeaders = d.headers || {};
+      appendWsTimeline('res-status', 'WebSocket connected — 101 Switching Protocols');
+      setResponse(prev => ({ ...prev, status: 200, statusText: 'OK', headers: wsResponseHeaders }));
       appendStreamMessage('sys', 'system', 'WebSocket connected');
     });
 
     window.api.onWsMessage((d) => {
-      if (d.id !== streamConnectionId()) return;
-      appendStreamMessage('in', d.isBinary ? 'binary' : 'text', d.data);
+      if (isStashedConn(d.id)) {
+        const label = d.isBinary ? 'binary' : 'text';
+        stashAppendTimeline('res-header', `← ${label} (${d.data.length} bytes)`);
+        stashAppendMessage('in', label, d.data);
+        return;
+      }
+      if (!isActiveConn(d.id)) return;
+      const label = d.isBinary ? 'binary' : 'text';
+      appendWsTimeline('res-header', `← ${label} (${d.data.length} bytes)`);
+      appendStreamMessage('in', label, d.data);
+    });
+
+    window.api.onWsPing((d) => {
+      if (isStashedConn(d.id)) { stashAppendTimeline('info', 'Ping received'); stashAppendMessage('sys', 'ping', 'Ping'); return; }
+      if (!isActiveConn(d.id)) return;
+      appendWsTimeline('info', 'Ping received');
+      appendStreamMessage('sys', 'ping', 'Ping');
+    });
+
+    window.api.onWsPong((d) => {
+      const label = d.auto ? 'Pong sent (auto-reply)' : 'Pong received';
+      if (isStashedConn(d.id)) { stashAppendTimeline('info', label); stashAppendMessage('sys', 'pong', label); return; }
+      if (!isActiveConn(d.id)) return;
+      appendWsTimeline('info', label);
+      appendStreamMessage('sys', 'pong', label);
     });
 
     window.api.onWsClose((d) => {
-      if (d.id !== streamConnectionId()) return;
-      appendStreamMessage('sys', 'system', `Connection closed (code: ${d.code}${d.reason ? ', reason: ' + d.reason : ''})`);
+      if (isStashedConn(d.id)) {
+        const closeInfo = d.code ? `code: ${d.code}${d.reason ? ', reason: ' + d.reason : ''}` : 'no status';
+        stashAppendTimeline('info', `Connection closed (${closeInfo})`);
+        stashAppendMessage('sys', 'system', `Connection closed (${closeInfo})`);
+        stashedStream.connected = false;
+        stashedStream.status = '<span class="stream-status"><span class="dot disconnected"></span> Closed</span>';
+        // Save history for stashed connection
+        const duration = stashedStream.wsStartTime ? Date.now() - stashedStream.wsStartTime : 0;
+        window.api.saveResponse({
+          request_id: stashedStream.requestId, collection_id: props.id,
+          status: 200, status_text: 'OK',
+          response_headers: stashedStream.wsResponseHeaders, response_body: null,
+          timeline: stashedStream.wsTimeline, time_ms: duration,
+          request_method: 'WS', request_url: '',
+          request_headers: [], request_body: '',
+          content_type: '', error: null,
+          messages: stashedStream.messages,
+        });
+        stashedStream = null;
+        return;
+      }
+      if (!isActiveConn(d.id)) return;
+      const closeInfo = d.code ? `code: ${d.code}${d.reason ? ', reason: ' + d.reason : ''}` : 'no status';
+      appendWsTimeline('info', `Connection closed (${closeInfo})`);
+      appendStreamMessage('sys', 'system', `Connection closed (${closeInfo})`);
       setStreamStatus(`<span class="stream-status"><span class="dot disconnected"></span> Closed</span>`);
+      saveWsHistory();
       setStreamConnectionId(null); setStreamType(null); setStreamConnected(false);
     });
 
     window.api.onWsError((d) => {
-      if (d.id !== streamConnectionId()) return;
+      if (isStashedConn(d.id)) {
+        stashAppendTimeline('error', d.error);
+        stashAppendMessage('sys', 'error', d.error, true);
+        stashedStream.connected = false;
+        stashedStream.status = '<span class="stream-status"><span class="dot disconnected"></span> Error</span>';
+        const duration = stashedStream.wsStartTime ? Date.now() - stashedStream.wsStartTime : 0;
+        window.api.saveResponse({
+          request_id: stashedStream.requestId, collection_id: props.id,
+          status: null, status_text: null,
+          response_headers: stashedStream.wsResponseHeaders, response_body: null,
+          timeline: stashedStream.wsTimeline, time_ms: duration,
+          request_method: 'WS', request_url: '',
+          request_headers: [], request_body: '',
+          content_type: '', error: d.error,
+          messages: stashedStream.messages,
+        });
+        stashedStream = null;
+        return;
+      }
+      if (!isActiveConn(d.id)) return;
+      appendWsTimeline('error', d.error);
       appendStreamMessage('sys', 'error', d.error, true);
       setStreamStatus(`<span class="stream-status"><span class="dot disconnected"></span> Error</span>`);
+      saveWsHistory(d.error);
       setStreamConnectionId(null); setStreamType(null); setStreamConnected(false);
     });
   });
@@ -557,17 +738,12 @@ export default function Collection(props) {
   }
 
   async function sendRequest() {
-    let m = method();
+    const m = protocol() === 'ws' ? 'WS' : method();
     const rawUrl = url().trim();
     if (!rawUrl) return;
 
     const vars = getVariables();
     const u = buildUrlWithParams(resolveVariables(rawUrl, vars), params());
-
-    if (m !== 'WS' && (u.startsWith('ws://') || u.startsWith('wss://'))) {
-      m = 'WS';
-      setMethod('WS');
-    }
 
     if (streamConnectionId()) await disconnectStream();
     await ensureActiveRequest(m, u);
@@ -631,6 +807,25 @@ export default function Collection(props) {
     setResponse(result);
   }
 
+  let wsResponseHeaders = {};
+
+  async function saveWsHistory(error = null) {
+    if (!activeRequestId()) return;
+    const duration = wsStartTime ? Date.now() - wsStartTime : 0;
+    await window.api.saveResponse({
+      request_id: activeRequestId(), collection_id: props.id,
+      status: error ? null : 200, status_text: error ? null : 'OK',
+      response_headers: wsResponseHeaders, response_body: null,
+      timeline: wsTimeline, time_ms: duration,
+      request_method: 'WS', request_url: url(),
+      request_headers: headers().filter(h => h.key), request_body: '',
+      content_type: '', error: error || null,
+      messages: streamMessages(),
+    });
+    // Trigger history reload in ResponsePane
+    setResponse(prev => prev ? { ...prev } : prev);
+  }
+
   async function startWs(u) {
     let wsUrl = u;
     if (wsUrl.startsWith('http://')) wsUrl = 'ws://' + wsUrl.slice(7);
@@ -638,14 +833,19 @@ export default function Collection(props) {
     else if (!wsUrl.startsWith('ws://') && !wsUrl.startsWith('wss://')) wsUrl = 'ws://' + wsUrl;
 
     const connId = generateId();
+    wsStartTime = Date.now();
+    wsTimeline = [];
+    streamRequestId = activeRequestId();
+    stashedStream = null;
     setStreamConnectionId(connId);
     setStreamType('ws');
     setStreamMessages([]);
     setStreamStatus('<span class="stream-status"><span class="dot connected"></span> Connecting...</span>');
     setStreamConnected(false);
     setSending(false);
-    setResponse({ headers: {}, timeline: [] });
+    setResponse({ status: null, statusText: '', headers: {}, timeline: [] });
 
+    appendWsTimeline('info', `Connecting to ${wsUrl}`);
     appendStreamMessage('sys', 'system', `Connecting to ${wsUrl}...`);
 
     await window.api.wsConnect({
@@ -656,9 +856,11 @@ export default function Collection(props) {
 
   async function wsSend() {
     const msg = wsInput();
-    if (!msg || !streamConnectionId() || streamType() !== 'ws') return;
-    await window.api.wsSend({ id: streamConnectionId(), data: msg });
-    appendStreamMessage('out', 'sent', msg);
+    const ft = wsFrameType();
+    if ((!msg && ft !== 'ping' && ft !== 'pong') || !streamConnectionId() || streamType() !== 'ws') return;
+    await window.api.wsSend({ id: streamConnectionId(), data: msg, frameType: ft });
+    appendWsTimeline('req-header', `→ ${ft} (${msg.length} bytes)`);
+    appendStreamMessage('out', ft, msg || `[${ft}]`);
     setWsInput('');
   }
 
@@ -752,16 +954,21 @@ export default function Collection(props) {
           <div class="resize-handle resize-handle-sidebar" onMouseDown={initSidebarResize} />
           <div class="main-panel">
             <div class="request-bar">
-              <select class="method-select" value={method()} onChange={(e) => { setMethod(e.target.value); scheduleAutoSave(); }}>
-                <option>GET</option>
-                <option>POST</option>
-                <option>PUT</option>
-                <option>PATCH</option>
-                <option>DELETE</option>
-                <option>HEAD</option>
-                <option>OPTIONS</option>
-                <option>WS</option>
+              <select class="protocol-select" value={protocol()} onChange={(e) => { setProtocol(e.target.value); scheduleAutoSave(); }}>
+                <option value="http">{t.collection.protocols.http}</option>
+                <option value="ws">{t.collection.protocols.ws}</option>
               </select>
+              {protocol() === 'http' && (
+                <select class="method-select" value={method()} onChange={(e) => { setMethod(e.target.value); scheduleAutoSave(); }}>
+                  <option>GET</option>
+                  <option>POST</option>
+                  <option>PUT</option>
+                  <option>PATCH</option>
+                  <option>DELETE</option>
+                  <option>HEAD</option>
+                  <option>OPTIONS</option>
+                </select>
+              )}
               <input
                 type="text"
                 class="url-input"
@@ -825,13 +1032,16 @@ export default function Collection(props) {
                 response={response()}
                 sending={sending()}
                 activeRequestId={activeRequestId()}
+                defaultTab={defaultTab()}
                 streamStatus={streamStatus()}
                 streamTime={streamTime()}
                 streamType={streamType()}
                 streamConnected={streamConnected()}
                 streamMessages={streamMessages()}
                 wsInput={wsInput()}
+                wsFrameType={wsFrameType()}
                 onWsInputChange={setWsInput}
+                onWsFrameTypeChange={setWsFrameType}
                 onWsSend={wsSend}
                 onShowResponse={setResponse}
               />

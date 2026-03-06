@@ -3,6 +3,7 @@ import Modal, { showConfirm, showPrompt } from '../components/Modal';
 import { formatLastUsed } from '../helpers';
 import t from '../locale';
 import Icon from '../components/Icon';
+import { applyTheme, getStoredThemeId, getThemeList } from '../themes';
 
 export default function Landing(props) {
   const [collections, setCollections] = createSignal([]);
@@ -10,6 +11,7 @@ export default function Landing(props) {
   const [newName, setNewName] = createSignal('');
 
   let dragCollectionId = null;
+  let dragCategoryId = null;
   let nameInputRef;
 
   async function load() {
@@ -123,6 +125,57 @@ export default function Landing(props) {
     load();
   }
 
+  // Category reorder drag and drop
+  function onCategoryDragStart(e, catId) {
+    dragCategoryId = catId;
+    dragCollectionId = null;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', catId);
+    e.currentTarget.closest('.landing-category').classList.add('dragging');
+  }
+
+  function onCategoryDragEnd(e) {
+    e.currentTarget.closest('.landing-category')?.classList.remove('dragging');
+    dragCategoryId = null;
+  }
+
+  function onCategorySectionDragOver(e) {
+    if (!dragCategoryId) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const section = e.currentTarget;
+    section.classList.remove('kv-drag-above', 'kv-drag-below');
+    const rect = section.getBoundingClientRect();
+    const mid = rect.top + rect.height / 2;
+    section.classList.add(e.clientY < mid ? 'kv-drag-above' : 'kv-drag-below');
+  }
+
+  function onCategorySectionDragLeave(e) {
+    e.currentTarget.classList.remove('kv-drag-above', 'kv-drag-below');
+  }
+
+  async function onCategorySectionDrop(e, targetCatId) {
+    e.preventDefault();
+    e.currentTarget.classList.remove('kv-drag-above', 'kv-drag-below');
+    if (!dragCategoryId || dragCategoryId === targetCatId) return;
+    const cats = categories();
+    const fromIdx = cats.findIndex(c => c.id === dragCategoryId);
+    let toIdx = cats.findIndex(c => c.id === targetCatId);
+    if (fromIdx === -1 || toIdx === -1) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const mid = rect.top + rect.height / 2;
+    if (e.clientY >= mid && fromIdx < toIdx) { /* already correct */ }
+    else if (e.clientY >= mid && fromIdx > toIdx) toIdx += 1;
+    else if (e.clientY < mid && fromIdx > toIdx) { /* already correct */ }
+    else if (e.clientY < mid && fromIdx < toIdx) toIdx -= 1;
+    const reordered = [...cats];
+    const [moved] = reordered.splice(fromIdx, 1);
+    reordered.splice(toIdx, 0, moved);
+    setCategories(reordered);
+    await window.api.reorderCategories(reordered.map(c => c.id));
+    dragCategoryId = null;
+  }
+
   function uncategorizedCollections() {
     return collections().filter(c => !c.category_id).sort((a, b) => b.pinned - a.pinned);
   }
@@ -180,11 +233,18 @@ export default function Landing(props) {
           {(cat) => (
             <div
               class="landing-section landing-category"
-              onDragOver={onCategoryDragOver}
-              onDragLeave={onCategoryDragLeave}
-              onDrop={(e) => onCategoryDrop(e, cat.id)}
+              onDragOver={(e) => { onCategoryDragOver(e); onCategorySectionDragOver(e); }}
+              onDragLeave={(e) => { onCategoryDragLeave(e); onCategorySectionDragLeave(e); }}
+              onDrop={(e) => { onCategoryDrop(e, cat.id); onCategorySectionDrop(e, cat.id); }}
             >
               <div class="landing-section-header category-header" onClick={() => toggleCategoryCollapse(cat.id, cat.collapsed)}>
+                <span
+                  class="category-drag-handle"
+                  draggable="true"
+                  onDragStart={(e) => onCategoryDragStart(e, cat.id)}
+                  onDragEnd={onCategoryDragEnd}
+                  onClick={(e) => e.stopPropagation()}
+                ><Icon name="fa-solid fa-grip-vertical" /></span>
                 <Icon name={cat.collapsed ? 'fa-solid fa-caret-right' : 'fa-solid fa-caret-down'} />
                 <span class="category-name">{cat.name}</span>
                 <div class="category-actions">
@@ -225,6 +285,17 @@ export default function Landing(props) {
             </div>
           </div>
         </Show>
+      </div>
+      <div class="theme-selector">
+        <Icon name="fa-solid fa-palette" />
+        <For each={getThemeList()}>
+          {(theme) => (
+            <button
+              class={`btn btn-ghost btn-sm ${getStoredThemeId() === theme.id ? 'active' : ''}`}
+              onClick={() => { applyTheme(theme.id); load(); }}
+            >{theme.name}</button>
+          )}
+        </For>
       </div>
       <Modal />
     </div>

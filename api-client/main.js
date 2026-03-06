@@ -1,7 +1,30 @@
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
+const BASE62 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+function generateKsuid() {
+  const ts = Math.floor(Date.now() / 1000);
+  const bytes = Buffer.alloc(20);
+  bytes[0] = (ts >> 24) & 0xff;
+  bytes[1] = (ts >> 16) & 0xff;
+  bytes[2] = (ts >> 8) & 0xff;
+  bytes[3] = ts & 0xff;
+  crypto.randomFillSync(bytes, 4);
+  const digits = [];
+  const num = Array.from(bytes);
+  while (num.some(b => b > 0)) {
+    let rem = 0;
+    for (let i = 0; i < num.length; i++) {
+      const val = rem * 256 + num[i];
+      num[i] = Math.floor(val / 62);
+      rem = val % 62;
+    }
+    digits.push(BASE62[rem]);
+  }
+  while (digits.length < 27) digits.push('0');
+  return digits.reverse().join('');
+}
 const Database = require('better-sqlite3');
 const WebSocket = require('ws');
 
@@ -76,6 +99,12 @@ function initDb() {
   }
   if (!cols.includes('variables')) {
     db.exec("ALTER TABLE collections ADD COLUMN variables TEXT NOT NULL DEFAULT '[]'");
+  }
+
+  // Migrate: add messages column to responses
+  const resCols = db.prepare("PRAGMA table_info(responses)").all().map(c => c.name);
+  if (!resCols.includes('messages')) {
+    db.exec("ALTER TABLE responses ADD COLUMN messages TEXT DEFAULT '[]'");
   }
 
   db.exec(`
@@ -163,19 +192,20 @@ function deleteCollection(id) {
 
 function saveResponse(data) {
   // Clear response data from previous entries to save space, keep only metadata for history
-  db.prepare(`UPDATE responses SET response_headers = '{}', response_body = NULL, timeline = '[]'
+  db.prepare(`UPDATE responses SET response_headers = '{}', response_body = NULL, timeline = '[]', messages = '[]'
     WHERE request_id = ?`).run(data.request_id);
   const result = db.prepare(`
     INSERT INTO responses (request_id, collection_id, status, status_text,
       response_headers, response_body, timeline, time_ms, request_method,
-      request_url, request_headers, request_body, content_type, error)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      request_url, request_headers, request_body, content_type, error, messages)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     data.request_id, data.collection_id, data.status || null, data.status_text || null,
     JSON.stringify(data.response_headers || {}), data.response_body || null,
     JSON.stringify(data.timeline || []), data.time_ms, data.request_method,
     data.request_url, JSON.stringify(data.request_headers || []),
-    data.request_body || '', data.content_type || '', data.error || null
+    data.request_body || '', data.content_type || '', data.error || null,
+    JSON.stringify(data.messages || [])
   );
   return Number(result.lastInsertRowid);
 }
@@ -224,6 +254,7 @@ function formatResponseRow(row) {
     requestUrl: row.request_url,
     requestHeaders: JSON.parse(row.request_headers || '[]'),
     requestBody: row.request_body,
+    messages: JSON.parse(row.messages || '[]'),
     createdAt: row.created_at,
   };
 }
@@ -259,7 +290,7 @@ app.on('will-quit', () => { if (db) { db.close(); db = null; } });
 ipcMain.handle('collections:list', () => loadCollections());
 
 ipcMain.handle('collections:create', (_, name) => {
-  const collection = { id: uuidv4(), name, items: [] };
+  const collection = { id: generateKsuid(), name, items: [] };
   saveCollection(collection);
   return collection;
 });
@@ -290,7 +321,7 @@ ipcMain.handle('collections:setCategory', (_, id, categoryId) => {
 ipcMain.handle('categories:list', () => loadCategories());
 
 ipcMain.handle('categories:create', (_, name) => {
-  const id = uuidv4();
+  const id = generateKsuid();
   saveCategory({ id, name });
   return { id, name, sort_order: 0, collapsed: 0 };
 });
@@ -307,6 +338,15 @@ ipcMain.handle('categories:delete', (_, id) => {
 
 ipcMain.handle('categories:toggleCollapse', (_, id, collapsed) => {
   db.prepare('UPDATE categories SET collapsed = ? WHERE id = ?').run(collapsed ? 1 : 0, id);
+  return true;
+});
+
+ipcMain.handle('categories:reorder', (_, orderedIds) => {
+  const stmt = db.prepare('UPDATE categories SET sort_order = ? WHERE id = ?');
+  const tx = db.transaction(() => {
+    orderedIds.forEach((id, i) => stmt.run(i, id));
+  });
+  tx();
   return true;
 });
 
@@ -353,7 +393,7 @@ ipcMain.handle('file:read', (_, filePath) => {
 // --- IPC: Send request ---
 
 function buildMultipartBody(fields) {
-  const boundary = '----FormBoundary' + uuidv4().replace(/-/g, '').slice(0, 16);
+  const boundary = '----FormBoundary' + generateKsuid().replace(/-/g, '').slice(0, 16);
   const parts = [];
   for (const f of fields) {
     if (f.type === 'file' && f.filePath) {
@@ -633,15 +673,34 @@ ipcMain.handle('ws:connect', (event, opts) => {
   }
 
   try {
-    const ws = new WebSocket(url, protocols || [], { headers: h, rejectUnauthorized: true });
+    const ws = new WebSocket(url, protocols || [], {
+      headers: h,
+      rejectUnauthorized: true,
+      perMessageDeflate: true,
+    });
 
-    ws.on('open', () => {
-      mainWindow.webContents.send('ws:open', { id });
+    ws.on('upgrade', (res) => {
+      const headers = {};
+      const raw = res.rawHeaders;
+      for (let i = 0; i < raw.length; i += 2) {
+        headers[raw[i].toLowerCase()] = raw[i + 1];
+      }
+      mainWindow.webContents.send('ws:open', { id, headers });
     });
 
     ws.on('message', (data, isBinary) => {
       const payload = isBinary ? `[Binary: ${data.length} bytes]` : data.toString('utf-8');
       mainWindow.webContents.send('ws:message', { id, data: payload, isBinary, time: Date.now() });
+    });
+
+    ws.on('ping', (data) => {
+      // ws library auto-replies with pong
+      mainWindow.webContents.send('ws:ping', { id, data: data.toString() });
+      mainWindow.webContents.send('ws:pong', { id, data: data.toString(), auto: true });
+    });
+
+    ws.on('pong', (data) => {
+      mainWindow.webContents.send('ws:pong', { id, data: data.toString() });
     });
 
     ws.on('close', (code, reason) => {
@@ -661,13 +720,19 @@ ipcMain.handle('ws:connect', (event, opts) => {
 });
 
 ipcMain.handle('ws:send', (_, opts) => {
-  const { id, data } = opts;
+  const { id, data, frameType } = opts;
   const ws = activeWsConnections.get(id);
-  if (ws && ws.readyState === WebSocket.OPEN) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return false;
+  if (frameType === 'ping') {
+    ws.ping(data || '');
+  } else if (frameType === 'pong') {
+    ws.pong(data || '');
+  } else if (frameType === 'binary') {
+    ws.send(Buffer.from(data, 'utf-8'));
+  } else {
     ws.send(data);
-    return true;
   }
-  return false;
+  return true;
 });
 
 ipcMain.handle('ws:disconnect', (_, id) => {

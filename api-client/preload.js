@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('api', {
   renameCategory: (id, name) => ipcRenderer.invoke('categories:rename', id, name),
   deleteCategory: (id) => ipcRenderer.invoke('categories:delete', id),
   toggleCategoryCollapse: (id, collapsed) => ipcRenderer.invoke('categories:toggleCollapse', id, collapsed),
+  reorderCategories: (orderedIds) => ipcRenderer.invoke('categories:reorder', orderedIds),
   loadCollection: (id) => ipcRenderer.invoke('collection:load', id),
   saveCollection: (collection) => ipcRenderer.invoke('collection:save', collection),
   sendRequest: (opts) => ipcRenderer.invoke('request:send', opts),
@@ -37,4 +38,6 @@ contextBridge.exposeInMainWorld('api', {
   onWsMessage: (cb) => ipcRenderer.on('ws:message', (_, d) => cb(d)),
   onWsError: (cb) => ipcRenderer.on('ws:error', (_, d) => cb(d)),
   onWsClose: (cb) => ipcRenderer.on('ws:close', (_, d) => cb(d)),
+  onWsPing: (cb) => ipcRenderer.on('ws:ping', (_, d) => cb(d)),
+  onWsPong: (cb) => ipcRenderer.on('ws:pong', (_, d) => cb(d)),
 });
