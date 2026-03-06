@@ -1,4 +1,4 @@
-import { createSignal, Show, For } from 'solid-js';
+import { createSignal, createEffect, Show, For } from 'solid-js';
 import t from '../locale';
 import Icon from './Icon';
 import { applyTheme, getStoredThemeId, getThemeList } from '../themes';
@@ -61,6 +61,18 @@ export default function Modal() {
   let inputRef;
 
   const [selectedTheme, setSelectedTheme] = createSignal(getStoredThemeId());
+  const [uiFontSize, setUiFontSize] = createSignal(12);
+  const [editorFontSize, setEditorFontSize] = createSignal(13);
+
+  // Load font size settings from DB when settings modal opens
+  createEffect(() => {
+    if (modalVisible() && modalType() === 'settings') {
+      window.api.getAllSettings().then((s) => {
+        if (s.uiFontSize) setUiFontSize(parseInt(s.uiFontSize));
+        if (s.editorFontSize) setEditorFontSize(parseInt(s.editorFontSize));
+      });
+    }
+  });
 
   function onKeyDown(e) {
     if (e.key === 'Enter' && modalType() !== 'textarea' && modalType() !== 'settings') close(modalType() === 'prompt' ? modalValue() : true);
@@ -109,6 +121,34 @@ export default function Modal() {
                   {(theme) => <option value={theme.id}>{theme.name}</option>}
                 </For>
               </select>
+            </div>
+            <div class="settings-row">
+              <div class="settings-section">
+                <div class="settings-label">{t.modal.uiFontSizeLabel}</div>
+                <select class="settings-select" value={uiFontSize()} onChange={(e) => {
+                  const v = e.target.value;
+                  setUiFontSize(parseInt(v));
+                  window.api.setSetting('uiFontSize', v);
+                  document.documentElement.style.setProperty('--ui-font-size', v + 'px');
+                }}>
+                  <For each={[10, 11, 12, 13, 14, 15, 16]}>
+                    {(s) => <option value={s}>{s}px</option>}
+                  </For>
+                </select>
+              </div>
+              <div class="settings-section">
+                <div class="settings-label">{t.modal.editorFontSizeLabel}</div>
+                <select class="settings-select" value={editorFontSize()} onChange={(e) => {
+                  const v = e.target.value;
+                  setEditorFontSize(parseInt(v));
+                  window.api.setSetting('editorFontSize', v);
+                  document.documentElement.style.setProperty('--editor-font-size', v + 'px');
+                }}>
+                  <For each={[10, 11, 12, 13, 14, 15, 16]}>
+                    {(s) => <option value={s}>{s}px</option>}
+                  </For>
+                </select>
+              </div>
             </div>
           </Show>
           <Show when={modalType() !== 'settings'}>

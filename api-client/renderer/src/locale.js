@@ -80,10 +80,10 @@ const strings = {
       variables: 'Variables',
       body: 'Body',
     },
-    paramNamePlaceholder: 'Parameter name',
-    headerNamePlaceholder: 'Header name',
+    paramNamePlaceholder: 'parameter name',
+    headerNamePlaceholder: 'header name',
     variableNamePlaceholder: 'Variable name',
-    valuePlaceholder: 'Value',
+    valuePlaceholder: 'value',
     namePlaceholder: 'Name',
     addParameterButton: 'Add Parameter',
     addHeaderButton: 'Add Header',
@@ -113,7 +113,6 @@ const strings = {
       file: 'File',
     },
     urlPreview: {
-      label: 'URL Preview',
       noUrl: 'No URL',
       copyButton: 'Copy',
       copiedButton: 'Copied',
@@ -187,6 +186,8 @@ const strings = {
     curlPlaceholder: 'Paste curl command here...',
     settingsTitle: 'Settings',
     themeLabel: 'Theme',
+    uiFontSizeLabel: 'UI Font Size',
+    editorFontSizeLabel: 'Editor Font Size',
   },
 };
 

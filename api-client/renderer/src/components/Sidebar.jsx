@@ -87,6 +87,7 @@ export default function Sidebar(props) {
         <div class="back-row">
           <button class="back-btn" onClick={props.onBack} title={t.sidebar.backTitle}><Icon name="fa-solid fa-arrow-left" /></button>
           <span class="collection-name" onClick={props.onRenameCollection} title={t.sidebar.renameTitle}>{props.name}</span>
+          <button class="back-btn sidebar-close-btn" onClick={props.onToggleSidebar} title="Close sidebar"><Icon name="fa-solid fa-xmark" /></button>
         </div>
         <div class="sidebar-actions">
           <button class="btn btn-primary btn-sm" onClick={props.onAddRequest}><Icon name="fa-solid fa-plus" /> {t.sidebar.addRequestButton}</button>
