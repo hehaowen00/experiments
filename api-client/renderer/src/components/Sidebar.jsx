@@ -91,6 +91,7 @@ export default function Sidebar(props) {
         <div class="sidebar-actions">
           <button class="btn btn-primary btn-sm" onClick={props.onAddRequest}><Icon name="fa-solid fa-plus" /> {t.sidebar.addRequestButton}</button>
           <button class="btn btn-ghost btn-sm" onClick={props.onAddFolder}><Icon name="fa-solid fa-folder-plus" /> {t.sidebar.addFolderButton}</button>
+          <button class="btn btn-ghost btn-sm" onClick={props.onImportRequests}><Icon name="fa-solid fa-file-import" /> {t.sidebar.importButton}</button>
         </div>
       </div>
       <div class="tree">

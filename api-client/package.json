@@ -6,14 +6,42 @@
   "scripts": {
     "build": "cd renderer && npx vite build",
     "start": "cd renderer && npx vite build && cd .. && electron .",
-    "dev": "cd renderer && npx vite"
+    "dev": "cd renderer && npx vite",
+    "dist": "npm run build && electron-builder",
+    "dist:mac": "npm run build && electron-builder --mac",
+    "dist:win": "npm run build && electron-builder --win",
+    "dist:linux": "npm run build && electron-builder --linux"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
+  "build": {
+    "appId": "com.api-client.app",
+    "productName": "API Client",
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/dist/**/*",
+      "node_modules/**/*"
+    ],
+    "mac": {
+      "target": "dmg"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": "AppImage"
+    },
+    "nsis": {
+      "oneClick": true,
+      "allowToChangeInstallationDirectory": false
+    }
+  },
   "type": "commonjs",
   "devDependencies": {
-    "electron": "^40.7.0"
+    "electron": "^40.7.0",
+    "electron-builder": "^26.8.1"
   },
   "dependencies": {
     "@fortawesome/fontawesome-free": "^7.2.0",

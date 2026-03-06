@@ -21,6 +21,8 @@ contextBridge.exposeInMainWorld('api', {
   getResponseHistory: (requestId) => ipcRenderer.invoke('response:history', requestId),
   loadResponse: (id) => ipcRenderer.invoke('response:load', id),
   pickFile: () => ipcRenderer.invoke('file:pick'),
+  importCollection: () => ipcRenderer.invoke('import:pick'),
+  importRequests: () => ipcRenderer.invoke('import:requests'),
   readFile: (path) => ipcRenderer.invoke('file:read', path),
 
   // SSE
