@@ -228,6 +228,18 @@ function wrapWithLineNumbers(contentEl, lineCount) {
 
 const timelineIcons = { 'info': '\u2022', 'req-header': '\u25B6', 'res-status': '\u25C0', 'res-header': '\u25C0', 'tls': '\u26BF', 'error': '\u2716' };
 
+function formatDuration(ms) {
+  if (ms < 1000) return `${ms}ms`;
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const rs = s % 60;
+  if (m < 60) return `${m}m ${rs}s`;
+  const h = Math.floor(m / 60);
+  const rm = m % 60;
+  return `${h}h ${rm}m`;
+}
+
 function parseCookies(headers) {
   if (!headers) return [];
   const raw = headers['set-cookie'];
@@ -262,6 +274,7 @@ export default function ResponsePane(props) {
   const [searchInfo, setSearchInfo] = createSignal('');
   const [searchResults, setSearchResults] = createSignal(null);
   const [history, setHistory] = createSignal([]);
+  const [messageFilter, setMessageFilter] = createSignal('');
 
   let bodyContainerRef;
   let searchResultsRef;
@@ -327,7 +340,12 @@ export default function ResponsePane(props) {
     const raw = bodyView() === 'raw';
     if (r && !r.error && r.body) {
       // Wait for DOM to be ready
-      queueMicrotask(() => renderBodyToContainer(r.body, r.contentType, raw));
+      queueMicrotask(() => {
+        renderBodyToContainer(r.body, r.contentType, raw);
+        if (searchVisible() && searchQuery()) {
+          queueMicrotask(() => executeSearch(searchQuery()));
+        }
+      });
     } else if (r && r.error) {
       queueMicrotask(() => {
         if (bodyContainerRef) {
@@ -515,12 +533,26 @@ export default function ResponsePane(props) {
   const r = () => props.response;
   const hasResponse = () => !!r();
   const isStreaming = () => !!props.streamStatus;
+  const isWs = () => props.streamType === 'ws' || r()?.requestMethod === 'WS';
+  const hasMessages = () => isWs() || isStreaming() || (props.streamMessages?.length > 0);
+
+  // Set tab from parent's default when it changes
+  createEffect(() => {
+    setActiveTab(props.defaultTab || 'body');
+  });
+
+  // Auto-switch to messages tab when WS connects
+  createEffect(() => {
+    if (props.streamType === 'ws') {
+      setActiveTab('messages');
+    }
+  });
 
   return (
     <div class="response-pane" style={{ display: props.visible ? 'flex' : 'none' }}>
       <div class="response-section">
         {/* Response meta */}
-        <Show when={hasResponse() || isStreaming()}>
+        <Show when={hasResponse() || isStreaming() || hasMessages()}>
           <div class="response-meta">
             <Show when={isStreaming()}>
               <span class="response-status" innerHTML={props.streamStatus} />
@@ -531,24 +563,28 @@ export default function ResponsePane(props) {
               </span>
             </Show>
             <span class="response-time">{r()?.time || props.streamTime ? `${r()?.time || props.streamTime}ms` : ''}</span>
-            <div class="response-meta-actions">
-              <div class="body-view-toggle">
-                <button class={`btn btn-ghost btn-sm ${bodyView() === 'pretty' ? 'active' : ''}`} onClick={() => { setBodyView('pretty'); setActiveTab('body'); }}>{t.responsePane.prettyButton}</button>
-                <button class={`btn btn-ghost btn-sm ${bodyView() === 'raw' ? 'active' : ''}`} onClick={() => { setBodyView('raw'); setActiveTab('body'); }}>{t.responsePane.rawButton}</button>
+            <Show when={!hasMessages()}>
+              <div class="response-meta-actions">
+                <div class="body-view-toggle">
+                  <button class={`btn btn-ghost btn-sm ${bodyView() === 'pretty' ? 'active' : ''}`} onClick={() => { setBodyView('pretty'); setActiveTab('body'); }}>{t.responsePane.prettyButton}</button>
+                  <button class={`btn btn-ghost btn-sm ${bodyView() === 'raw' ? 'active' : ''}`} onClick={() => { setBodyView('raw'); setActiveTab('body'); }}>{t.responsePane.rawButton}</button>
+                </div>
+                <Show when={bodyView() === 'raw' && hasResponse() && !r().error}>
+                  <button class="btn btn-ghost btn-sm" onClick={selectAllBody} title={t.responsePane.selectAllButton}>{t.responsePane.selectAllButton}</button>
+                </Show>
+                <button class="btn btn-ghost btn-sm" onClick={() => { openSearch(); setActiveTab('body'); }} title={`${t.responsePane.searchButton} (Cmd+F)`}><Icon name="fa-solid fa-magnifying-glass" /> {t.responsePane.searchButton}</button>
               </div>
-              <Show when={bodyView() === 'raw' && hasResponse() && !r().error}>
-                <button class="btn btn-ghost btn-sm" onClick={selectAllBody} title={t.responsePane.selectAllButton}>{t.responsePane.selectAllButton}</button>
-              </Show>
-              <button class="btn btn-ghost btn-sm" onClick={() => { openSearch(); setActiveTab('body'); }} title={`${t.responsePane.searchButton} (Cmd+F)`}><Icon name="fa-solid fa-magnifying-glass" /> {t.responsePane.searchButton}</button>
-            </div>
+            </Show>
           </div>
         </Show>
 
         {/* Tabs */}
-        <Show when={hasResponse() || isStreaming()}>
+        <Show when={hasResponse() || isStreaming() || hasMessages()}>
           <div class="response-tabs">
-            <button class={`section-tab ${activeTab() === 'body' ? 'active' : ''}`} onClick={() => setActiveTab('body')}>{t.responsePane.tabs.body}</button>
-            <Show when={isStreaming()}>
+            <Show when={!hasMessages()}>
+              <button class={`section-tab ${activeTab() === 'body' ? 'active' : ''}`} onClick={() => setActiveTab('body')}>{t.responsePane.tabs.body}</button>
+            </Show>
+            <Show when={hasMessages()}>
               <button class={`section-tab ${activeTab() === 'messages' ? 'active' : ''}`} onClick={() => setActiveTab('messages')}>{t.responsePane.tabs.messages}</button>
             </Show>
             <button class={`section-tab ${activeTab() === 'resp-headers' ? 'active' : ''}`} onClick={() => setActiveTab('resp-headers')}>{t.responsePane.tabs.headers}</button>
@@ -617,8 +653,25 @@ export default function ResponsePane(props) {
 
         {/* Messages tab (streaming) */}
         <div class="response-tab-content" id="restab-messages" style={{ display: activeTab() === 'messages' ? 'flex' : 'none' }}>
+          <div class="message-search-bar">
+            <Icon name="fa-solid fa-magnifying-glass" />
+            <input
+              type="text"
+              class="url-input search-input"
+              placeholder={t.responsePane.stream.filterPlaceholder}
+              value={messageFilter()}
+              onInput={(e) => setMessageFilter(e.target.value)}
+            />
+            <Show when={messageFilter()}>
+              <button class="btn btn-ghost btn-sm" onClick={() => setMessageFilter('')}><Icon name="fa-solid fa-xmark" /></button>
+            </Show>
+          </div>
           <div class="stream-log">
-            <For each={props.streamMessages || []}>
+            <For each={(props.streamMessages || []).filter(msg => {
+              const q = messageFilter().toLowerCase();
+              if (!q) return true;
+              return msg.body.toLowerCase().includes(q) || msg.type.toLowerCase().includes(q);
+            })}>
               {(msg) => (
                 <div class="stream-entry">
                   <span class={`stream-dir ${msg.dir}`}>{msg.dir === 'in' ? '\u25C0' : msg.dir === 'out' ? '\u25B6' : '\u2022'}</span>
@@ -631,6 +684,12 @@ export default function ResponsePane(props) {
           </div>
           <Show when={props.streamType === 'ws' && props.streamConnected}>
             <div class="stream-compose">
+              <select class="body-type-select" value={props.wsFrameType || 'text'} onChange={(e) => props.onWsFrameTypeChange(e.target.value)}>
+                <option value="text">{t.responsePane.stream.frameTypes.text}</option>
+                <option value="binary">{t.responsePane.stream.frameTypes.binary}</option>
+                <option value="ping">{t.responsePane.stream.frameTypes.ping}</option>
+                <option value="pong">{t.responsePane.stream.frameTypes.pong}</option>
+              </select>
               <input
                 type="text"
                 class="url-input"
@@ -698,7 +757,7 @@ export default function ResponsePane(props) {
               <For each={r()?.timeline || []}>
                 {(e) => (
                   <div class={`timeline-entry type-${e.type}`}>
-                    <span class="timeline-time">{e.t}ms</span>
+                    <span class="timeline-time">{formatDuration(e.t)}</span>
                     <span class="timeline-icon">{timelineIcons[e.type] || '\u2022'}</span>
                     <span class="timeline-text">{e.text}</span>
                   </div>
@@ -718,11 +777,13 @@ export default function ResponsePane(props) {
                 {(h) => {
                   const sc = h.error ? 'error' : (h.status < 300 ? 'ok' : h.status < 400 ? 'redirect' : 'error');
                   const label = h.error ? t.responsePane.error : `${h.status} ${h.status_text}`;
+                  const isWs = h.request_method === 'WS';
+                  const duration = isWs ? formatDuration(h.time_ms) : `${h.time_ms}ms`;
                   return (
                     <div class="history-item" onClick={() => loadHistoryResponse(h.id)}>
                       <span class={`history-status ${sc}`}>{label}</span>
                       <span class="history-method">{h.request_method}</span>
-                      <span class="history-time">{h.time_ms}ms</span>
+                      <span class="history-time">{duration}</span>
                       <span class="history-date">{new Date(h.created_at + 'Z').toLocaleString()}</span>
                     </div>
                   );

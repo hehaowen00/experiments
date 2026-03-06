@@ -1,5 +1,27 @@
+// KSUID: 4-byte timestamp (seconds since epoch) + 16-byte random, base62-encoded to 27 chars
+const BASE62 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
 export function generateId() {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  const ts = Math.floor(Date.now() / 1000);
+  const bytes = new Uint8Array(20);
+  bytes[0] = (ts >> 24) & 0xff;
+  bytes[1] = (ts >> 16) & 0xff;
+  bytes[2] = (ts >> 8) & 0xff;
+  bytes[3] = ts & 0xff;
+  crypto.getRandomValues(bytes.subarray(4));
+  // Convert to base62
+  const digits = [];
+  const num = Array.from(bytes);
+  while (num.some(b => b > 0)) {
+    let rem = 0;
+    for (let i = 0; i < num.length; i++) {
+      const val = rem * 256 + num[i];
+      num[i] = Math.floor(val / 62);
+      rem = val % 62;
+    }
+    digits.push(BASE62[rem]);
+  }
+  while (digits.length < 27) digits.push('0');
+  return digits.reverse().join('');
 }
 
 export function formatBytes(b) {

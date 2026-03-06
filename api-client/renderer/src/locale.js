@@ -55,6 +55,10 @@ const strings = {
     disconnectButton: 'Disconnect',
     disconnectedByUser: 'Disconnected by user',
     sendButton: 'Send',
+    protocols: {
+      http: 'HTTP',
+      ws: 'WS',
+    },
     importCurlModal: {
       title: 'Import from cURL',
     },
@@ -74,6 +78,8 @@ const strings = {
     namePlaceholder: 'Name',
     addParameterButton: 'Add Parameter',
     addHeaderButton: 'Add Header',
+    enableAllButton: 'Enable All',
+    disableAllButton: 'Disable All',
     addVariableButton: 'Add Variable',
     addFieldButton: 'Add Field',
     bodyTypes: {
@@ -154,6 +160,13 @@ const strings = {
     stream: {
       messagePlaceholder: 'Type a message...',
       sendButton: 'Send',
+      filterPlaceholder: 'Filter messages...',
+      frameTypes: {
+        text: 'Text',
+        binary: 'Binary',
+        ping: 'Ping',
+        pong: 'Pong',
+      },
     },
   },
 
