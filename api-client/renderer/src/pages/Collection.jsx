@@ -150,6 +150,7 @@ export default function Collection(props) {
 
     setResponse(null);
     setSending(false);
+    setDefaultTab(null);
     setActiveRequestId(id);
     const c = collection();
     const item = findItem(c.items, id);
@@ -640,28 +641,29 @@ export default function Collection(props) {
     window.api.onWsMessage((d) => {
       if (isStashedConn(d.id)) {
         const label = d.isBinary ? 'binary' : 'text';
-        stashAppendTimeline('res-header', `← ${label} (${d.data.length} bytes)`);
+        stashAppendTimeline('res-header', `${label} (${d.data.length} bytes)`);
         stashAppendMessage('in', label, d.data);
         return;
       }
       if (!isActiveConn(d.id)) return;
       const label = d.isBinary ? 'binary' : 'text';
-      appendWsTimeline('res-header', `← ${label} (${d.data.length} bytes)`);
+      appendWsTimeline('res-header', `${label} (${d.data.length} bytes)`);
       appendStreamMessage('in', label, d.data);
     });
 
     window.api.onWsPing((d) => {
-      if (isStashedConn(d.id)) { stashAppendTimeline('info', 'Ping received'); stashAppendMessage('sys', 'ping', 'Ping'); return; }
+      if (isStashedConn(d.id)) { stashAppendTimeline('res-header', 'ping'); stashAppendMessage('sys', 'ping', 'Ping'); return; }
       if (!isActiveConn(d.id)) return;
-      appendWsTimeline('info', 'Ping received');
+      appendWsTimeline('res-header', 'ping');
       appendStreamMessage('sys', 'ping', 'Ping');
     });
 
     window.api.onWsPong((d) => {
-      const label = d.auto ? 'Pong sent (auto-reply)' : 'Pong received';
-      if (isStashedConn(d.id)) { stashAppendTimeline('info', label); stashAppendMessage('sys', 'pong', label); return; }
+      const type = d.auto ? 'req-header' : 'res-header';
+      const label = d.auto ? 'pong (auto-reply)' : 'pong';
+      if (isStashedConn(d.id)) { stashAppendTimeline(type, label); stashAppendMessage('sys', 'pong', label); return; }
       if (!isActiveConn(d.id)) return;
-      appendWsTimeline('info', label);
+      appendWsTimeline(type, label);
       appendStreamMessage('sys', 'pong', label);
     });
 
@@ -859,7 +861,7 @@ export default function Collection(props) {
     const ft = wsFrameType();
     if ((!msg && ft !== 'ping' && ft !== 'pong') || !streamConnectionId() || streamType() !== 'ws') return;
     await window.api.wsSend({ id: streamConnectionId(), data: msg, frameType: ft });
-    appendWsTimeline('req-header', `→ ${ft} (${msg.length} bytes)`);
+    appendWsTimeline('req-header', `${ft} (${msg.length} bytes)`);
     appendStreamMessage('out', ft, msg || `[${ft}]`);
     setWsInput('');
   }

@@ -1,5 +1,7 @@
-import { createSignal, Show } from 'solid-js';
+import { createSignal, Show, For } from 'solid-js';
 import t from '../locale';
+import Icon from './Icon';
+import { applyTheme, getStoredThemeId, getThemeList } from '../themes';
 
 let modalResolve = null;
 const [modalVisible, setModalVisible] = createSignal(false);
@@ -40,6 +42,16 @@ export function showTextarea(title, placeholder = '', description = '') {
   });
 }
 
+export function showSettings() {
+  return new Promise((resolve) => {
+    modalResolve = resolve;
+    setModalTitle(t.modal.settingsTitle);
+    setModalDescription('');
+    setModalType('settings');
+    setModalVisible(true);
+  });
+}
+
 function close(result) {
   setModalVisible(false);
   if (modalResolve) { modalResolve(result); modalResolve = null; }
@@ -48,16 +60,23 @@ function close(result) {
 export default function Modal() {
   let inputRef;
 
+  const [selectedTheme, setSelectedTheme] = createSignal(getStoredThemeId());
+
   function onKeyDown(e) {
-    if (e.key === 'Enter' && modalType() !== 'textarea') close(modalType() === 'prompt' ? modalValue() : true);
-    if (e.key === 'Escape') close(modalType() === 'prompt' || modalType() === 'textarea' ? null : false);
+    if (e.key === 'Enter' && modalType() !== 'textarea' && modalType() !== 'settings') close(modalType() === 'prompt' ? modalValue() : true);
+    if (e.key === 'Escape') close(modalType() === 'prompt' || modalType() === 'textarea' ? null : modalType() === 'settings' ? null : false);
   }
 
   return (
     <Show when={modalVisible()}>
       <div class="modal-overlay visible" onKeyDown={onKeyDown}>
         <div class="modal">
-          <div class="modal-title">{modalTitle()}</div>
+          <div class="modal-title-row">
+            <div class="modal-title">{modalTitle()}</div>
+            <Show when={modalType() === 'settings'}>
+              <button class="btn btn-ghost btn-sm modal-close-btn" onClick={() => close(null)}><Icon name="fa-solid fa-xmark" /></button>
+            </Show>
+          </div>
           <Show when={modalDescription()}>
             <div class="modal-description">{modalDescription()}</div>
           </Show>
@@ -82,15 +101,27 @@ export default function Modal() {
               autofocus
             />
           </Show>
-          <div class="modal-buttons">
-            <button class="btn btn-ghost" onClick={() => close(modalType() === 'prompt' ? null : false)}>{t.modal.cancelButton}</button>
-            <Show when={modalType() === 'prompt' || modalType() === 'textarea'}>
-              <button class="btn btn-primary" onClick={() => close(modalValue())}>{t.modal.okButton}</button>
-            </Show>
-            <Show when={modalType() === 'confirm'}>
-              <button class="btn btn-danger" onClick={() => close(true)}>{t.modal.deleteButton}</button>
-            </Show>
-          </div>
+          <Show when={modalType() === 'settings'}>
+            <div class="settings-section">
+              <div class="settings-label">{t.modal.themeLabel}</div>
+              <select class="settings-select" value={selectedTheme()} onChange={(e) => { applyTheme(e.target.value); setSelectedTheme(e.target.value); }}>
+                <For each={getThemeList()}>
+                  {(theme) => <option value={theme.id}>{theme.name}</option>}
+                </For>
+              </select>
+            </div>
+          </Show>
+          <Show when={modalType() !== 'settings'}>
+            <div class="modal-buttons">
+              <button class="btn btn-ghost" onClick={() => close(modalType() === 'prompt' ? null : false)}>{t.modal.cancelButton}</button>
+              <Show when={modalType() === 'prompt' || modalType() === 'textarea'}>
+                <button class="btn btn-primary" onClick={() => close(modalValue())}>{t.modal.okButton}</button>
+              </Show>
+              <Show when={modalType() === 'confirm'}>
+                <button class="btn btn-danger" onClick={() => close(true)}>{t.modal.deleteButton}</button>
+              </Show>
+            </div>
+          </Show>
         </div>
       </div>
     </Show>
