@@ -208,7 +208,6 @@ select {
 .settings-bar .btn {
   font-size: var(--ui-font-size-sm);
 }
-}
 
 .settings-row {
   display: flex;
@@ -228,7 +227,6 @@ select {
   font-weight: 600;
   color: var(--text-dim);
   margin-bottom: 8px;
-  text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 

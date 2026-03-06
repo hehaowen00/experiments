@@ -1,30 +1,48 @@
-import { esc, contentTypeToFormat } from './helpers';
-
-// Minimal JSONPath evaluator
 export function evaluateJsonPath(data, path) {
   const results = [];
-  if (!path.startsWith('$')) path = '$' + (path.startsWith('.') || path.startsWith('[') ? '' : '.') + path;
+  if (!path.startsWith('$')) {
+    path = '$' + (path.startsWith('.') || path.startsWith('[') ? '' : '.') + path;
+  }
+
   const tokens = tokenizeJsonPath(path);
-  if (!tokens) throw new Error('Invalid JSONPath syntax');
+  if (!tokens) {
+    throw new Error('Invalid JSONPath syntax');
+  }
 
   function walk(obj, tIdx, currentPath) {
-    if (tIdx >= tokens.length) { results.push({ path: currentPath, value: obj }); return; }
+    if (tIdx >= tokens.length) {
+      results.push({ path: currentPath, value: obj });
+      return;
+    }
+
     const token = tokens[tIdx];
-    if (token.type === 'root') { walk(obj, tIdx + 1, '$'); return; }
+    if (token.type === 'root') {
+      walk(obj, tIdx + 1, '$');
+      return;
+    }
+
     if (token.type === 'child') {
-      if (obj == null || typeof obj !== 'object') return;
+      if (obj == null || typeof obj !== 'object') {
+        return;
+      }
+
       const key = token.value;
       if (key === '*') {
         const entries = Array.isArray(obj) ? obj.map((v, i) => [i, v]) : Object.entries(obj);
-        for (const [k, v] of entries) walk(v, tIdx + 1, `${currentPath}[${JSON.stringify(k)}]`);
+        for (const [k, v] of entries) {
+          walk(v, tIdx + 1, `${currentPath}[${JSON.stringify(k)}]`);
+        }
       } else if (Array.isArray(obj)) {
         const idx = parseInt(key);
-        if (!isNaN(idx) && idx >= 0 && idx < obj.length) walk(obj[idx], tIdx + 1, `${currentPath}[${idx}]`);
+        if (!isNaN(idx) && idx >= 0 && idx < obj.length) {
+          walk(obj[idx], tIdx + 1, `${currentPath}[${idx}]`);
+        }
       } else if (key in obj) {
         walk(obj[key], tIdx + 1, `${currentPath}.${key}`);
       }
       return;
     }
+
     if (token.type === 'recursive') {
       walk(obj, tIdx + 1, currentPath);
       if (obj != null && typeof obj === 'object') {
@@ -36,12 +54,14 @@ export function evaluateJsonPath(data, path) {
       }
       return;
     }
+
     if (token.type === 'index') {
       if (!Array.isArray(obj)) return;
       const idx = token.value < 0 ? obj.length + token.value : token.value;
       if (idx >= 0 && idx < obj.length) walk(obj[idx], tIdx + 1, `${currentPath}[${idx}]`);
       return;
     }
+
     if (token.type === 'slice') {
       if (!Array.isArray(obj)) return;
       const start = (token.start ?? 0) < 0 ? Math.max(0, obj.length + token.start) : (token.start ?? 0);
@@ -49,6 +69,7 @@ export function evaluateJsonPath(data, path) {
       for (let i = start; i < Math.min(end, obj.length); i++) walk(obj[i], tIdx + 1, `${currentPath}[${i}]`);
       return;
     }
+
     if (token.type === 'filter') {
       if (obj == null || typeof obj !== 'object') return;
       const entries = Array.isArray(obj) ? obj.map((v, i) => [i, v]) : Object.entries(obj);
@@ -176,15 +197,19 @@ export function searchXPathResults(body, query) {
 function getXmlNodePath(node) {
   const parts = [];
   let current = node;
+
   while (current && current.nodeType === 1) {
     let name = current.tagName;
+
     const parent = current.parentNode;
     if (parent) {
       const siblings = Array.from(parent.children).filter(c => c.tagName === name);
       if (siblings.length > 1) name += `[${siblings.indexOf(current) + 1}]`;
     }
+
     parts.unshift(name);
     current = current.parentNode;
   }
+
   return '/' + parts.join('/');
 }

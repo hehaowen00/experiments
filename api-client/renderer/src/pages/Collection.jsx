@@ -236,7 +236,7 @@ export default function Collection(props) {
     const c = collection();
     const item = findItem(c.items, id);
     if (!item) return;
-    if (await showConfirm(`Delete "${item.name}"?`)) {
+    if (await showConfirm(t.collection.deleteItemModal.title(item.name))) {
       removeItem(c.items, id);
       if (activeRequestId() === id) { setActiveRequestId(null); clearEditor(); }
       setCollection({ ...c, items: structuredClone(c.items) });
@@ -258,7 +258,7 @@ export default function Collection(props) {
     const c = collection();
     const folder = findItem(c.items, folderId);
     if (!folder) return;
-    const name = await showPrompt('Request name:', 'New Request');
+    const name = await showPrompt(t.collection.addRequestModal.title, t.collection.addRequestModal.defaultValue);
     if (!name) return;
     const req = { id: generateId(), type: 'request', name, method: 'GET', url: '', headers: [], body: '', bodyType: 'text' };
     folder.children = folder.children || [];
@@ -269,7 +269,7 @@ export default function Collection(props) {
   }
 
   async function addRequest() {
-    const name = await showPrompt('Request name:', 'New Request');
+    const name = await showPrompt(t.collection.addRequestModal.title, t.collection.addRequestModal.defaultValue);
     if (!name) return;
     const c = collection();
     const req = { id: generateId(), type: 'request', name, method: 'GET', url: '', headers: [], body: '', bodyType: 'text' };
@@ -280,7 +280,7 @@ export default function Collection(props) {
   }
 
   async function addFolder() {
-    const name = await showPrompt('Folder name:', 'New Folder');
+    const name = await showPrompt(t.collection.addFolderModal.title, t.collection.addFolderModal.defaultValue);
     if (!name) return;
     const c = collection();
     c.items.push({ id: generateId(), type: 'folder', name, children: [], collapsed: false });
@@ -1004,7 +1004,7 @@ export default function Collection(props) {
           )}
           <div class="main-panel">
             <div class="request-bar">
-              <button class="btn btn-ghost" onClick={() => setSidebarOpen(!sidebarOpen())} title="Toggle sidebar"><Icon name="fa-solid fa-bars" /></button>
+              <button class="btn btn-ghost" onClick={() => setSidebarOpen(!sidebarOpen())} title={t.sidebar.toggleSidebarTitle}><Icon name="fa-solid fa-bars" /></button>
               <select class="protocol-select" value={protocol()} onChange={(e) => { setProtocol(e.target.value); scheduleAutoSave(); }}>
                 <option value="http">{t.collection.protocols.http}</option>
                 <option value="ws">{t.collection.protocols.ws}</option>

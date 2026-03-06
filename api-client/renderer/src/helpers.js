@@ -8,19 +8,27 @@ export function generateId() {
   bytes[2] = (ts >> 8) & 0xff;
   bytes[3] = ts & 0xff;
   crypto.getRandomValues(bytes.subarray(4));
+
   // Convert to base62
   const digits = [];
   const num = Array.from(bytes);
+
   while (num.some(b => b > 0)) {
     let rem = 0;
+
     for (let i = 0; i < num.length; i++) {
       const val = rem * 256 + num[i];
       num[i] = Math.floor(val / 62);
       rem = val % 62;
     }
+
     digits.push(BASE62[rem]);
   }
-  while (digits.length < 27) digits.push('0');
+
+  while (digits.length < 27) {
+    digits.push('0');
+  }
+
   return digits.reverse().join('');
 }
 
@@ -157,7 +165,7 @@ export function parseCurl(input) {
       result.params = entries.map(([key, value]) => ({ key, value, enabled: true }));
       result.url = result.url.split('?')[0];
     }
-  } catch {}
+  } catch { }
 
   return result;
 }

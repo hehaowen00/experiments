@@ -1,8 +1,8 @@
 import { createSignal, For, Index, Show } from 'solid-js';
 import { buildUrlWithParams, detectFormat, formatBytes, resolveVariables } from '../helpers';
+import { highlightFlat } from '../highlight';
 import t from '../locale';
 import Icon from './Icon';
-import { highlightFlat } from '../highlight';
 
 function useDragReorder(onReorder) {
   let dragIdx = null;
@@ -15,11 +15,16 @@ function useDragReorder(onReorder) {
   }
 
   function onDragOver(e, i) {
-    if (dragIdx === null || dragIdx === i) return;
+    if (dragIdx === null || dragIdx === i) {
+      return;
+    }
+
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
+
     const el = e.currentTarget;
     el.classList.remove('kv-drag-above', 'kv-drag-below');
+
     const rect = el.getBoundingClientRect();
     const mid = rect.top + rect.height / 2;
     el.classList.add(e.clientY < mid ? 'kv-drag-above' : 'kv-drag-below');
@@ -32,16 +37,30 @@ function useDragReorder(onReorder) {
   function onDrop(e, i) {
     e.preventDefault();
     e.currentTarget.classList.remove('kv-drag-above', 'kv-drag-below');
-    if (dragIdx === null || dragIdx === i) return;
+
+    if (dragIdx === null || dragIdx === i) {
+      return;
+    }
+
     const rect = e.currentTarget.getBoundingClientRect();
     const mid = rect.top + rect.height / 2;
     let to = e.clientY < mid ? i : i;
+
     // If dropping below, and coming from above, adjust
-    if (e.clientY >= mid && dragIdx < i) to = i;
-    else if (e.clientY >= mid && dragIdx > i) to = i + 1;
-    else if (e.clientY < mid && dragIdx > i) to = i;
-    else if (e.clientY < mid && dragIdx < i) to = i - 1;
-    if (dragIdx !== to) onReorder(dragIdx, to);
+    if (e.clientY >= mid && dragIdx < i) {
+      to = i;
+    } else if (e.clientY >= mid && dragIdx > i) {
+      to = i + 1;
+    } else if (e.clientY < mid && dragIdx > i) {
+      to = i;
+    } else if (e.clientY < mid && dragIdx < i) {
+      to = i - 1;
+    }
+
+    if (dragIdx !== to) {
+      onReorder(dragIdx, to);
+    }
+
     dragIdx = null;
   }
 
@@ -55,15 +74,18 @@ function useDragReorder(onReorder) {
 
 function UrlPreview(props) {
   const [copied, setCopied] = createSignal(false);
+
   const previewUrl = () => {
     const resolved = resolveVariables(props.url || '', props.variables || []);
     return buildUrlWithParams(resolved, props.params || []);
   };
+
   function copy() {
     navigator.clipboard.writeText(previewUrl());
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   }
+
   return (
     <div class="url-preview">
       <div class="url-preview-row">
@@ -73,6 +95,99 @@ function UrlPreview(props) {
     </div>
   );
 }
+
+export function RequestTabs(props) {
+  const { activeTab, setActiveTab } = props;
+
+  const isActive = (tab) => {
+    return activeTab() === tab ? 'active' : ''
+  }
+
+  return (
+    <div class="section-tabs">
+      <button
+        class={`section-tab ${isActive('headers'}`}
+        onClick={() => setActiveTab('headers')}>
+        {t.requestPane.tabs.headers}
+      </button>
+      <button class={`section-tab ${activeTab() === 'params' ? 'active' : ''}`} onClick={() => setActiveTab('params')}>{t.requestPane.tabs.params}</button>
+      <button class={`section-tab ${activeTab() === 'variables' ? 'active' : ''}`} onClick={() => setActiveTab('variables')}>{t.requestPane.tabs.variables}</button>
+      <button class={`section-tab ${activeTab() === 'body' ? 'active' : ''}`} onClick={() => setActiveTab('body')}>{t.requestPane.tabs.body}</button>
+    </div>
+  );
+}
+
+export function ParamsTab(props) {
+  const { activeTab } = props;
+  const { onAddParam, onParamChange, paramDrag } = props;
+  const { url, params, variables } = props;
+
+  const enableAll = () => {
+    params.forEach((_, i) => onParamChange(i, 'enabled', true))
+  }
+
+  const disableAll = () => {
+    params.forEach((_, i) => onParamChange(i, 'enabled', false))
+  }
+
+  return (
+    <Show when={activeTab() === 'params'}>
+      <div class="headers-table">
+        <UrlPreview url={url} params={params} variables={variables} />
+        <div class="kv-bulk-actions">
+          <button class="btn btn-ghost btn-sm" onClick={onAddParam}>
+            {t.requestPane.addParameterButton}
+          </button>
+          <div class="kv-bulk-spacer" />
+          <button class="btn btn-ghost btn-sm" onClick={enableAll}>
+            {t.requestPane.enableAllButton}
+          </button>
+          <button class="btn btn-ghost btn-sm" onClick={disableAll}>
+            {t.requestPane.disableAllButton}
+          </button>
+        </div>
+        <Index each={params}>
+          {(p, i) => (
+            <div
+              class="header-row"
+              draggable="true"
+              onDragStart={(e) => paramDrag.onDragStart(e, i)}
+              onDragOver={(e) => paramDrag.onDragOver(e, i)}
+              onDragLeave={paramDrag.onDragLeave}
+              onDrop={(e) => paramDrag.onDrop(e, i)}
+              onDragEnd={paramDrag.onDragEnd}
+            >
+              <span class="drag-handle"><Icon name="fa-solid fa-grip-vertical" /></span>
+              <input
+                type="checkbox"
+                checked={p().enabled}
+                onChange={(e) => onParamChange(i, 'enabled', e.target.checked)}
+              />
+              <input
+                type="text"
+                placeholder={t.requestPane.paramNamePlaceholder}
+                value={p().key}
+                onInput={(e) => onParamChange(i, 'key', e.target.value)}
+              />
+              <input
+                type="text"
+                placeholder={t.requestPane.valuePlaceholder}
+                value={p().value}
+                onInput={(e) => onParamChange(i, 'value', e.target.value)}
+              />
+              <button
+                class="btn btn-danger btn-sm"
+                onClick={() => props.onRemoveParam(i)}>
+                <Icon name="fa-solid fa-xmark" />
+              </button>
+            </div>
+          )}
+        </Index>
+      </div>
+    </Show>
+  );
+}
+
 
 export default function RequestPane(props) {
   let bodyRef;
@@ -101,13 +216,17 @@ export default function RequestPane(props) {
   }
 
   function onBodyScroll() {
-    if (!bodyRef || !lineNumbersRef) return;
+    if (!bodyRef || !lineNumbersRef) {
+      return;
+    }
+
     const inner = bodyRef.parentElement;
     const pre = inner.querySelector('.code-highlight');
     if (pre) {
       pre.scrollTop = bodyRef.scrollTop;
       pre.scrollLeft = bodyRef.scrollLeft;
     }
+
     lineNumbersRef.scrollTop = bodyRef.scrollTop;
   }
 
@@ -119,15 +238,24 @@ export default function RequestPane(props) {
   return (
     <div class="request-pane" id="request-pane">
       <div class="request-body-section">
-        <div class="section-tabs">
+
+        <RequestTabs activeTab={activeTab} setActiveTab={setActiveTab} />
+        {/* <div class="section-tabs">
           <button class={`section-tab ${activeTab() === 'headers' ? 'active' : ''}`} onClick={() => setActiveTab('headers')}>{t.requestPane.tabs.headers}</button>
           <button class={`section-tab ${activeTab() === 'params' ? 'active' : ''}`} onClick={() => setActiveTab('params')}>{t.requestPane.tabs.params}</button>
           <button class={`section-tab ${activeTab() === 'variables' ? 'active' : ''}`} onClick={() => setActiveTab('variables')}>{t.requestPane.tabs.variables}</button>
           <button class={`section-tab ${activeTab() === 'body' ? 'active' : ''}`} onClick={() => setActiveTab('body')}>{t.requestPane.tabs.body}</button>
-        </div>
+        </div> /*}
 
         {/* Params tab */}
-        <Show when={activeTab() === 'params'}>
+        <ParamsTab
+          activeTab={activeTab}
+          paramDrag={paramDrag}
+          params={props.params}
+          onAddParam={props.onAddParam}
+          onParamChange={props.onParamChange}
+        />
+        {/* <Show when={activeTab() === 'params'}>
           <div class="headers-table">
             <UrlPreview url={props.url} params={props.params} variables={props.variables} />
             <div class="kv-bulk-actions">
@@ -156,7 +284,7 @@ export default function RequestPane(props) {
               )}
             </Index>
           </div>
-        </Show>
+        </Show> */}
 
         {/* Headers tab */}
         <Show when={activeTab() === 'headers'}>
