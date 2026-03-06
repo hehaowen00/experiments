@@ -1171,7 +1171,7 @@ treeEl.addEventListener('click', async (e) => {
       const folderId = actionBtn.dataset.folder;
       const folder = findItem(collection.items, folderId);
       if (folder) {
-        const name = await showPrompt('Request name:', 'New Request');
+        const name = await showPrompt('New Request', 'Name');
         if (name) {
           const req = { id: generateId(), type: 'request', name, method: 'GET', url: '', headers: [], body: '', bodyType: 'text' };
           folder.children = folder.children || [];
@@ -1181,7 +1181,7 @@ treeEl.addEventListener('click', async (e) => {
       }
     } else if (action === 'rename') {
       const item = findItem(collection.items, id);
-      if (item) { const n = await showPrompt('Rename:', item.name); if (n && n.trim()) { item.name = n.trim(); await save(); renderTree(); } }
+      if (item) { const n = await showPrompt('Rename', item.name); if (n && n.trim()) { item.name = n.trim(); await save(); renderTree(); } }
     } else if (action === 'delete') {
       const item = findItem(collection.items, id);
       if (item && await showConfirm(`Delete "${item.name}"?`)) {
@@ -1715,14 +1715,14 @@ window.api.onWsClose((d) => {
 document.getElementById('back-btn').addEventListener('click', () => { window.location.href = 'index.html'; });
 
 document.getElementById('add-request-btn').addEventListener('click', async () => {
-  const name = await showPrompt('Request name:', 'New Request');
+  const name = await showPrompt('New Request', 'Name');
   if (!name) return;
   const req = { id: generateId(), type: 'request', name, method: 'GET', url: '', headers: [], body: '', bodyType: 'text' };
   collection.items.push(req); await save(); renderTree(); selectRequest(req.id);
 });
 
 document.getElementById('add-folder-btn').addEventListener('click', async () => {
-  const name = await showPrompt('Folder name:', 'New Folder');
+  const name = await showPrompt('New Folder', 'Name');
   if (!name) return;
   collection.items.push({ id: generateId(), type: 'folder', name, children: [], collapsed: false });
   await save(); renderTree();
