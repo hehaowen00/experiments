@@ -2,6 +2,7 @@ import { createSignal, createEffect, Show, For } from 'solid-js';
 import t from '../locale';
 import Icon from './Icon';
 import { applyTheme, getStoredThemeId, getThemeList } from '../themes';
+import { applyUiFontSize, applyEditorFontSize } from '../index';
 
 let modalResolve = null;
 const [modalVisible, setModalVisible] = createSignal(false);
@@ -129,7 +130,7 @@ export default function Modal() {
                   const v = e.target.value;
                   setUiFontSize(parseInt(v));
                   window.api.setSetting('uiFontSize', v);
-                  document.documentElement.style.setProperty('--ui-font-size', v + 'px');
+                  applyUiFontSize(v);
                 }}>
                   <For each={[10, 11, 12, 13, 14, 15, 16]}>
                     {(s) => <option value={s}>{s}px</option>}
@@ -142,7 +143,7 @@ export default function Modal() {
                   const v = e.target.value;
                   setEditorFontSize(parseInt(v));
                   window.api.setSetting('editorFontSize', v);
-                  document.documentElement.style.setProperty('--editor-font-size', v + 'px');
+                  applyEditorFontSize(v);
                 }}>
                   <For each={[10, 11, 12, 13, 14, 15, 16]}>
                     {(s) => <option value={s}>{s}px</option>}
