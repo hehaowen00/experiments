@@ -6,7 +6,12 @@ const strings = {
 
   landing: {
     newCollectionPlaceholder: 'New Collection',
+    searchPlaceholder: 'Search collections...',
+    newCollectionModal: {
+      title: 'Collection name:',
+    },
     createButton: 'Create',
+    importButton: 'Import',
     addCategoryButton: 'Category',
     settingsButton: 'Settings',
     emptyState: 'No collections yet. Create one to get started.',
@@ -15,6 +20,8 @@ const strings = {
     pinButton: 'Pin',
     unpinButton: 'Unpin',
     renameButton: 'Rename',
+    collapseAllButton: 'Collapse',
+    expandAllButton: 'Expand',
     deleteButton: 'Delete',
     renameCollectionModal: {
       title: 'Rename collection:',
@@ -39,6 +46,7 @@ const strings = {
   sidebar: {
     addRequestButton: 'Request',
     addFolderButton: 'Folder',
+    importButton: 'Import',
     backTitle: 'Back to collections',
     renameTitle: 'Click to rename',
     addToFolderTitle: 'Add request',

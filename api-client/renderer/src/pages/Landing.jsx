@@ -7,11 +7,11 @@ import Icon from '../components/Icon';
 export default function Landing(props) {
   const [collections, setCollections] = createSignal([]);
   const [categories, setCategories] = createSignal([]);
-  const [newName, setNewName] = createSignal('');
+  const [searchQuery, setSearchQuery] = createSignal('');
+  const [dropIndicator, setDropIndicator] = createSignal(null); // { catId, position: 'above' | 'below' }
 
   let dragCollectionId = null;
   let dragCategoryId = null;
-  let nameInputRef;
 
   async function load() {
     const [cols, cats] = await Promise.all([
@@ -25,17 +25,11 @@ export default function Landing(props) {
   onMount(load);
 
   async function create() {
-    const name = newName().trim();
-    if (!name) {
-      nameInputRef?.classList.remove('shake');
-      void nameInputRef?.offsetWidth;
-      nameInputRef?.classList.add('shake');
-      nameInputRef?.focus();
-      return;
+    const name = await showPrompt(t.landing.newCollectionModal.title, t.landing.newCollectionPlaceholder);
+    if (name && name.trim()) {
+      await window.api.createCollection(name.trim());
+      load();
     }
-    await window.api.createCollection(name);
-    setNewName('');
-    load();
   }
 
   async function rename(id, oldName) {
@@ -68,6 +62,13 @@ export default function Landing(props) {
     }
   }
 
+  async function importCollection() {
+    const result = await window.api.importCollection();
+    if (!result) return;
+    if (result.error) return alert(result.error);
+    load();
+  }
+
   async function renameCategory(e, id, oldName) {
     e.stopPropagation();
     const name = await showPrompt(t.landing.renameCategoryModal.title, oldName);
@@ -89,6 +90,13 @@ export default function Landing(props) {
   async function toggleCategoryCollapse(id, collapsed) {
     await window.api.toggleCategoryCollapse(id, !collapsed);
     setCategories(prev => prev.map(c => c.id === id ? { ...c, collapsed: c.collapsed ? 0 : 1 } : c));
+  }
+
+  async function collapseAll() {
+    const allCollapsed = categories().every(c => c.collapsed);
+    const value = allCollapsed ? 0 : 1;
+    await Promise.all(categories().map(c => window.api.toggleCategoryCollapse(c.id, value)));
+    setCategories(prev => prev.map(c => ({ ...c, collapsed: value })));
   }
 
   // Drag and drop
@@ -136,26 +144,25 @@ export default function Landing(props) {
   function onCategoryDragEnd(e) {
     e.currentTarget.closest('.landing-category')?.classList.remove('dragging');
     dragCategoryId = null;
+    setDropIndicator(null);
   }
 
   function onCategorySectionDragOver(e) {
     if (!dragCategoryId) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
-    const section = e.currentTarget;
-    section.classList.remove('kv-drag-above', 'kv-drag-below');
-    const rect = section.getBoundingClientRect();
+    const rect = e.currentTarget.getBoundingClientRect();
     const mid = rect.top + rect.height / 2;
-    section.classList.add(e.clientY < mid ? 'kv-drag-above' : 'kv-drag-below');
+    const catId = e.currentTarget.dataset.catId;
+    setDropIndicator({ catId, position: e.clientY < mid ? 'above' : 'below' });
   }
 
   function onCategorySectionDragLeave(e) {
-    e.currentTarget.classList.remove('kv-drag-above', 'kv-drag-below');
   }
 
   async function onCategorySectionDrop(e, targetCatId) {
     e.preventDefault();
-    e.currentTarget.classList.remove('kv-drag-above', 'kv-drag-below');
+    setDropIndicator(null);
     if (!dragCategoryId || dragCategoryId === targetCatId) return;
     const cats = categories();
     const fromIdx = cats.findIndex(c => c.id === dragCategoryId);
@@ -175,12 +182,18 @@ export default function Landing(props) {
     dragCategoryId = null;
   }
 
+  function filterBySearch(list) {
+    const q = searchQuery().toLowerCase().trim();
+    if (!q) return list;
+    return list.filter(c => c.name.toLowerCase().includes(q));
+  }
+
   function uncategorizedCollections() {
-    return collections().filter(c => !c.category_id).sort((a, b) => b.pinned - a.pinned);
+    return filterBySearch(collections().filter(c => !c.category_id).sort((a, b) => b.pinned - a.pinned));
   }
 
   function collectionsInCategory(catId) {
-    return collections().filter(c => c.category_id === catId).sort((a, b) => b.pinned - a.pinned);
+    return filterBySearch(collections().filter(c => c.category_id === catId).sort((a, b) => b.pinned - a.pinned));
   }
 
   function CollectionCard(props) {
@@ -207,19 +220,21 @@ export default function Landing(props) {
 
   return (
     <div class="landing">
-      <h1>{t.app.name}</h1>
-      <p class="subtitle">{t.app.subtitle}</p>
       <div class="toolbar">
         <input
-          ref={nameInputRef}
           type="text"
-          placeholder={t.landing.newCollectionPlaceholder}
-          value={newName()}
-          onInput={(e) => setNewName(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') create(); }}
+          placeholder={t.landing.searchPlaceholder}
+          value={searchQuery()}
+          onInput={(e) => setSearchQuery(e.target.value)}
         />
         <button class="btn btn-primary" onClick={create}><Icon name="fa-solid fa-plus" /> {t.landing.createButton}</button>
+        <button class="btn btn-ghost" onClick={importCollection}><Icon name="fa-solid fa-file-import" /> {t.landing.importButton}</button>
         <button class="btn btn-ghost" onClick={addCategory}><Icon name="fa-solid fa-folder-plus" /> {t.landing.addCategoryButton}</button>
+        <Show when={categories().length > 0}>
+          <button class="btn btn-ghost" onClick={collapseAll}>
+            <Icon name={categories().every(c => c.collapsed) ? 'fa-solid fa-angles-down' : 'fa-solid fa-angles-up'} /> {categories().every(c => c.collapsed) ? t.landing.expandAllButton : t.landing.collapseAllButton}
+          </button>
+        </Show>
       </div>
 
       <div class="landing-content">
@@ -232,6 +247,8 @@ export default function Landing(props) {
           {(cat) => (
             <div
               class="landing-section landing-category"
+              classList={{ 'cat-drop-above': dropIndicator()?.catId === String(cat.id) && dropIndicator()?.position === 'above', 'cat-drop-below': dropIndicator()?.catId === String(cat.id) && dropIndicator()?.position === 'below' }}
+              data-cat-id={cat.id}
               onDragOver={(e) => { onCategoryDragOver(e); onCategorySectionDragOver(e); }}
               onDragLeave={(e) => { onCategoryDragLeave(e); onCategorySectionDragLeave(e); }}
               onDrop={(e) => { onCategoryDrop(e, cat.id); onCategorySectionDrop(e, cat.id); }}
@@ -267,21 +284,29 @@ export default function Landing(props) {
         </For>
 
         {/* Uncategorized section */}
-        <Show when={uncategorizedCollections().length > 0}>
+        <Show when={categories().length > 0}>
           <div
             class="landing-section"
             onDragOver={onCategoryDragOver}
             onDragLeave={onCategoryDragLeave}
             onDrop={(e) => onCategoryDrop(e, null)}
           >
-            <Show when={categories().length > 0}>
-              <div class="landing-section-header">{t.landing.uncategorized}</div>
-            </Show>
+            <div class="landing-section-header">{t.landing.uncategorized}</div>
             <div class="collection-list">
+              <Show when={uncategorizedCollections().length === 0}>
+                <div class="empty-category">{t.landing.dropHint}</div>
+              </Show>
               <For each={uncategorizedCollections()}>
                 {(c) => <CollectionCard c={c} onOpen={props.onOpen} />}
               </For>
             </div>
+          </div>
+        </Show>
+        <Show when={categories().length === 0}>
+          <div class="collection-list">
+            <For each={uncategorizedCollections()}>
+              {(c) => <CollectionCard c={c} onOpen={props.onOpen} />}
+            </For>
           </div>
         </Show>
       </div>

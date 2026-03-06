@@ -287,6 +287,16 @@ export default function Collection(props) {
     save();
   }
 
+  async function importRequests() {
+    const result = await window.api.importRequests();
+    if (!result) return;
+    if (result.error) return alert(result.error);
+    const c = collection();
+    c.items.push(...result.items);
+    setCollection({ ...c, items: structuredClone(c.items) });
+    save();
+  }
+
   async function renameCollection() {
     const c = collection();
     const name = await showPrompt(t.landing.renameCollectionModal.title, c.name);
@@ -947,6 +957,7 @@ export default function Collection(props) {
             onAddToFolder={addToFolder}
             onAddRequest={addRequest}
             onAddFolder={addFolder}
+            onImportRequests={importRequests}
             onRenameCollection={renameCollection}
             onDragStart={onDragStart}
             onDragOver={onDragOver}
