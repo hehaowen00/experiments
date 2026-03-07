@@ -3,22 +3,31 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('api', {
   listCollections: () => ipcRenderer.invoke('collections:list'),
   createCollection: (name) => ipcRenderer.invoke('collections:create', name),
-  renameCollection: (id, name) => ipcRenderer.invoke('collections:rename', id, name),
+  renameCollection: (id, name) =>
+    ipcRenderer.invoke('collections:rename', id, name),
   deleteCollection: (id) => ipcRenderer.invoke('collections:delete', id),
-  pinCollection: (id, pinned) => ipcRenderer.invoke('collections:pin', id, pinned),
-  setCollectionCategory: (id, categoryId) => ipcRenderer.invoke('collections:setCategory', id, categoryId),
+  pinCollection: (id, pinned) =>
+    ipcRenderer.invoke('collections:pin', id, pinned),
+  setCollectionCategory: (id, categoryId) =>
+    ipcRenderer.invoke('collections:setCategory', id, categoryId),
   listCategories: () => ipcRenderer.invoke('categories:list'),
   createCategory: (name) => ipcRenderer.invoke('categories:create', name),
-  renameCategory: (id, name) => ipcRenderer.invoke('categories:rename', id, name),
+  renameCategory: (id, name) =>
+    ipcRenderer.invoke('categories:rename', id, name),
   deleteCategory: (id) => ipcRenderer.invoke('categories:delete', id),
-  toggleCategoryCollapse: (id, collapsed) => ipcRenderer.invoke('categories:toggleCollapse', id, collapsed),
-  reorderCategories: (orderedIds) => ipcRenderer.invoke('categories:reorder', orderedIds),
+  toggleCategoryCollapse: (id, collapsed) =>
+    ipcRenderer.invoke('categories:toggleCollapse', id, collapsed),
+  reorderCategories: (orderedIds) =>
+    ipcRenderer.invoke('categories:reorder', orderedIds),
   loadCollection: (id) => ipcRenderer.invoke('collection:load', id),
-  saveCollection: (collection) => ipcRenderer.invoke('collection:save', collection),
+  saveCollection: (collection) =>
+    ipcRenderer.invoke('collection:save', collection),
   sendRequest: (opts) => ipcRenderer.invoke('request:send', opts),
   saveResponse: (data) => ipcRenderer.invoke('response:save', data),
-  getLatestResponse: (requestId) => ipcRenderer.invoke('response:latest', requestId),
-  getResponseHistory: (requestId) => ipcRenderer.invoke('response:history', requestId),
+  getLatestResponse: (requestId) =>
+    ipcRenderer.invoke('response:latest', requestId),
+  getResponseHistory: (requestId) =>
+    ipcRenderer.invoke('response:history', requestId),
   loadResponse: (id) => ipcRenderer.invoke('response:load', id),
   pickFile: () => ipcRenderer.invoke('file:pick'),
   importCollection: () => ipcRenderer.invoke('import:pick'),

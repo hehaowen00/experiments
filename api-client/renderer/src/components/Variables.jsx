@@ -8,7 +8,9 @@ export default function Variables(props) {
       <div class="variables-header" onClick={() => setExpanded(!expanded())}>
         <span class="variables-toggle">{expanded() ? '\u25BC' : '\u25B6'}</span>
         <span class="variables-title">Variables</span>
-        <span class="variables-count">{props.variables.filter(v => v.key).length}</span>
+        <span class="variables-count">
+          {props.variables.filter((v) => v.key).length}
+        </span>
       </div>
       <Show when={expanded()}>
         <div class="variables-body">

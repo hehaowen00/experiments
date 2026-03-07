@@ -18,7 +18,9 @@ export default function App() {
   return (
     <>
       {page().type === 'landing' && <Landing onOpen={openCollection} />}
-      {page().type === 'collection' && <Collection id={page().id} onBack={goHome} />}
+      {page().type === 'collection' && (
+        <Collection id={page().id} onBack={goHome} />
+      )}
     </>
   );
 }
