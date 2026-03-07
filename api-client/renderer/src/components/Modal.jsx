@@ -12,7 +12,12 @@ const [modalPlaceholder, setModalPlaceholder] = createSignal('');
 const [modalDescription, setModalDescription] = createSignal('');
 const [modalType, setModalType] = createSignal('prompt'); // 'prompt' | 'confirm'
 
-export function showPrompt(title, defaultValue = '', description = '', placeholder = '',) {
+export function showPrompt(
+  title,
+  defaultValue = '',
+  description = '',
+  placeholder = '',
+) {
   return new Promise((resolve) => {
     modalResolve = resolve;
     setModalTitle(title);
@@ -58,7 +63,10 @@ export function showSettings() {
 
 function close(result) {
   setModalVisible(false);
-  if (modalResolve) { modalResolve(result); modalResolve = null; }
+  if (modalResolve) {
+    modalResolve(result);
+    modalResolve = null;
+  }
 }
 
 export default function Modal() {
@@ -79,8 +87,20 @@ export default function Modal() {
   });
 
   function onKeyDown(e) {
-    if (e.key === 'Enter' && modalType() !== 'textarea' && modalType() !== 'settings') close(modalType() === 'prompt' ? modalValue() : true);
-    if (e.key === 'Escape') close(modalType() === 'prompt' || modalType() === 'textarea' ? null : modalType() === 'settings' ? null : false);
+    if (
+      e.key === 'Enter' &&
+      modalType() !== 'textarea' &&
+      modalType() !== 'settings'
+    )
+      close(modalType() === 'prompt' ? modalValue() : true);
+    if (e.key === 'Escape')
+      close(
+        modalType() === 'prompt' || modalType() === 'textarea'
+          ? null
+          : modalType() === 'settings'
+            ? null
+            : false,
+      );
   }
 
   return (
@@ -90,7 +110,12 @@ export default function Modal() {
           <div class="modal-title-row">
             <div class="modal-title">{modalTitle()}</div>
             <Show when={modalType() === 'settings'}>
-              <button class="btn btn-ghost btn-sm modal-close-btn" onClick={() => close(null)}><Icon name="fa-solid fa-xmark" /></button>
+              <button
+                class="btn btn-ghost btn-sm modal-close-btn"
+                onClick={() => close(null)}
+              >
+                <Icon name="fa-solid fa-xmark" />
+              </button>
             </Show>
           </div>
           <Show when={modalDescription()}>
@@ -121,7 +146,14 @@ export default function Modal() {
           <Show when={modalType() === 'settings'}>
             <div class="settings-section">
               <div class="settings-label">{t.modal.themeLabel}</div>
-              <select class="settings-select" value={selectedTheme()} onChange={(e) => { applyTheme(e.target.value); setSelectedTheme(e.target.value); }}>
+              <select
+                class="settings-select"
+                value={selectedTheme()}
+                onChange={(e) => {
+                  applyTheme(e.target.value);
+                  setSelectedTheme(e.target.value);
+                }}
+              >
                 <For each={getThemeList()}>
                   {(theme) => <option value={theme.id}>{theme.name}</option>}
                 </For>
@@ -130,12 +162,16 @@ export default function Modal() {
             <div class="settings-row">
               <div class="settings-section">
                 <div class="settings-label">{t.modal.uiFontSizeLabel}</div>
-                <select class="settings-select" value={uiFontSize()} onChange={(e) => {
-                  const v = e.target.value;
-                  setUiFontSize(parseInt(v));
-                  window.api.setSetting('uiFontSize', v);
-                  applyUiFontSize(v);
-                }}>
+                <select
+                  class="settings-select"
+                  value={uiFontSize()}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setUiFontSize(parseInt(v));
+                    window.api.setSetting('uiFontSize', v);
+                    applyUiFontSize(v);
+                  }}
+                >
                   <For each={[10, 11, 12, 13, 14, 15, 16]}>
                     {(s) => <option value={s}>{s}px</option>}
                   </For>
@@ -143,12 +179,16 @@ export default function Modal() {
               </div>
               <div class="settings-section">
                 <div class="settings-label">{t.modal.editorFontSizeLabel}</div>
-                <select class="settings-select" value={editorFontSize()} onChange={(e) => {
-                  const v = e.target.value;
-                  setEditorFontSize(parseInt(v));
-                  window.api.setSetting('editorFontSize', v);
-                  applyEditorFontSize(v);
-                }}>
+                <select
+                  class="settings-select"
+                  value={editorFontSize()}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setEditorFontSize(parseInt(v));
+                    window.api.setSetting('editorFontSize', v);
+                    applyEditorFontSize(v);
+                  }}
+                >
                   <For each={[10, 11, 12, 13, 14, 15, 16]}>
                     {(s) => <option value={s}>{s}px</option>}
                   </For>
@@ -158,12 +198,26 @@ export default function Modal() {
           </Show>
           <Show when={modalType() !== 'settings'}>
             <div class="modal-buttons">
-              <button class="btn btn-ghost" onClick={() => close(modalType() === 'prompt' ? null : false)}>{t.modal.cancelButton}</button>
-              <Show when={modalType() === 'prompt' || modalType() === 'textarea'}>
-                <button class="btn btn-primary" onClick={() => close(modalValue())}>{t.modal.okButton}</button>
+              <button
+                class="btn btn-ghost"
+                onClick={() => close(modalType() === 'prompt' ? null : false)}
+              >
+                {t.modal.cancelButton}
+              </button>
+              <Show
+                when={modalType() === 'prompt' || modalType() === 'textarea'}
+              >
+                <button
+                  class="btn btn-primary"
+                  onClick={() => close(modalValue())}
+                >
+                  {t.modal.okButton}
+                </button>
               </Show>
               <Show when={modalType() === 'confirm'}>
-                <button class="btn btn-danger" onClick={() => close(true)}>{t.modal.deleteButton}</button>
+                <button class="btn btn-danger" onClick={() => close(true)}>
+                  {t.modal.deleteButton}
+                </button>
               </Show>
             </div>
           </Show>

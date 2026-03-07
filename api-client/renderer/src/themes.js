@@ -114,7 +114,10 @@ const themes = {
 const THEME_KEY = 'api-client-theme';
 
 export function getThemeList() {
-  return Object.entries(themes).map(([id, theme]) => ({ id, name: theme.name }));
+  return Object.entries(themes).map(([id, theme]) => ({
+    id,
+    name: theme.name,
+  }));
 }
 
 export function getStoredThemeId() {

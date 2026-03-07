@@ -5,6 +5,12 @@ const strings = {
   },
 
   landing: {
+    nav: {
+      apiClient: 'API Client',
+      dateTime: 'Date / Time',
+      auth: 'Auth',
+      history: 'History',
+    },
     newCollectionPlaceholder: 'New Collection',
     searchPlaceholder: 'Search',
     newCollectionModal: {
@@ -31,7 +37,7 @@ const strings = {
     },
     newCategoryModal: {
       title: 'New Category',
-      defaultValue: 'Name',
+      placeholder: 'Name',
     },
     deleteCollectionModal: {
       title: (name) => `Delete "${name}"?`,
@@ -65,11 +71,11 @@ const strings = {
     },
     addRequestModal: {
       title: 'New Request',
-      defaultValue: 'Name',
+      placeholder: 'Name',
     },
     addFolderModal: {
       title: 'New Folder',
-      defaultValue: 'Name',
+      placeholder: 'Name',
     },
     urlPlaceholder: 'URL',
     curlButton: 'cURL',
@@ -127,8 +133,8 @@ const strings = {
     },
     urlPreview: {
       noUrl: 'No URL',
-      copyButton: 'Copy',
-      copiedButton: 'Copied',
+      copyButton: '',
+      copiedButton: '',
     },
   },
 

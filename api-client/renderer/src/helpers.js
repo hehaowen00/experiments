@@ -16,7 +16,7 @@ export function generateKSUID() {
   const digits = [];
   const num = Array.from(bytes);
 
-  while (num.some(b => b > 0)) {
+  while (num.some((b) => b > 0)) {
     let rem = 0;
 
     for (let i = 0; i < num.length; i++) {
@@ -42,14 +42,33 @@ export function formatBytes(b) {
 }
 
 export function formatLastUsed(dateStr) {
-  if (!dateStr) return '';
+  if (!dateStr) {
+    return '';
+  }
+
   const d = new Date(dateStr + 'Z');
   const now = new Date();
   const diff = now - d;
-  if (diff < 60000) return 'Just now';
-  if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
-  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
-  if (diff < 604800000) return `${Math.floor(diff / 86400000)}d ago`;
+
+  if (diff < 10000) {
+    return 'Just now';
+  }
+
+  if (diff < 60000) {
+    return `${Math.floor(diff / 1000)}s ago`;
+  }
+
+  if (diff < 3600000) {
+    return `${Math.floor(diff / 60000)}m ago`;
+  }
+
+  if (diff < 86400000) {
+    return `${Math.floor(diff / 3600000)}h ago`;
+  }
+
+  if (diff < 604800000) {
+    return `${Math.floor(diff / 86400000)}d ago`;
+  }
   return d.toLocaleDateString();
 }
 
@@ -72,7 +91,10 @@ export function findItem(items, id) {
 
 export function removeItem(items, id) {
   for (let i = 0; i < items.length; i++) {
-    if (items[i].id === id) { items.splice(i, 1); return true; }
+    if (items[i].id === id) {
+      items.splice(i, 1);
+      return true;
+    }
     if (items[i].type === 'folder' && items[i].children) {
       if (removeItem(items[i].children, id)) return true;
     }
@@ -113,9 +135,11 @@ export function contentTypeToFormat(ct) {
 }
 
 export function buildUrlWithParams(url, params) {
-  const enabled = params.filter(p => p.enabled && p.key);
+  const enabled = params.filter((p) => p.enabled && p.key);
   if (enabled.length === 0) return url;
-  const qs = enabled.map(p => `${encodeURIComponent(p.key)}=${encodeURIComponent(p.value)}`).join('&');
+  const qs = enabled
+    .map((p) => `${encodeURIComponent(p.key)}=${encodeURIComponent(p.value)} `)
+    .join('&');
   return url + (url.includes('?') ? '&' : '?') + qs;
 }
 
@@ -134,13 +158,18 @@ export function parseCurl(input) {
     if (q === "'" || q === '"') {
       i++;
       while (i < s.length && s[i] !== q) {
-        if (s[i] === '\\' && q === '"') { i++; token += s[i] || ''; }
-        else token += s[i];
+        if (s[i] === '\\' && q === '"') {
+          i++;
+          token += s[i] || '';
+        } else token += s[i];
         i++;
       }
       i++;
     } else {
-      while (i < s.length && s[i] !== ' ') { token += s[i]; i++; }
+      while (i < s.length && s[i] !== ' ') {
+        token += s[i];
+        i++;
+      }
     }
     tokens.push(token);
   }
@@ -152,8 +181,18 @@ export function parseCurl(input) {
     } else if (arg === '-H' || arg === '--header') {
       const hdr = tokens[++t] || '';
       const ci = hdr.indexOf(':');
-      if (ci > 0) result.headers.push({ key: hdr.slice(0, ci).trim().toLowerCase(), value: hdr.slice(ci + 1).trim(), enabled: true });
-    } else if (arg === '-d' || arg === '--data' || arg === '--data-raw' || arg === '--data-binary') {
+      if (ci > 0)
+        result.headers.push({
+          key: hdr.slice(0, ci).trim().toLowerCase(),
+          value: hdr.slice(ci + 1).trim(),
+          enabled: true,
+        });
+    } else if (
+      arg === '-d' ||
+      arg === '--data' ||
+      arg === '--data-raw' ||
+      arg === '--data-binary'
+    ) {
       result.body = tokens[++t] || '';
       if (result.method === 'GET') result.method = 'POST';
     } else if (!arg.startsWith('-') && !result.url) {
@@ -165,10 +204,14 @@ export function parseCurl(input) {
     const urlObj = new URL(result.url);
     const entries = [...urlObj.searchParams.entries()];
     if (entries.length > 0) {
-      result.params = entries.map(([key, value]) => ({ key, value, enabled: true }));
+      result.params = entries.map(([key, value]) => ({
+        key,
+        value,
+        enabled: true,
+      }));
       result.url = result.url.split('?')[0];
     }
-  } catch { }
+  } catch {}
 
   return result;
 }
@@ -176,7 +219,7 @@ export function parseCurl(input) {
 export function resolveVariables(str, variables) {
   if (!str || !variables) return str;
   return str.replace(/\{\{(\w+)\}\}/g, (match, name) => {
-    const v = variables.find(v => v.key === name);
+    const v = variables.find((v) => v.key === name);
     return v ? v.value : match;
   });
 }

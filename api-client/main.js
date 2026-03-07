@@ -3,28 +3,40 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const BASE62 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
-function generateKsuid() {
+
+function generateKSUID() {
   const ts = Math.floor(Date.now() / 1000);
   const bytes = Buffer.alloc(20);
+
   bytes[0] = (ts >> 24) & 0xff;
   bytes[1] = (ts >> 16) & 0xff;
   bytes[2] = (ts >> 8) & 0xff;
   bytes[3] = ts & 0xff;
+
   crypto.randomFillSync(bytes, 4);
+
   const digits = [];
   const num = Array.from(bytes);
-  while (num.some(b => b > 0)) {
+
+  while (num.some((b) => b > 0)) {
     let rem = 0;
+
     for (let i = 0; i < num.length; i++) {
       const val = rem * 256 + num[i];
       num[i] = Math.floor(val / 62);
       rem = val % 62;
     }
+
     digits.push(BASE62[rem]);
   }
-  while (digits.length < 27) digits.push('0');
+
+  while (digits.length < 27) {
+    digits.push('0');
+  }
+
   return digits.reverse().join('');
 }
+
 const Database = require('better-sqlite3');
 const WebSocket = require('ws');
 
@@ -42,14 +54,15 @@ function initDb() {
   if (!fs.existsSync(DB_PATH) && fs.existsSync(oldDbPath)) {
     fs.copyFileSync(oldDbPath, DB_PATH);
   }
+
   db = new Database(DB_PATH);
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
   db.pragma('synchronous = NORMAL');
-  db.pragma('cache_size = -64000');    // 64MB cache
+  db.pragma('cache_size = -64000'); // 64MB cache
   db.pragma('busy_timeout = 5000');
   db.pragma('temp_store = MEMORY');
-  db.pragma('mmap_size = 268435456');  // 256MB mmap
+  db.pragma('mmap_size = 268435456'); // 256MB mmap
   db.pragma('page_size = 4096');
   db.pragma('wal_autocheckpoint = 1000');
 
@@ -86,23 +99,35 @@ function initDb() {
   `);
 
   // Migrate: add last_used column
-  const cols = db.prepare("PRAGMA table_info(collections)").all().map(c => c.name);
+  const cols = db
+    .prepare('PRAGMA table_info(collections)')
+    .all()
+    .map((c) => c.name);
   if (!cols.includes('last_used')) {
     db.exec("ALTER TABLE collections ADD COLUMN last_used TEXT DEFAULT ''");
-    db.exec("UPDATE collections SET last_used = created_at WHERE last_used = ''");
+    db.exec(
+      "UPDATE collections SET last_used = created_at WHERE last_used = ''",
+    );
   }
   if (!cols.includes('pinned')) {
-    db.exec("ALTER TABLE collections ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0");
+    db.exec(
+      'ALTER TABLE collections ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0',
+    );
   }
   if (!cols.includes('category_id')) {
-    db.exec("ALTER TABLE collections ADD COLUMN category_id TEXT DEFAULT NULL");
+    db.exec('ALTER TABLE collections ADD COLUMN category_id TEXT DEFAULT NULL');
   }
   if (!cols.includes('variables')) {
-    db.exec("ALTER TABLE collections ADD COLUMN variables TEXT NOT NULL DEFAULT '[]'");
+    db.exec(
+      "ALTER TABLE collections ADD COLUMN variables TEXT NOT NULL DEFAULT '[]'",
+    );
   }
 
   // Migrate: add messages column to responses
-  const resCols = db.prepare("PRAGMA table_info(responses)").all().map(c => c.name);
+  const resCols = db
+    .prepare('PRAGMA table_info(responses)')
+    .all()
+    .map((c) => c.name);
   if (!resCols.includes('messages')) {
     db.exec("ALTER TABLE responses ADD COLUMN messages TEXT DEFAULT '[]'");
   }
@@ -127,18 +152,22 @@ function initDb() {
 function migrateJsonFiles() {
   const oldDir = path.join(app.getPath('userData'), 'collections');
   if (!fs.existsSync(oldDir)) return;
-  const files = fs.readdirSync(oldDir).filter(f => f.endsWith('.json'));
+  const files = fs.readdirSync(oldDir).filter((f) => f.endsWith('.json'));
   if (files.length === 0) return;
 
-  const insert = db.prepare('INSERT OR IGNORE INTO collections (id, name, items) VALUES (?, ?, ?)');
+  const insert = db.prepare(
+    'INSERT OR IGNORE INTO collections (id, name, items) VALUES (?, ?, ?)',
+  );
+
   const tx = db.transaction(() => {
     for (const f of files) {
       try {
         const data = JSON.parse(fs.readFileSync(path.join(oldDir, f), 'utf-8'));
         insert.run(data.id, data.name, JSON.stringify(data.items || []));
-      } catch { }
+      } catch {}
     }
   });
+
   tx();
   fs.renameSync(oldDir, oldDir + '.migrated');
 }
@@ -146,46 +175,81 @@ function migrateJsonFiles() {
 // --- Collection CRUD ---
 
 function loadCollections() {
-  return db.prepare('SELECT id, name, last_used, pinned, category_id FROM collections ORDER BY last_used DESC').all();
+  return db
+    .prepare(
+      'SELECT id, name, last_used, pinned, category_id FROM collections ORDER BY last_used DESC',
+    )
+    .all();
 }
 
 function loadCategories() {
-  return db.prepare('SELECT * FROM categories ORDER BY sort_order ASC, rowid ASC').all();
+  return db
+    .prepare('SELECT * FROM categories ORDER BY sort_order ASC, rowid ASC')
+    .all();
 }
 
 function saveCategory(cat) {
-  const existing = db.prepare('SELECT id FROM categories WHERE id = ?').get(cat.id);
+  const existing = db
+    .prepare('SELECT id FROM categories WHERE id = ?')
+    .get(cat.id);
   if (existing) {
-    db.prepare('UPDATE categories SET name = ?, sort_order = ?, collapsed = ? WHERE id = ?')
-      .run(cat.name, cat.sort_order || 0, cat.collapsed ? 1 : 0, cat.id);
+    db.prepare(
+      'UPDATE categories SET name = ?, sort_order = ?, collapsed = ? WHERE id = ?',
+    ).run(cat.name, cat.sort_order || 0, cat.collapsed ? 1 : 0, cat.id);
   } else {
-    const maxOrder = db.prepare('SELECT MAX(sort_order) as m FROM categories').get();
-    db.prepare('INSERT INTO categories (id, name, sort_order, collapsed) VALUES (?, ?, ?, ?)')
-      .run(cat.id, cat.name, (maxOrder?.m || 0) + 1, 0);
+    const maxOrder = db
+      .prepare('SELECT MAX(sort_order) as m FROM categories')
+      .get();
+    db.prepare(
+      'INSERT INTO categories (id, name, sort_order, collapsed) VALUES (?, ?, ?, ?)',
+    ).run(cat.id, cat.name, (maxOrder?.m || 0) + 1, 0);
   }
 }
 
 function deleteCategory(id) {
-  db.prepare('UPDATE collections SET category_id = NULL WHERE category_id = ?').run(id);
+  db.prepare(
+    'UPDATE collections SET category_id = NULL WHERE category_id = ?',
+  ).run(id);
   db.prepare('DELETE FROM categories WHERE id = ?').run(id);
 }
 
 function loadCollection(id) {
   const row = db.prepare('SELECT * FROM collections WHERE id = ?').get(id);
   if (!row) return null;
-  db.prepare("UPDATE collections SET last_used = datetime('now') WHERE id = ?").run(id);
-  return { id: row.id, name: row.name, items: JSON.parse(row.items), variables: JSON.parse(row.variables || '[]') };
+  db.prepare(
+    "UPDATE collections SET last_used = datetime('now') WHERE id = ?",
+  ).run(id);
+  return {
+    id: row.id,
+    name: row.name,
+    items: JSON.parse(row.items),
+    variables: JSON.parse(row.variables || '[]'),
+  };
 }
 
 function saveCollection(collection) {
   const vars = JSON.stringify(collection.variables || []);
-  const existing = db.prepare('SELECT id FROM collections WHERE id = ?').get(collection.id);
+  const existing = db
+    .prepare('SELECT id FROM collections WHERE id = ?')
+    .get(collection.id);
   if (existing) {
-    db.prepare('UPDATE collections SET name = ?, items = ?, variables = ? WHERE id = ?')
-      .run(collection.name, JSON.stringify(collection.items), vars, collection.id);
+    db.prepare(
+      'UPDATE collections SET name = ?, items = ?, variables = ? WHERE id = ?',
+    ).run(
+      collection.name,
+      JSON.stringify(collection.items),
+      vars,
+      collection.id,
+    );
   } else {
-    db.prepare("INSERT INTO collections (id, name, items, variables, last_used) VALUES (?, ?, ?, ?, datetime('now'))")
-      .run(collection.id, collection.name, JSON.stringify(collection.items), vars);
+    db.prepare(
+      "INSERT INTO collections (id, name, items, variables, last_used) VALUES (?, ?, ?, ?, datetime('now'))",
+    ).run(
+      collection.id,
+      collection.name,
+      JSON.stringify(collection.items),
+      vars,
+    );
   }
 }
 
@@ -197,44 +261,68 @@ function deleteCollection(id) {
 
 function saveResponse(data) {
   // Clear response data from previous entries to save space, keep only metadata for history
-  db.prepare(`UPDATE responses SET response_headers = '{}', response_body = NULL, timeline = '[]', messages = '[]'
-    WHERE request_id = ?`).run(data.request_id);
-  const result = db.prepare(`
+  db.prepare(
+    `UPDATE responses SET response_headers = '{}', response_body = NULL, timeline = '[]', messages = '[]'
+    WHERE request_id = ?`,
+  ).run(data.request_id);
+  const result = db
+    .prepare(
+      `
     INSERT INTO responses (request_id, collection_id, status, status_text,
       response_headers, response_body, timeline, time_ms, request_method,
       request_url, request_headers, request_body, content_type, error, messages)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    data.request_id, data.collection_id, data.status || null, data.status_text || null,
-    JSON.stringify(data.response_headers || {}), data.response_body || null,
-    JSON.stringify(data.timeline || []), data.time_ms, data.request_method,
-    data.request_url, JSON.stringify(data.request_headers || []),
-    data.request_body || '', data.content_type || '', data.error || null,
-    JSON.stringify(data.messages || [])
-  );
+  `,
+    )
+    .run(
+      data.request_id,
+      data.collection_id,
+      data.status || null,
+      data.status_text || null,
+      JSON.stringify(data.response_headers || {}),
+      data.response_body || null,
+      JSON.stringify(data.timeline || []),
+      data.time_ms,
+      data.request_method,
+      data.request_url,
+      JSON.stringify(data.request_headers || []),
+      data.request_body || '',
+      data.content_type || '',
+      data.error || null,
+      JSON.stringify(data.messages || []),
+    );
   return Number(result.lastInsertRowid);
 }
 
 function getLatestResponse(requestId) {
-  const row = db.prepare('SELECT * FROM responses WHERE request_id = ? ORDER BY created_at DESC LIMIT 1').get(requestId);
+  const row = db
+    .prepare(
+      'SELECT * FROM responses WHERE request_id = ? ORDER BY created_at DESC LIMIT 1',
+    )
+    .get(requestId);
   if (!row) return null;
   return formatResponseRow(row);
 }
 
 function getResponseHistory(requestId, limit = 50) {
-  return db.prepare(`
+  return db
+    .prepare(
+      `
     SELECT id, status, status_text, time_ms, request_method, request_url, error, created_at
     FROM responses WHERE request_id = ? ORDER BY created_at DESC LIMIT ?
-  `).all(requestId, limit).map(row => ({
-    id: Number(row.id),
-    status: Number(row.status),
-    status_text: row.status_text,
-    time_ms: Number(row.time_ms),
-    request_method: row.request_method,
-    request_url: row.request_url,
-    error: row.error,
-    created_at: row.created_at,
-  }));
+  `,
+    )
+    .all(requestId, limit)
+    .map((row) => ({
+      id: Number(row.id),
+      status: Number(row.status),
+      status_text: row.status_text,
+      time_ms: Number(row.time_ms),
+      request_method: row.request_method,
+      request_url: row.request_url,
+      error: row.error,
+      created_at: row.created_at,
+    }));
 }
 
 function loadResponse(id) {
@@ -286,16 +374,25 @@ app.whenReady().then(() => {
   initDb();
   createWindow();
 });
-app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
-app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
-app.on('will-quit', () => { if (db) { db.close(); db = null; } });
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') app.quit();
+});
+app.on('activate', () => {
+  if (BrowserWindow.getAllWindows().length === 0) createWindow();
+});
+app.on('will-quit', () => {
+  if (db) {
+    db.close();
+    db = null;
+  }
+});
 
 // --- IPC: Collections ---
 
 ipcMain.handle('collections:list', () => loadCollections());
 
 ipcMain.handle('collections:create', (_, name) => {
-  const collection = { id: generateKsuid(), name, items: [] };
+  const collection = { id: generateKSUID(), name, items: [] };
   saveCollection(collection);
   return collection;
 });
@@ -314,19 +411,25 @@ ipcMain.handle('collections:delete', (_, id) => {
 });
 
 ipcMain.handle('collections:pin', (_, id, pinned) => {
-  db.prepare('UPDATE collections SET pinned = ? WHERE id = ?').run(pinned ? 1 : 0, id);
+  db.prepare('UPDATE collections SET pinned = ? WHERE id = ?').run(
+    pinned ? 1 : 0,
+    id,
+  );
   return true;
 });
 
 ipcMain.handle('collections:setCategory', (_, id, categoryId) => {
-  db.prepare('UPDATE collections SET category_id = ? WHERE id = ?').run(categoryId || null, id);
+  db.prepare('UPDATE collections SET category_id = ? WHERE id = ?').run(
+    categoryId || null,
+    id,
+  );
   return true;
 });
 
 ipcMain.handle('categories:list', () => loadCategories());
 
 ipcMain.handle('categories:create', (_, name) => {
-  const id = generateKsuid();
+  const id = generateKSUID();
   saveCategory({ id, name });
   return { id, name, sort_order: 0, collapsed: 0 };
 });
@@ -342,7 +445,10 @@ ipcMain.handle('categories:delete', (_, id) => {
 });
 
 ipcMain.handle('categories:toggleCollapse', (_, id, collapsed) => {
-  db.prepare('UPDATE categories SET collapsed = ? WHERE id = ?').run(collapsed ? 1 : 0, id);
+  db.prepare('UPDATE categories SET collapsed = ? WHERE id = ?').run(
+    collapsed ? 1 : 0,
+    id,
+  );
   return true;
 });
 
@@ -370,7 +476,10 @@ ipcMain.handle('settings:getAll', () => {
 });
 
 ipcMain.handle('settings:set', (_, key, value) => {
-  db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(key, value);
+  db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(
+    key,
+    value,
+  );
   return true;
 });
 
@@ -402,7 +511,9 @@ ipcMain.handle('response:load', (_, id) => {
 // --- IPC: File picker ---
 
 ipcMain.handle('file:pick', async () => {
-  const result = await dialog.showOpenDialog(mainWindow, { properties: ['openFile'] });
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openFile'],
+  });
   if (result.canceled || !result.filePaths.length) return null;
   const filePath = result.filePaths[0];
   const stats = fs.statSync(filePath);
@@ -429,8 +540,13 @@ ipcMain.handle('import:pick', async () => {
     // Create collections
     const created = [];
     for (const col of imported) {
-      const id = generateKsuid();
-      const collection = { id, name: col.name, items: col.items, variables: col.variables || [] };
+      const id = generateKSUID();
+      const collection = {
+        id,
+        name: col.name,
+        items: col.items,
+        variables: col.variables || [],
+      };
       saveCollection(collection);
       created.push({ id, name: col.name, count: countRequests(col.items) });
     }
@@ -450,9 +566,10 @@ ipcMain.handle('import:requests', async () => {
     const raw = fs.readFileSync(result.filePaths[0], 'utf-8');
     const data = JSON.parse(raw);
     const imported = parseImportData(data);
-    if (!imported || imported.length === 0) return { error: 'Unrecognized format' };
+    if (!imported || imported.length === 0)
+      return { error: 'Unrecognized format' };
     // Merge all collections' items into one flat list
-    const items = imported.flatMap(c => c.items);
+    const items = imported.flatMap((c) => c.items);
     return { items };
   } catch (e) {
     return { error: e.message };
@@ -470,7 +587,11 @@ function countRequests(items) {
 
 function parseImportData(data) {
   // Postman Collection v2.1
-  if (data.info && data.info.schema && data.info.schema.includes('schema.getpostman.com')) {
+  if (
+    data.info &&
+    data.info.schema &&
+    data.info.schema.includes('schema.getpostman.com')
+  ) {
     return [parsePostmanCollection(data)];
   }
   // Postman array of collections
@@ -486,8 +607,10 @@ function parseImportData(data) {
 
 function parsePostmanCollection(col) {
   const name = col.info?.name || 'Imported Collection';
-  const variables = (col.variable || []).map(v => ({
-    key: v.key || '', value: v.value || '', enabled: !v.disabled,
+  const variables = (col.variable || []).map((v) => ({
+    key: v.key || '',
+    value: v.value || '',
+    enabled: !v.disabled,
   }));
   const items = (col.item || []).map(parsePostmanItem);
   return { name, items, variables };
@@ -497,8 +620,11 @@ function parsePostmanItem(item) {
   if (item.item) {
     // Folder
     return {
-      id: generateKsuid(), type: 'folder', name: item.name || 'Folder',
-      children: item.item.map(parsePostmanItem), collapsed: false,
+      id: generateKSUID(),
+      type: 'folder',
+      name: item.name || 'Folder',
+      children: item.item.map(parsePostmanItem),
+      collapsed: false,
     };
   }
   // Request
@@ -508,8 +634,10 @@ function parsePostmanItem(item) {
   if (typeof req.url === 'string') url = req.url;
   else if (req.url?.raw) url = req.url.raw;
 
-  const headers = (req.header || []).map(h => ({
-    key: h.key || '', value: h.value || '', enabled: !h.disabled,
+  const headers = (req.header || []).map((h) => ({
+    key: h.key || '',
+    value: h.value || '',
+    enabled: !h.disabled,
   }));
 
   let body = '';
@@ -532,30 +660,42 @@ function parsePostmanItem(item) {
   const params = [];
   if (req.url?.query) {
     for (const q of req.url.query) {
-      params.push({ key: q.key || '', value: q.value || '', enabled: !q.disabled });
+      params.push({
+        key: q.key || '',
+        value: q.value || '',
+        enabled: !q.disabled,
+      });
     }
   }
 
   return {
-    id: generateKsuid(), type: 'request', name: item.name || 'Request',
-    method: method.toUpperCase(), url, headers, body, bodyType, contentType, params,
+    id: generateKSUID(),
+    type: 'request',
+    name: item.name || 'Request',
+    method: method.toUpperCase(),
+    url,
+    headers,
+    body,
+    bodyType,
+    contentType,
+    params,
   };
 }
 
 function parseInsomniaExport(data) {
   const resources = data.resources || [];
-  const workspaces = resources.filter(r => r._type === 'workspace');
-  const folders = resources.filter(r => r._type === 'request_group');
-  const requests = resources.filter(r => r._type === 'request');
-  const envs = resources.filter(r => r._type === 'environment');
+  const workspaces = resources.filter((r) => r._type === 'workspace');
+  const folders = resources.filter((r) => r._type === 'request_group');
+  const requests = resources.filter((r) => r._type === 'request');
+  const envs = resources.filter((r) => r._type === 'environment');
 
   if (workspaces.length === 0) {
     workspaces.push({ _id: '__WORKSPACE__', name: 'Imported' });
   }
 
-  return workspaces.map(ws => {
+  return workspaces.map((ws) => {
     const variables = [];
-    const wsEnv = envs.find(e => e.parentId === ws._id);
+    const wsEnv = envs.find((e) => e.parentId === ws._id);
     if (wsEnv?.data) {
       for (const [k, v] of Object.entries(wsEnv.data)) {
         variables.push({ key: k, value: String(v), enabled: true });
@@ -568,16 +708,21 @@ function parseInsomniaExport(data) {
 
 function buildInsomniaTree(parentId, folders, requests) {
   const items = [];
-  for (const f of folders.filter(f => f.parentId === parentId)) {
+  for (const f of folders.filter((f) => f.parentId === parentId)) {
     items.push({
-      id: generateKsuid(), type: 'folder', name: f.name || 'Folder',
-      children: buildInsomniaTree(f._id, folders, requests), collapsed: false,
+      id: generateKSUID(),
+      type: 'folder',
+      name: f.name || 'Folder',
+      children: buildInsomniaTree(f._id, folders, requests),
+      collapsed: false,
     });
   }
-  for (const r of requests.filter(r => r.parentId === parentId)) {
+  for (const r of requests.filter((r) => r.parentId === parentId)) {
     const method = (r.method || 'GET').toUpperCase();
-    const headers = (r.headers || []).map(h => ({
-      key: h.name || '', value: h.value || '', enabled: !h.disabled,
+    const headers = (r.headers || []).map((h) => ({
+      key: h.name || '',
+      value: h.value || '',
+      enabled: !h.disabled,
     }));
     let body = '';
     let bodyType = 'text';
@@ -585,12 +730,21 @@ function buildInsomniaTree(parentId, folders, requests) {
       if (r.body.text) body = r.body.text;
       else if (r.body.mimeType === 'multipart/form-data') bodyType = 'form';
     }
-    const params = (r.parameters || []).map(p => ({
-      key: p.name || '', value: p.value || '', enabled: !p.disabled,
+    const params = (r.parameters || []).map((p) => ({
+      key: p.name || '',
+      value: p.value || '',
+      enabled: !p.disabled,
     }));
     items.push({
-      id: generateKsuid(), type: 'request', name: r.name || 'Request',
-      method, url: r.url || '', headers, body, bodyType, params,
+      id: generateKSUID(),
+      type: 'request',
+      name: r.name || 'Request',
+      method,
+      url: r.url || '',
+      headers,
+      body,
+      bodyType,
+      params,
     });
   }
   return items;
@@ -599,25 +753,33 @@ function buildInsomniaTree(parentId, folders, requests) {
 // --- IPC: Send request ---
 
 function buildMultipartBody(fields) {
-  const boundary = '----FormBoundary' + generateKsuid().replace(/-/g, '').slice(0, 16);
+  const boundary =
+    '----FormBoundary' + generateKSUID().replace(/-/g, '').slice(0, 16);
   const parts = [];
   for (const f of fields) {
     if (f.type === 'file' && f.filePath) {
       if (!fs.existsSync(f.filePath)) continue;
       const fileData = fs.readFileSync(f.filePath);
-      parts.push(Buffer.from(
-        `--${boundary}\r\nContent-Disposition: form-data; name="${f.key}"; filename="${f.fileName}"\r\nContent-Type: ${f.fileMimeType || 'application/octet-stream'}\r\n\r\n`
-      ));
+      parts.push(
+        Buffer.from(
+          `--${boundary}\r\nContent-Disposition: form-data; name="${f.key}"; filename="${f.fileName}"\r\nContent-Type: ${f.fileMimeType || 'application/octet-stream'}\r\n\r\n`,
+        ),
+      );
       parts.push(fileData);
       parts.push(Buffer.from('\r\n'));
     } else {
-      parts.push(Buffer.from(
-        `--${boundary}\r\nContent-Disposition: form-data; name="${f.key}"\r\n\r\n${f.value || ''}\r\n`
-      ));
+      parts.push(
+        Buffer.from(
+          `--${boundary}\r\nContent-Disposition: form-data; name="${f.key}"\r\n\r\n${f.value || ''}\r\n`,
+        ),
+      );
     }
   }
   parts.push(Buffer.from(`--${boundary}--\r\n`));
-  return { body: Buffer.concat(parts), contentType: `multipart/form-data; boundary=${boundary}` };
+  return {
+    body: Buffer.concat(parts),
+    contentType: `multipart/form-data; boundary=${boundary}`,
+  };
 }
 
 ipcMain.handle('request:send', async (_, opts) => {
@@ -647,9 +809,16 @@ ipcMain.handle('request:send', async (_, opts) => {
         if (!h['content-type']) {
           const ext = path.extname(filePath).toLowerCase();
           const mimeMap = {
-            '.json': 'application/json', '.xml': 'application/xml', '.html': 'text/html',
-            '.txt': 'text/plain', '.csv': 'text/csv', '.png': 'image/png', '.jpg': 'image/jpeg',
-            '.gif': 'image/gif', '.pdf': 'application/pdf', '.zip': 'application/zip'
+            '.json': 'application/json',
+            '.xml': 'application/xml',
+            '.html': 'text/html',
+            '.txt': 'text/plain',
+            '.csv': 'text/csv',
+            '.png': 'image/png',
+            '.jpg': 'image/jpeg',
+            '.gif': 'image/gif',
+            '.pdf': 'application/pdf',
+            '.zip': 'application/zip',
           };
           h['content-type'] = mimeMap[ext] || 'application/octet-stream';
         }
@@ -666,22 +835,40 @@ ipcMain.handle('request:send', async (_, opts) => {
   const timeline = [];
   const start = Date.now();
   const ts = () => Date.now() - start;
+  const timing = { dns: null, connect: null, tls: null, ttfb: null };
 
   return new Promise((resolve) => {
     let parsed;
     try {
       parsed = new URL(url);
     } catch (e) {
-      resolve({ error: e.message, time: 0, contentType: '', timeline: [{ t: 0, type: 'error', text: `Invalid URL: ${e.message}` }] });
+      resolve({
+        error: e.message,
+        time: 0,
+        contentType: '',
+        timeline: [{ t: 0, type: 'error', text: `Invalid URL: ${e.message}` }],
+      });
       return;
     }
 
     const isHttps = parsed.protocol === 'https:';
     const lib = isHttps ? https : http;
 
-    timeline.push({ t: ts(), type: 'info', text: `Preparing ${method} request to ${parsed.hostname}` });
-    timeline.push({ t: ts(), type: 'req-header', text: `${method} ${parsed.pathname}${parsed.search} HTTP/1.1` });
-    timeline.push({ t: ts(), type: 'req-header', text: `Host: ${parsed.host}` });
+    timeline.push({
+      t: ts(),
+      type: 'info',
+      text: `Preparing ${method} request to ${parsed.hostname}`,
+    });
+    timeline.push({
+      t: ts(),
+      type: 'req-header',
+      text: `${method} ${parsed.pathname}${parsed.search} HTTP/1.1`,
+    });
+    timeline.push({
+      t: ts(),
+      type: 'req-header',
+      text: `Host: ${parsed.host}`,
+    });
     for (const [k, v] of Object.entries(h)) {
       timeline.push({ t: ts(), type: 'req-header', text: `${k}: ${v}` });
     }
@@ -697,18 +884,32 @@ ipcMain.handle('request:send', async (_, opts) => {
 
     const req = lib.request(reqOpts, (res) => {
       const elapsed = ts();
+      timing.ttfb = elapsed;
       timeline.push({ t: elapsed, type: 'info', text: `Received response` });
-      timeline.push({ t: elapsed, type: 'res-status', text: `HTTP/${res.httpVersion} ${res.statusCode} ${res.statusMessage}` });
+      timeline.push({
+        t: elapsed,
+        type: 'res-status',
+        text: `HTTP/${res.httpVersion} ${res.statusCode} ${res.statusMessage}`,
+      });
       for (let i = 0; i < res.rawHeaders.length; i += 2) {
-        timeline.push({ t: elapsed, type: 'res-header', text: `${res.rawHeaders[i]}: ${res.rawHeaders[i + 1]}` });
+        timeline.push({
+          t: elapsed,
+          type: 'res-header',
+          text: `${res.rawHeaders[i]}: ${res.rawHeaders[i + 1]}`,
+        });
       }
 
       const respHeaders = {};
-      res.headers && Object.entries(res.headers).forEach(([k, v]) => { respHeaders[k] = v; });
+      res.headers &&
+        Object.entries(res.headers).forEach(([k, v]) => {
+          respHeaders[k] = v;
+        });
       const ct = res.headers['content-type'] || '';
 
       // Decompress response based on content-encoding
-      const encoding = (res.headers['content-encoding'] || '').trim().toLowerCase();
+      const encoding = (res.headers['content-encoding'] || '')
+        .trim()
+        .toLowerCase();
       let stream = res;
       if (encoding === 'gzip' || encoding === 'x-gzip') {
         stream = res.pipe(zlib.createGunzip());
@@ -719,11 +920,24 @@ ipcMain.handle('request:send', async (_, opts) => {
       }
 
       if (stream !== res) {
-        timeline.push({ t: ts(), type: 'info', text: `Decompressing response (${encoding})` });
+        timeline.push({
+          t: ts(),
+          type: 'info',
+          text: `Decompressing response (${encoding})`,
+        });
         stream.on('error', (err) => {
           const totalTime = ts();
-          timeline.push({ t: totalTime, type: 'error', text: `Decompression error: ${err.message}` });
-          resolve({ error: `Decompression failed: ${err.message}`, time: totalTime, contentType: ct, timeline });
+          timeline.push({
+            t: totalTime,
+            type: 'error',
+            text: `Decompression error: ${err.message}`,
+          });
+          resolve({
+            error: `Decompression failed: ${err.message}`,
+            time: totalTime,
+            contentType: ct,
+            timeline,
+          });
         });
       }
 
@@ -742,7 +956,11 @@ ipcMain.handle('request:send', async (_, opts) => {
           sseId,
         });
 
-        mainWindow.webContents.send('sse:open', { id: sseId, status: res.statusCode, statusText: res.statusMessage });
+        mainWindow.webContents.send('sse:open', {
+          id: sseId,
+          status: res.statusCode,
+          statusText: res.statusMessage,
+        });
 
         let buffer = '';
         stream.on('data', (chunk) => {
@@ -752,7 +970,11 @@ ipcMain.handle('request:send', async (_, opts) => {
           for (const raw of parts) {
             if (!raw.trim()) continue;
             const event = parseSseEvent(raw);
-            mainWindow.webContents.send('sse:event', { id: sseId, event, raw: raw.trim() });
+            mainWindow.webContents.send('sse:event', {
+              id: sseId,
+              event,
+              raw: raw.trim(),
+            });
           }
         });
 
@@ -776,11 +998,37 @@ ipcMain.handle('request:send', async (_, opts) => {
         } else {
           responseBody = buf.toString('utf-8');
           if (ct.includes('json')) {
-            try { responseBody = JSON.stringify(JSON.parse(responseBody), null, 2); } catch { }
+            try {
+              responseBody = JSON.stringify(JSON.parse(responseBody), null, 2);
+            } catch {}
           }
         }
-        timeline.push({ t: totalTime, type: 'info', text: `Response body received (${buf.length} bytes)` });
-        timeline.push({ t: totalTime, type: 'info', text: `Request completed in ${totalTime}ms` });
+        timeline.push({
+          t: totalTime,
+          type: 'info',
+          text: `Response body received (${buf.length} bytes)`,
+        });
+        timeline.push({
+          t: totalTime,
+          type: 'info',
+          text: `Request completed in ${totalTime}ms`,
+        });
+        // Timing summary
+        const transferTime = totalTime - (timing.ttfb || 0);
+        const parts = [];
+        if (timing.dns != null) parts.push(`DNS: ${timing.dns}ms`);
+        if (timing.connect != null)
+          parts.push(`TCP: ${timing.connect - (timing.dns || 0)}ms`);
+        if (timing.tls != null)
+          parts.push(`TLS: ${timing.tls - (timing.connect || 0)}ms`);
+        if (timing.ttfb != null) parts.push(`TTFB: ${timing.ttfb}ms`);
+        parts.push(`Transfer: ${transferTime}ms`);
+        parts.push(`Total: ${totalTime}ms`);
+        timeline.push({
+          t: totalTime,
+          type: 'timing',
+          text: parts.join('  |  '),
+        });
         resolve({
           status: res.statusCode,
           statusText: res.statusMessage,
@@ -789,6 +1037,7 @@ ipcMain.handle('request:send', async (_, opts) => {
           time: totalTime,
           contentType: ct,
           timeline,
+          timing,
           isImage,
         });
       });
@@ -796,23 +1045,94 @@ ipcMain.handle('request:send', async (_, opts) => {
 
     req.on('socket', (socket) => {
       if (socket.connecting) {
-        timeline.push({ t: ts(), type: 'info', text: `Connecting to ${parsed.hostname}:${reqOpts.port}...` });
+        timeline.push({
+          t: ts(),
+          type: 'info',
+          text: `Connecting to ${parsed.hostname}:${reqOpts.port}...`,
+        });
+        socket.on('lookup', (err, address, family) => {
+          timing.dns = ts();
+          if (err) {
+            timeline.push({
+              t: timing.dns,
+              type: 'error',
+              text: `DNS lookup failed: ${err.message}`,
+            });
+          } else {
+            timeline.push({
+              t: timing.dns,
+              type: 'info',
+              text: `DNS resolved: ${address} (IPv${family}) in ${timing.dns}ms`,
+            });
+          }
+        });
         socket.on('connect', () => {
-          timeline.push({ t: ts(), type: 'info', text: `TCP connection established` });
+          timing.connect = ts();
+          const connectDuration = timing.connect - (timing.dns || 0);
+          timeline.push({
+            t: timing.connect,
+            type: 'info',
+            text: `TCP connection established in ${connectDuration}ms`,
+          });
         });
       }
       if (isHttps) {
         socket.on('secureConnect', () => {
+          timing.tls = ts();
+          const tlsDuration = timing.tls - (timing.connect || 0);
           const cert = socket.getPeerCertificate();
           const cipher = socket.getCipher();
           const proto = socket.getProtocol();
-          timeline.push({ t: ts(), type: 'tls', text: `TLS handshake complete` });
-          if (proto) timeline.push({ t: ts(), type: 'tls', text: `Protocol: ${proto}` });
-          if (cipher) timeline.push({ t: ts(), type: 'tls', text: `Cipher: ${cipher.name}` });
+          timeline.push({
+            t: timing.tls,
+            type: 'tls',
+            text: `TLS handshake complete in ${tlsDuration}ms`,
+          });
+          if (proto)
+            timeline.push({ t: ts(), type: 'tls', text: `Protocol: ${proto}` });
+          if (cipher)
+            timeline.push({
+              t: ts(),
+              type: 'tls',
+              text: `Cipher: ${cipher.name}`,
+            });
           if (cert && cert.subject) {
-            timeline.push({ t: ts(), type: 'tls', text: `Subject: ${cert.subject.CN || JSON.stringify(cert.subject)}` });
-            timeline.push({ t: ts(), type: 'tls', text: `Issuer: ${cert.issuer?.CN || cert.issuer?.O || ''}` });
-            timeline.push({ t: ts(), type: 'tls', text: `Valid: ${cert.valid_from} - ${cert.valid_to}` });
+            timeline.push({
+              t: ts(),
+              type: 'tls',
+              text: `Subject: ${cert.subject.CN || JSON.stringify(cert.subject)}`,
+            });
+            if (cert.subjectaltname) {
+              timeline.push({
+                t: ts(),
+                type: 'tls',
+                text: `Alt Names: ${cert.subjectaltname}`,
+              });
+            }
+            timeline.push({
+              t: ts(),
+              type: 'tls',
+              text: `Issuer: ${cert.issuer?.CN || cert.issuer?.O || ''}`,
+            });
+            timeline.push({
+              t: ts(),
+              type: 'tls',
+              text: `Valid: ${cert.valid_from} - ${cert.valid_to}`,
+            });
+            if (cert.serialNumber) {
+              timeline.push({
+                t: ts(),
+                type: 'tls',
+                text: `Serial: ${cert.serialNumber}`,
+              });
+            }
+            if (cert.fingerprint256) {
+              timeline.push({
+                t: ts(),
+                type: 'tls',
+                text: `Fingerprint (SHA-256): ${cert.fingerprint256}`,
+              });
+            }
           }
         });
       }
@@ -820,23 +1140,52 @@ ipcMain.handle('request:send', async (_, opts) => {
 
     req.on('error', (err) => {
       const totalTime = ts();
-      timeline.push({ t: totalTime, type: 'error', text: `${err.code || 'Error'}: ${err.message}` });
-      if (err.code === 'UNABLE_TO_VERIFY_LEAF_SIGNATURE' || err.code === 'CERT_HAS_EXPIRED' ||
-        err.code === 'ERR_TLS_CERT_ALTNAME_INVALID' || err.code === 'DEPTH_ZERO_SELF_SIGNED_CERT' ||
-        err.code === 'SELF_SIGNED_CERT_IN_CHAIN') {
-        timeline.push({ t: totalTime, type: 'error', text: `SSL certificate verification failed` });
+      timeline.push({
+        t: totalTime,
+        type: 'error',
+        text: `${err.code || 'Error'}: ${err.message}`,
+      });
+      if (
+        err.code === 'UNABLE_TO_VERIFY_LEAF_SIGNATURE' ||
+        err.code === 'CERT_HAS_EXPIRED' ||
+        err.code === 'ERR_TLS_CERT_ALTNAME_INVALID' ||
+        err.code === 'DEPTH_ZERO_SELF_SIGNED_CERT' ||
+        err.code === 'SELF_SIGNED_CERT_IN_CHAIN'
+      ) {
+        timeline.push({
+          t: totalTime,
+          type: 'error',
+          text: `SSL certificate verification failed`,
+        });
       }
       if (err.code === 'ECONNREFUSED') {
-        timeline.push({ t: totalTime, type: 'error', text: `Connection refused by ${parsed.hostname}:${reqOpts.port}` });
+        timeline.push({
+          t: totalTime,
+          type: 'error',
+          text: `Connection refused by ${parsed.hostname}:${reqOpts.port}`,
+        });
       }
       if (err.code === 'ENOTFOUND') {
-        timeline.push({ t: totalTime, type: 'error', text: `DNS lookup failed for ${parsed.hostname}` });
+        timeline.push({
+          t: totalTime,
+          type: 'error',
+          text: `DNS lookup failed for ${parsed.hostname}`,
+        });
       }
-      resolve({ error: err.message, time: totalTime, contentType: '', timeline });
+      resolve({
+        error: err.message,
+        time: totalTime,
+        contentType: '',
+        timeline,
+      });
     });
 
     if (reqBody) {
-      timeline.push({ t: ts(), type: 'info', text: `Sending request body (${reqBody.length} bytes)` });
+      timeline.push({
+        t: ts(),
+        type: 'info',
+        text: `Sending request body (${reqBody.length} bytes)`,
+      });
       req.write(reqBody);
     }
     req.end();
@@ -847,10 +1196,12 @@ ipcMain.handle('request:send', async (_, opts) => {
 
 const activeSseConnections = new Map();
 
-
 ipcMain.handle('sse:disconnect', (_, id) => {
   const req = activeSseConnections.get(id);
-  if (req) { req.destroy(); activeSseConnections.delete(id); }
+  if (req) {
+    req.destroy();
+    activeSseConnections.delete(id);
+  }
 });
 
 function parseSseEvent(raw) {
@@ -858,9 +1209,11 @@ function parseSseEvent(raw) {
   const event = { type: 'message', data: '', id: '', retry: null };
   for (const line of lines) {
     if (line.startsWith('event:')) event.type = line.slice(6).trim();
-    else if (line.startsWith('data:')) event.data += (event.data ? '\n' : '') + line.slice(5).trimStart();
+    else if (line.startsWith('data:'))
+      event.data += (event.data ? '\n' : '') + line.slice(5).trimStart();
     else if (line.startsWith('id:')) event.id = line.slice(3).trim();
-    else if (line.startsWith('retry:')) event.retry = parseInt(line.slice(6).trim());
+    else if (line.startsWith('retry:'))
+      event.retry = parseInt(line.slice(6).trim());
   }
   return event;
 }
@@ -869,7 +1222,7 @@ function parseSseEvent(raw) {
 
 const activeWsConnections = new Map();
 
-ipcMain.handle('ws:connect', (event, opts) => {
+ipcMain.handle('ws:connect', (_, opts) => {
   const { id, url, headers, protocols } = opts;
   const h = {};
   if (headers) {
@@ -895,14 +1248,25 @@ ipcMain.handle('ws:connect', (event, opts) => {
     });
 
     ws.on('message', (data, isBinary) => {
-      const payload = isBinary ? `[Binary: ${data.length} bytes]` : data.toString('utf-8');
-      mainWindow.webContents.send('ws:message', { id, data: payload, isBinary, time: Date.now() });
+      const payload = isBinary
+        ? `[Binary: ${data.length} bytes]`
+        : data.toString('utf-8');
+      mainWindow.webContents.send('ws:message', {
+        id,
+        data: payload,
+        isBinary,
+        time: Date.now(),
+      });
     });
 
     ws.on('ping', (data) => {
       // ws library auto-replies with pong
       mainWindow.webContents.send('ws:ping', { id, data: data.toString() });
-      mainWindow.webContents.send('ws:pong', { id, data: data.toString(), auto: true });
+      mainWindow.webContents.send('ws:pong', {
+        id,
+        data: data.toString(),
+        auto: true,
+      });
     });
 
     ws.on('pong', (data) => {
@@ -911,7 +1275,11 @@ ipcMain.handle('ws:connect', (event, opts) => {
 
     ws.on('close', (code, reason) => {
       activeWsConnections.delete(id);
-      mainWindow.webContents.send('ws:close', { id, code, reason: reason.toString() });
+      mainWindow.webContents.send('ws:close', {
+        id,
+        code,
+        reason: reason.toString(),
+      });
     });
 
     ws.on('error', (err) => {
@@ -943,5 +1311,8 @@ ipcMain.handle('ws:send', (_, opts) => {
 
 ipcMain.handle('ws:disconnect', (_, id) => {
   const ws = activeWsConnections.get(id);
-  if (ws) { ws.close(); activeWsConnections.delete(id); }
+  if (ws) {
+    ws.close();
+    activeWsConnections.delete(id);
+  }
 });
