@@ -1,12 +1,10 @@
-import { createSignal, createEffect, onMount, onCleanup } from 'solid-js';
-import { generateId, findItem, removeItem, findParentArray, isDescendant, resolveVariables, buildUrlWithParams, parseCurl } from '../helpers';
-import { showPrompt, showConfirm, showTextarea } from '../components/Modal';
-import Modal from '../components/Modal';
-import Sidebar from '../components/Sidebar';
-import Variables from '../components/Variables';
+import { createSignal, onCleanup, onMount } from 'solid-js';
+import Icon from '../components/Icon';
+import Modal, { showConfirm, showPrompt, showTextarea } from '../components/Modal';
 import RequestPane from '../components/RequestPane';
 import ResponsePane from '../components/ResponsePane';
-import Icon from '../components/Icon';
+import Sidebar from '../components/Sidebar';
+import { buildUrlWithParams, findItem, findParentArray, generateKSUID, isDescendant, parseCurl, removeItem, resolveVariables } from '../helpers';
 import t from '../locale';
 
 export default function Collection(props) {
@@ -260,7 +258,7 @@ export default function Collection(props) {
     if (!folder) return;
     const name = await showPrompt(t.collection.addRequestModal.title, t.collection.addRequestModal.defaultValue);
     if (!name) return;
-    const req = { id: generateId(), type: 'request', name, method: 'GET', url: '', headers: [], body: '', bodyType: 'text' };
+    const req = { id: generateKSUID(), type: 'request', name, method: 'GET', url: '', headers: [], body: '', bodyType: 'text' };
     folder.children = folder.children || [];
     folder.children.push(req);
     setCollection({ ...c, items: structuredClone(c.items) });
@@ -272,7 +270,7 @@ export default function Collection(props) {
     const name = await showPrompt(t.collection.addRequestModal.title, t.collection.addRequestModal.defaultValue);
     if (!name) return;
     const c = collection();
-    const req = { id: generateId(), type: 'request', name, method: 'GET', url: '', headers: [], body: '', bodyType: 'text' };
+    const req = { id: generateKSUID(), type: 'request', name, method: 'GET', url: '', headers: [], body: '', bodyType: 'text' };
     c.items.push(req);
     setCollection({ ...c, items: structuredClone(c.items) });
     await save();
@@ -283,7 +281,7 @@ export default function Collection(props) {
     const name = await showPrompt(t.collection.addFolderModal.title, t.collection.addFolderModal.defaultValue);
     if (!name) return;
     const c = collection();
-    c.items.push({ id: generateId(), type: 'folder', name, children: [], collapsed: false });
+    c.items.push({ id: generateKSUID(), type: 'folder', name, children: [], collapsed: false });
     setCollection({ ...c, items: structuredClone(c.items) });
     save();
   }
@@ -352,8 +350,8 @@ export default function Collection(props) {
 
     const zone = el.classList.contains('drag-over-above') ? 'above'
       : el.classList.contains('drag-over-below') ? 'below'
-      : el.classList.contains('drag-over-inside') ? 'inside'
-      : null;
+        : el.classList.contains('drag-over-inside') ? 'inside'
+          : null;
 
     el.classList.remove('drag-over-above', 'drag-over-below', 'drag-over-inside');
     if (!zone) return;
@@ -766,7 +764,7 @@ export default function Collection(props) {
   async function ensureActiveRequest(m, u) {
     if (!activeRequestId()) {
       const c = collection();
-      const req = { id: generateId(), type: 'request', name: u.replace(/^(?:wss?|https?):\/\//, '').slice(0, 40), method: m, url: u, headers: headers().filter(h => h.key), body: body(), bodyType: bodyType() };
+      const req = { id: generateKSUID(), type: 'request', name: u.replace(/^(?:wss?|https?):\/\//, '').slice(0, 40), method: m, url: u, headers: headers().filter(h => h.key), body: body(), bodyType: bodyType() };
       c.items.push(req);
       setActiveRequestId(req.id);
       setCollection({ ...c, items: structuredClone(c.items) });
@@ -869,7 +867,7 @@ export default function Collection(props) {
     else if (wsUrl.startsWith('https://')) wsUrl = 'wss://' + wsUrl.slice(8);
     else if (!wsUrl.startsWith('ws://') && !wsUrl.startsWith('wss://')) wsUrl = 'ws://' + wsUrl;
 
-    const connId = generateId();
+    const connId = generateKSUID();
     wsStartTime = Date.now();
     wsTimeline = [];
     streamRequestId = activeRequestId();
@@ -901,14 +899,13 @@ export default function Collection(props) {
     setWsInput('');
   }
 
-  // Resize handlers
-  let sidebarRef, requestPaneRef;
-
   function initSidebarResize(e) {
     e.preventDefault();
+
     const sidebar = e.target.previousElementSibling;
     const startX = e.clientX;
     const startW = sidebar.offsetWidth;
+
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
     e.target.classList.add('active');
@@ -917,6 +914,7 @@ export default function Collection(props) {
       sidebar.style.width = Math.max(0, startW + ev.clientX - startX) + 'px';
       sidebar.style.flex = '0 0 auto';
     }
+
     function onUp() {
       e.target.classList.remove('active');
       document.body.style.cursor = '';
@@ -924,16 +922,19 @@ export default function Collection(props) {
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
     }
+
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
   }
 
   function initPaneResize(e) {
     e.preventDefault();
+
     const pane = e.target.previousElementSibling;
     const isHorizontal = window.matchMedia('(min-aspect-ratio: 1/1)').matches;
     const startPos = isHorizontal ? e.clientX : e.clientY;
     const startSize = isHorizontal ? pane.offsetWidth : pane.offsetHeight;
+
     document.body.style.cursor = isHorizontal ? 'col-resize' : 'row-resize';
     document.body.style.userSelect = 'none';
     e.target.classList.add('active');
@@ -941,10 +942,17 @@ export default function Collection(props) {
     function onMove(ev) {
       const delta = (isHorizontal ? ev.clientX : ev.clientY) - startPos;
       const newSize = Math.max(0, startSize + delta);
-      if (isHorizontal) { pane.style.width = newSize + 'px'; pane.style.height = ''; }
-      else { pane.style.height = newSize + 'px'; pane.style.width = ''; }
+
+      if (isHorizontal) {
+        pane.style.width = newSize + 'px'; pane.style.height = '';
+      }
+      else {
+        pane.style.height = newSize + 'px'; pane.style.width = '';
+      }
+
       pane.style.flex = '0 0 auto';
     }
+
     function onUp() {
       e.target.classList.remove('active');
       document.body.style.cursor = '';
@@ -952,6 +960,7 @@ export default function Collection(props) {
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
     }
+
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
   }

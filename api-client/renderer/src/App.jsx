@@ -1,7 +1,7 @@
 import { createSignal } from 'solid-js';
-import Landing from './pages/Landing';
-import Collection from './pages/Collection';
 import t from './locale';
+import Collection from './pages/Collection';
+import Landing from './pages/Landing';
 
 export default function App() {
   const [page, setPage] = createSignal({ type: 'landing' });
