@@ -27,11 +27,18 @@ export default function Variables(props) {
                   value={v.value}
                   onInput={(e) => props.onChange(i(), 'value', e.target.value)}
                 />
-                <button class="btn btn-danger btn-sm" onClick={() => props.onRemove(i())}>&times;</button>
+                <button
+                  class="btn btn-danger btn-sm"
+                  onClick={() => props.onRemove(i())}
+                >
+                  &times;
+                </button>
               </div>
             )}
           </For>
-          <button class="btn btn-ghost btn-sm" onClick={props.onAdd}>+ Add Variable</button>
+          <button class="btn btn-ghost btn-sm" onClick={props.onAdd}>
+            + Add Variable
+          </button>
         </div>
       </Show>
     </div>

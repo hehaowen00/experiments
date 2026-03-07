@@ -106,14 +106,14 @@ export function RequestTabs(props) {
   return (
     <div class="section-tabs">
       <button
-        class={`section-tab ${isActive('headers'}`}
+        class={`section-tab ${isActive('headers')}`}
         onClick={() => setActiveTab('headers')}>
         {t.requestPane.tabs.headers}
       </button>
       <button class={`section-tab ${activeTab() === 'params' ? 'active' : ''}`} onClick={() => setActiveTab('params')}>{t.requestPane.tabs.params}</button>
       <button class={`section-tab ${activeTab() === 'variables' ? 'active' : ''}`} onClick={() => setActiveTab('variables')}>{t.requestPane.tabs.variables}</button>
       <button class={`section-tab ${activeTab() === 'body' ? 'active' : ''}`} onClick={() => setActiveTab('body')}>{t.requestPane.tabs.body}</button>
-    </div>
+    </div >
   );
 }
 
@@ -188,6 +188,47 @@ export function ParamsTab(props) {
   );
 }
 
+function headerTab(props) {
+  const { headers } = props;
+  const { onAddHeader, onHeaderChange } = props;
+
+  return (
+    <Show when={activeTab() === 'headers'}>
+      <div class="headers-table">
+        <div class="kv-bulk-actions">
+          <button
+            class="btn btn-ghost btn-sm"
+            onClick={onAddHeader}
+          >
+            {t.requestPane.addHeaderButton}
+          </button>
+          <div class="kv-bulk-spacer" />
+          <button class="btn btn-ghost btn-sm" onClick={() => headers.forEach((_, i) => onHeaderChange(i, 'enabled', true))}>{t.requestPane.enableAllButton}</button>
+          <button class="btn btn-ghost btn-sm" onClick={() => headers.forEach((_, i) => onHeaderChange(i, 'enabled', false))}>{t.requestPane.disableAllButton}</button>
+        </div>
+        <Index each={props.headers}>
+          {(h, i) => (
+            <div
+              class="header-row"
+              draggable="true"
+              onDragStart={(e) => headerDrag.onDragStart(e, i)}
+              onDragOver={(e) => headerDrag.onDragOver(e, i)}
+              onDragLeave={headerDrag.onDragLeave}
+              onDrop={(e) => headerDrag.onDrop(e, i)}
+              onDragEnd={headerDrag.onDragEnd}
+            >
+              <span class="drag-handle"><Icon name="fa-solid fa-grip-vertical" /></span>
+              <input type="checkbox" checked={h().enabled} onChange={(e) => props.onHeaderChange(i, 'enabled', e.target.checked)} />
+              <input type="text" class="header-key" placeholder={t.requestPane.headerNamePlaceholder} value={h().key} onInput={(e) => { e.target.value = e.target.value.toLowerCase(); props.onHeaderChange(i, 'key', e.target.value); }} />
+              <input type="text" placeholder={t.requestPane.valuePlaceholder} value={h().value} onInput={(e) => props.onHeaderChange(i, 'value', e.target.value)} />
+              <button class="btn btn-danger btn-sm" onClick={() => props.onRemoveHeader(i)}><Icon name="fa-solid fa-xmark" /></button>
+            </div>
+          )}
+        </Index>
+      </div>
+    </Show>
+  );
+}
 
 export default function RequestPane(props) {
   let bodyRef;

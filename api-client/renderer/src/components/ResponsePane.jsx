@@ -1,8 +1,8 @@
-import { createSignal, createEffect, Show, For, onMount, onCleanup } from 'solid-js';
-import { esc, contentTypeToFormat } from '../helpers';
+import { createEffect, createSignal, For, onCleanup, onMount, Show } from 'solid-js';
+import { contentTypeToFormat, esc } from '../helpers';
 import { highlightXmlFlat } from '../highlight';
-import { evaluateJsonPath, searchXPathResults } from '../search';
 import t from '../locale';
+import { evaluateJsonPath, searchXPathResults } from '../search';
 import Icon from './Icon';
 
 // Foldable JSON renderer (DOM-based for performance with large responses)
@@ -10,16 +10,22 @@ function renderFoldableJson(value) {
   const el = document.createElement('div');
   el.className = 'fold-tree';
   el.appendChild(buildJsonNode(value, 0));
+
   el.addEventListener('click', (e) => {
     const toggle = e.target.closest('.fold-toggle');
-    if (!toggle) return;
+    if (!toggle) {
+      return;
+    }
+
     const block = toggle.closest('.fold-block');
     if (!block.classList.contains('open') && block._lazyRender) {
       block._lazyRender();
       block._lazyRender = null;
     }
+
     block.classList.toggle('open');
   });
+
   return el;
 }
 
@@ -106,15 +112,18 @@ function buildJsonNode(value, depth) {
 function renderFoldableXml(str) {
   const parser = new DOMParser();
   const doc = parser.parseFromString(str, 'text/xml');
+
   if (doc.querySelector('parsererror')) {
     const pre = document.createElement('pre');
     pre.className = 'response-pre';
     pre.innerHTML = highlightXmlFlat(str);
     return pre;
   }
+
   const el = document.createElement('div');
   el.className = 'fold-tree';
   el.appendChild(buildXmlNode(doc.documentElement, 0));
+
   el.addEventListener('click', (e) => {
     const toggle = e.target.closest('.fold-toggle');
     if (!toggle) return;
@@ -125,6 +134,7 @@ function renderFoldableXml(str) {
     }
     block.classList.toggle('open');
   });
+
   return el;
 }
 
@@ -266,15 +276,27 @@ function parseCookies(headers) {
 }
 
 export default function ResponsePane(props) {
-  const [activeTab, setActiveTab] = createSignal('body');
-  const [bodyView, setBodyView] = createSignal('pretty'); // 'pretty' | 'raw'
-  const [searchVisible, setSearchVisible] = createSignal(false);
-  const [searchMode, setSearchMode] = createSignal('text');
-  const [searchQuery, setSearchQuery] = createSignal('');
-  const [searchInfo, setSearchInfo] = createSignal('');
-  const [searchResults, setSearchResults] = createSignal(null);
-  const [history, setHistory] = createSignal([]);
-  const [messageFilter, setMessageFilter] = createSignal('');
+  // const [activeTab, setActiveTab] = createSignal('body');
+  // const [bodyView, setBodyView] = createSignal('pretty'); // 'pretty' | 'raw'
+  // const [searchVisible, setSearchVisible] = createSignal(false);
+  // const [searchMode, setSearchMode] = createSignal('text');
+  // const [searchQuery, setSearchQuery] = createSignal('');
+  // const [searchInfo, setSearchInfo] = createSignal('');
+  // const [searchResults, setSearchResults] = createSignal(null);
+  // const [history, setHistory] = createSignal([]);
+  // const [messageFilter, setMessageFilter] = createSignal('');
+
+  const [store, setStore] = createStore({
+    activeTab: 'body',
+    bodyView: 'pretty',
+    searchVisible: false,
+    searchMode: 'text',
+    searchQuery: '',
+    searchInfo: '',
+    searchResults: null,
+    history: [],
+    messageFilter: '',
+  });
 
   let bodyContainerRef;
   let searchResultsRef;
