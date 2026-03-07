@@ -1,19 +1,18 @@
-import { createSignal, For, Show } from 'solid-js';
+import { createSignal, For } from 'solid-js';
 import Icon from '../components/Icon';
 import {
   detectUnit,
-  toMs,
-  formatDate,
-  formatAs,
   FORMAT_LIST,
+  formatAs,
+  formatDate,
   relativeTime,
+  toMs,
 } from '../datetime';
 
 export default function DateTimeTool(props) {
   const [input, setInput] = createSignal('');
   const [results, setResults] = createSignal(null);
   const [error, setError] = createSignal('');
-
   const [nowTime, setNowTime] = createSignal(Date.now());
 
   setInterval(() => setNowTime(Date.now()), 1000);
@@ -39,9 +38,11 @@ export default function DateTimeTool(props) {
     const num = Number(raw);
     let date;
     let detectedUnit_ = null;
+
     if (!isNaN(num) && raw.match(/^\d+$/)) {
       detectedUnit_ = detectUnit(num);
       date = new Date(toMs(num, detectedUnit_));
+
       if (!nanos && detectedUnit_ === 'nanoseconds') {
         const nsVal = BigInt(raw);
         const fracNs = nsVal % 1000000000n;
@@ -65,10 +66,12 @@ export default function DateTimeTool(props) {
       milliseconds: Math.floor(ms),
       nanoseconds: Math.floor(ms * 1e6),
       relative: relativeTime(date),
-      formats: FORMAT_LIST.map((f) => ({
-        ...f,
-        value: formatAs(date, f.id, nanos),
-      })),
+      formats: FORMAT_LIST.map((group) =>
+        group.map((f) => ({
+          ...f,
+          value: formatAs(date, f.id, nanos),
+        }))
+      ),
     });
   }
 
@@ -146,11 +149,15 @@ export default function DateTimeTool(props) {
                 />
                 <ResultRow label="Relative" value={results().relative} />
               </div>
-              <div class="dt-results">
-                <For each={results().formats}>
-                  {(f) => <ResultRow label={f.label} value={f.value} />}
-                </For>
-              </div>
+              <For each={results().formats}>
+                {(g) => (
+                  <div class="dt-results">
+                    <For each={g}>
+                      {(f) => <ResultRow label={f.label} value={f.value} />}
+                    </For>
+                  </div>
+                )}
+              </For>
             </>
           )}
         </div>
@@ -169,12 +176,9 @@ function ResultRow(props) {
   }
 
   return (
-    <div class="dt-result-row">
+    <div class="dt-result-row" >
       <span class="dt-result-label">{props.label}</span>
-      <span class="dt-result-value">{props.value}</span>
-      <button class="btn btn-ghost btn-sm dt-copy-btn" onClick={copy}>
-        {copied() ? 'Copied' : 'Copy'}
-      </button>
+      <span class="dt-result-value" onClick={copy}>{copied() ? 'Copied' : props.value}</span>
     </div>
   );
 }

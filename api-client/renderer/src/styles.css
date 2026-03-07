@@ -2145,6 +2145,7 @@ select {
   gap: 12px;
   padding: 6px 12px;
   border-bottom: 1px solid var(--border);
+  user-select: none;
 }
 
 .dt-result-row:last-child {
@@ -2157,6 +2158,7 @@ select {
   font-size: var(--ui-font-size-sm);
   color: var(--text-dim);
   font-weight: 600;
+  user-select: none;
 }
 
 .dt-result-value {
@@ -2165,6 +2167,7 @@ select {
   font-size: var(--ui-font-size);
   color: var(--text);
   user-select: all;
+  cursor: pointer;
 }
 
 .dt-copy-btn {

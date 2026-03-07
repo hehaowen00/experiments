@@ -104,19 +104,29 @@ export function formatAs(date, format, nanos) {
 }
 
 export const FORMAT_LIST = [
-  { id: 'iso8601', label: 'ISO 8601 (UTC)' },
-  { id: 'iso8601-local', label: 'ISO 8601 (Local)' },
-  { id: 'rfc3339', label: 'RFC 3339 (UTC)' },
-  { id: 'rfc3339-local', label: 'RFC 3339 (Local)' },
-  { id: 'rfc3339-ms', label: 'RFC 3339 ms (UTC)' },
-  { id: 'rfc3339-nano', label: 'RFC 3339 Nano (UTC)' },
-  { id: 'rfc3339-nano-local', label: 'RFC 3339 Nano (Local)' },
-  { id: 'rfc2822', label: 'RFC 2822 (UTC)' },
-  { id: 'rfc2822-local', label: 'RFC 2822 (Local)' },
-  { id: 'sql', label: 'SQL Datetime' },
-  { id: 'sql-ms', label: 'SQL Datetime (ms)' },
-  { id: 'date-only', label: 'Date (YYYY-MM-DD)' },
-  { id: 'time-only', label: 'Time (HH:MM:SS)' },
+  [
+    { id: 'iso8601', label: 'ISO 8601 (UTC)' },
+    { id: 'iso8601-local', label: 'ISO 8601 (Local)' },
+  ],
+  [
+    { id: 'rfc3339', label: 'RFC 3339 (UTC)' },
+    { id: 'rfc3339-local', label: 'RFC 3339 (Local)' },
+    { id: 'rfc3339-ms', label: 'RFC 3339 ms (UTC)' },
+    { id: 'rfc3339-nano', label: 'RFC 3339 Nano (UTC)' },
+    { id: 'rfc3339-nano-local', label: 'RFC 3339 Nano (Local)' },
+  ],
+  [
+    { id: 'rfc2822', label: 'RFC 2822 (UTC)' },
+    { id: 'rfc2822-local', label: 'RFC 2822 (Local)' },
+  ],
+  [
+    { id: 'sql', label: 'SQL Datetime' },
+    { id: 'sql-ms', label: 'SQL Datetime (ms)' },
+  ],
+  [
+    { id: 'date-only', label: 'Date (YYYY-MM-DD)' },
+    { id: 'time-only', label: 'Time (HH:MM:SS)' },
+  ],
 ];
 
 export function relativeTime(date) {
