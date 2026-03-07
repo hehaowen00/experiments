@@ -14,20 +14,24 @@ export default function Landing(props) {
   const [sidebarOpen, setSidebarOpen] = createSignal(true);
 
   const mql = window.matchMedia('(max-aspect-ratio: 1/1)');
+
   function onLayoutChange(e) {
     if (e.matches) setSidebarOpen(false);
   }
+
   function onKeyDown(e) {
     if ((e.metaKey || e.ctrlKey) && e.key === 'b') {
       e.preventDefault();
       setSidebarOpen(!sidebarOpen());
     }
   }
+
   onMount(() => {
     mql.addEventListener('change', onLayoutChange);
     document.addEventListener('keydown', onKeyDown);
     if (mql.matches) setSidebarOpen(false);
   });
+
   onCleanup(() => {
     mql.removeEventListener('change', onLayoutChange);
     document.removeEventListener('keydown', onKeyDown);
