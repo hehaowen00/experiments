@@ -1,8 +1,10 @@
 import { For, Show, onMount } from 'solid-js';
 import { createStore } from 'solid-js/store';
+import CategoryList from '../components/CategoryList';
 import FormModal, { FormField } from '../components/FormModal';
 import Icon from '../components/Icon';
-import { showConfirm, showPrompt } from '../components/Modal';
+import ItemCard from '../components/ItemCard';
+import { showAlert, showConfirm, showPrompt } from '../components/Modal';
 import { generateId } from '../helpers';
 
 export default function DatabaseClient(props) {
@@ -11,13 +13,12 @@ export default function DatabaseClient(props) {
     categories: [],
     searchQuery: '',
     connecting: false,
-    connectionError: '',
     // Form modal
     formOpen: false,
     editingId: null,
     form: {
       name: '', type: 'postgres', host: 'localhost', port: '5432',
-      user: '', password: '', database: '', sqlitePath: '', categoryId: null, error: '',
+      user: 'postgres', password: '', showPassword: false, database: '', sqlitePath: '', categoryId: null, error: '',
     },
   });
 
@@ -40,7 +41,7 @@ export default function DatabaseClient(props) {
       editingId: null,
       form: {
         name: '', type: 'postgres', host: 'localhost', port: '5432',
-        user: '', password: '', database: '', sqlitePath: '', categoryId: null, error: '',
+        user: 'postgres', password: '', showPassword: false, database: '', sqlitePath: '', categoryId: null, error: '',
       },
       formOpen: true,
     });
@@ -99,7 +100,7 @@ export default function DatabaseClient(props) {
   // --- Connection actions ---
 
   async function connectTo(conn) {
-    setState({ connecting: true, connectionError: '' });
+    setState('connecting', true);
     const liveId = generateId();
     const config = JSON.parse(JSON.stringify(conn.config));
     const result = await window.api.dbConnect({
@@ -109,7 +110,7 @@ export default function DatabaseClient(props) {
     });
     setState('connecting', false);
     if (result.error) {
-      setState('connectionError', result.error);
+      showAlert('Connection Failed', result.error);
       return;
     }
     await window.api.dbConnTouchLastUsed(conn.id);
@@ -209,42 +210,41 @@ export default function DatabaseClient(props) {
     );
   }
 
+  let homeDir = '';
+  window.api.homeDir().then((d) => { homeDir = d; });
+
+  function shortenPath(p) {
+    if (homeDir && p.startsWith(homeDir)) return '~' + p.slice(homeDir.length);
+    return p;
+  }
+
   function connSubtitle(conn) {
     if (conn.type === 'postgres') {
       const c = conn.config;
       const db = c.database ? `/${c.database}` : '';
       return `${c.host || 'localhost'}:${c.port || 5432}${db}`;
     }
-    return conn.config.path || '';
+    return shortenPath(conn.config.path || '');
   }
 
-  function ConnectionCard(cardProps) {
-    const c = cardProps.c;
+  const cardActions = [
+    { label: 'Pin', onClick: (e, item) => togglePin(e, item.id, item.pinned), labelFn: (item) => item.pinned ? 'Unpin' : 'Pin' },
+    { label: 'Edit', onClick: (e, item) => openEditForm(item) },
+    { label: 'Delete', danger: true, onClick: (e, item) => deleteConnection(e, item.id, item.name) },
+  ];
+
+  function renderConnectionCard(c) {
     return (
-      <div
-        class={`collection-item ${c.pinned ? 'pinned' : ''}`}
-        onClick={() => connectTo(c)}
-        draggable="true"
-        onDragStart={(e) => onDragStart(e, c.id)}
+      <ItemCard
+        item={c}
+        name={<><Icon name={c.type === 'postgres' ? 'fa-solid fa-server' : 'fa-solid fa-file'} /> {c.name}</>}
+        subtitle={connSubtitle(c)}
+        subtitleClass="db-conn-subtitle"
+        actions={cardActions.map((a) => ({ ...a, label: a.labelFn ? a.labelFn(c) : a.label }))}
+        onOpen={connectTo}
+        onDragStart={onDragStart}
         onDragEnd={onDragEnd}
-      >
-        <span class="name">
-          <Icon name={c.type === 'postgres' ? 'fa-solid fa-server' : 'fa-solid fa-file'} />
-          {' '}{c.name}
-        </span>
-        <span class="last-used db-conn-subtitle">{connSubtitle(c)}</span>
-        <div class="actions">
-          <button class="btn btn-ghost btn-sm" onClick={(e) => togglePin(e, c.id, c.pinned)}>
-            {c.pinned ? 'Unpin' : 'Pin'}
-          </button>
-          <button class="btn btn-ghost btn-sm" onClick={(e) => { e.stopPropagation(); openEditForm(c); }}>
-            Edit
-          </button>
-          <button class="btn btn-danger btn-sm" onClick={(e) => deleteConnection(e, c.id, c.name)}>
-            Delete
-          </button>
-        </div>
-      </div>
+      />
     );
   }
 
@@ -271,79 +271,21 @@ export default function DatabaseClient(props) {
           </button>
         </div>
 
-        <Show when={state.connectionError}>
-          <div class="db-error" style={{ margin: '8px 16px' }}>{state.connectionError}</div>
-        </Show>
-
-        <div class="landing-content">
-          <Show when={state.connections.length === 0 && state.categories.length === 0}>
-            <div class="empty-state">No connections yet. Create one to get started.</div>
-          </Show>
-
-          <For each={state.categories}>
-            {(cat) => (
-              <div
-                class="landing-section landing-category"
-                onDragOver={onCategoryDragOver}
-                onDragLeave={onCategoryDragLeave}
-                onDrop={(e) => onCategoryDrop(e, cat.id)}
-              >
-                <div
-                  class="landing-section-header category-header"
-                  onClick={() => toggleCategoryCollapse(cat.id, cat.collapsed)}
-                >
-                  <Icon name={cat.collapsed ? 'fa-solid fa-caret-right' : 'fa-solid fa-caret-down'} />
-                  <span class="category-name">{cat.name}</span>
-                  <div class="category-actions">
-                    <button class="btn btn-ghost btn-sm" onClick={(e) => renameCategory(e, cat.id, cat.name)}>
-                      <Icon name="fa-solid fa-pen" /> Rename
-                    </button>
-                    <button class="btn btn-danger btn-sm" onClick={(e) => removeCategory(e, cat.id, cat.name)}>
-                      <Icon name="fa-solid fa-trash" /> Delete
-                    </button>
-                  </div>
-                  <span class="category-count">{connectionsInCategory(cat.id).length}</span>
-                </div>
-                <Show when={!cat.collapsed}>
-                  <div class="collection-list">
-                    <Show when={connectionsInCategory(cat.id).length === 0}>
-                      <div class="empty-category">Drop connections here</div>
-                    </Show>
-                    <For each={connectionsInCategory(cat.id)}>
-                      {(c) => <ConnectionCard c={c} />}
-                    </For>
-                  </div>
-                </Show>
-              </div>
-            )}
-          </For>
-
-          <Show when={state.categories.length > 0}>
-            <div
-              class="landing-section"
-              onDragOver={onCategoryDragOver}
-              onDragLeave={onCategoryDragLeave}
-              onDrop={(e) => onCategoryDrop(e, null)}
-            >
-              <div class="landing-section-header">Uncategorized</div>
-              <div class="collection-list">
-                <Show when={uncategorizedConnections().length === 0}>
-                  <div class="empty-category">Drop connections here</div>
-                </Show>
-                <For each={uncategorizedConnections()}>
-                  {(c) => <ConnectionCard c={c} />}
-                </For>
-              </div>
-            </div>
-          </Show>
-          <Show when={state.categories.length === 0}>
-            <div class="collection-list">
-              <For each={uncategorizedConnections()}>
-                {(c) => <ConnectionCard c={c} />}
-              </For>
-            </div>
-          </Show>
-        </div>
+        <CategoryList
+          categories={state.categories}
+          items={state.connections}
+          renderItem={renderConnectionCard}
+          getItemsInCategory={connectionsInCategory}
+          getUncategorizedItems={uncategorizedConnections}
+          onToggleCollapse={toggleCategoryCollapse}
+          onRenameCategory={renameCategory}
+          onRemoveCategory={removeCategory}
+          onCategoryDragOver={(e) => onCategoryDragOver(e)}
+          onCategoryDragLeave={(e) => onCategoryDragLeave(e)}
+          onCategoryDrop={(e, catId) => onCategoryDrop(e, catId)}
+          emptyMessage="No connections yet. Create one to get started."
+          dropHint="Drop connections here"
+        />
       </div>
 
       <Show when={state.formOpen}>
@@ -378,7 +320,11 @@ export default function DatabaseClient(props) {
               <input type="text" value={state.form.user} onInput={(e) => setState('form', 'user', e.target.value)} />
             </FormField>
             <FormField label="Password">
-              <input type="password" value={state.form.password} onInput={(e) => setState('form', 'password', e.target.value)} />
+              <input type={state.form.showPassword ? 'text' : 'password'} value={state.form.password} onInput={(e) => setState('form', 'password', e.target.value)} />
+              <label style={{ display: 'flex', 'align-items': 'center', gap: '4px', 'margin-top': '4px', cursor: 'pointer', 'font-weight': 'normal' }}>
+                <input type="checkbox" checked={state.form.showPassword} onChange={(e) => setState('form', 'showPassword', e.target.checked)} />
+                Show password
+              </label>
             </FormField>
             <FormField label="Database">
               <input type="text" value={state.form.database} onInput={(e) => setState('form', 'database', e.target.value)} placeholder="optional" />

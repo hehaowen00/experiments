@@ -1,5 +1,7 @@
 import { createSignal, For, onCleanup, onMount, Show } from 'solid-js';
+import CategoryList from '../components/CategoryList';
 import Icon from '../components/Icon';
+import ItemCard from '../components/ItemCard';
 import Modal, {
   showConfirm,
   showPrompt,
@@ -287,45 +289,23 @@ export default function Landing(props) {
     );
   }
 
-  function CollectionCard(props) {
+  const cardActions = [
+    { label: 'Pin', onClick: (e, item) => togglePin(e, item.id, item.pinned), labelFn: (item) => item.pinned ? t.landing.unpinButton : t.landing.pinButton },
+    { label: 'Rename', onClick: (e, item) => rename(item.id, item.name) },
+    { label: 'Delete', danger: true, onClick: (e, item) => remove(item.id, item.name) },
+  ];
+
+  function renderCollectionCard(c) {
     return (
-      <div
-        class={`collection-item ${props.c.pinned ? 'pinned' : ''}`}
-        onClick={() => props.onOpen(props.c.id)}
-        draggable="true"
-        onDragStart={(e) => onDragStart(e, props.c.id)}
+      <ItemCard
+        item={c}
+        name={c.name}
+        subtitle={formatLastUsed(c.last_used)}
+        actions={cardActions.map((a) => ({ ...a, label: a.labelFn ? a.labelFn(c) : a.label }))}
+        onOpen={(item) => props.onOpen(item.id)}
+        onDragStart={onDragStart}
         onDragEnd={onDragEnd}
-      >
-        <span class="name">{props.c.name}</span>
-        <span class="last-used">{formatLastUsed(props.c.last_used)}</span>
-        <div class="actions">
-          <button
-            class="btn btn-ghost btn-sm"
-            onClick={(e) => togglePin(e, props.c.id, props.c.pinned)}
-            title={props.c.pinned ? t.landing.unpinButton : t.landing.pinButton}
-          >
-            {props.c.pinned ? t.landing.unpinButton : t.landing.pinButton}
-          </button>
-          <button
-            class="btn btn-ghost btn-sm"
-            onClick={(e) => {
-              e.stopPropagation();
-              rename(props.c.id, props.c.name);
-            }}
-          >
-            {t.landing.renameButton}
-          </button>
-          <button
-            class="btn btn-danger btn-sm"
-            onClick={(e) => {
-              e.stopPropagation();
-              remove(props.c.id, props.c.name);
-            }}
-          >
-            {t.landing.deleteButton}
-          </button>
-        </div>
-      </div>
+      />
     );
   }
 
@@ -423,119 +403,46 @@ export default function Landing(props) {
           </Show>
         </div>
 
-        <div class="landing-content">
-          <Show when={collections().length === 0 && categories().length === 0}>
-            <div class="empty-state">{t.landing.emptyState}</div>
-          </Show>
-
-          {/* Category sections */}
-          <For each={categories()}>
-            {(cat) => (
-              <div
-                class="landing-section landing-category"
-                classList={{
-                  'cat-drop-above':
-                    dropIndicator()?.catId === String(cat.id) &&
-                    dropIndicator()?.position === 'above',
-                  'cat-drop-below':
-                    dropIndicator()?.catId === String(cat.id) &&
-                    dropIndicator()?.position === 'below',
-                }}
-                data-cat-id={cat.id}
-                onDragOver={(e) => {
-                  onCategoryDragOver(e);
-                  onCategorySectionDragOver(e);
-                }}
-                onDragLeave={(e) => {
-                  onCategoryDragLeave(e);
-                }}
-                onDrop={(e) => {
-                  onCategoryDrop(e, cat.id);
-                  onCategorySectionDrop(e, cat.id);
-                }}
-              >
-                <div
-                  class="landing-section-header category-header"
-                  onClick={() => toggleCategoryCollapse(cat.id, cat.collapsed)}
-                >
-                  <span
-                    class="category-drag-handle"
-                    draggable="true"
-                    onDragStart={(e) => onCategoryDragStart(e, cat.id)}
-                    onDragEnd={onCategoryDragEnd}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <Icon name="fa-solid fa-grip-vertical" />
-                  </span>
-                  <Icon
-                    name={
-                      cat.collapsed
-                        ? 'fa-solid fa-caret-right'
-                        : 'fa-solid fa-caret-down'
-                    }
-                  />
-                  <span class="category-name">{cat.name}</span>
-                  <div class="category-actions">
-                    <button
-                      class="btn btn-ghost btn-sm"
-                      onClick={(e) => renameCategory(e, cat.id, cat.name)}
-                    >
-                      <Icon name="fa-solid fa-pen" /> {t.landing.renameButton}
-                    </button>
-                    <button
-                      class="btn btn-danger btn-sm"
-                      onClick={(e) => removeCategory(e, cat.id, cat.name)}
-                    >
-                      <Icon name="fa-solid fa-trash" /> {t.landing.deleteButton}
-                    </button>
-                  </div>
-                  <span class="category-count">
-                    {collectionsInCategory(cat.id).length}
-                  </span>
-                </div>
-                <Show when={!cat.collapsed}>
-                  <div class="collection-list">
-                    <Show when={collectionsInCategory(cat.id).length === 0}>
-                      <div class="empty-category">{t.landing.dropHint}</div>
-                    </Show>
-                    <For each={collectionsInCategory(cat.id)}>
-                      {(c) => <CollectionCard c={c} onOpen={props.onOpen} />}
-                    </For>
-                  </div>
-                </Show>
-              </div>
-            )}
-          </For>
-
-          {/* Uncategorized section */}
-          <Show when={categories().length > 0}>
-            <div
-              class="landing-section"
-              onDragOver={onCategoryDragOver}
-              onDragLeave={onCategoryDragLeave}
-              onDrop={(e) => onCategoryDrop(e, null)}
+        <CategoryList
+          categories={categories()}
+          items={collections()}
+          renderItem={renderCollectionCard}
+          getItemsInCategory={collectionsInCategory}
+          getUncategorizedItems={uncategorizedCollections}
+          onToggleCollapse={toggleCategoryCollapse}
+          onRenameCategory={renameCategory}
+          onRemoveCategory={removeCategory}
+          onCategoryDragOver={(e, cat) => {
+            onCategoryDragOver(e);
+            if (cat) onCategorySectionDragOver(e);
+          }}
+          onCategoryDragLeave={(e) => onCategoryDragLeave(e)}
+          onCategoryDrop={(e, catId) => {
+            onCategoryDrop(e, catId);
+            if (catId !== null) onCategorySectionDrop(e, catId);
+          }}
+          categoryClassList={(cat) => ({
+            'cat-drop-above':
+              dropIndicator()?.catId === String(cat.id) &&
+              dropIndicator()?.position === 'above',
+            'cat-drop-below':
+              dropIndicator()?.catId === String(cat.id) &&
+              dropIndicator()?.position === 'below',
+          })}
+          categoryExtras={(cat) => (
+            <span
+              class="category-drag-handle"
+              draggable="true"
+              onDragStart={(e) => onCategoryDragStart(e, cat.id)}
+              onDragEnd={onCategoryDragEnd}
+              onClick={(e) => e.stopPropagation()}
             >
-              <div class="landing-section-header">
-                {t.landing.uncategorized}
-              </div>
-              <div class="collection-list">
-                <Show when={uncategorizedCollections().length === 0}>
-                  <div class="empty-category">{t.landing.dropHint}</div>
-                </Show>
-                <For each={uncategorizedCollections()}>
-                  {(c) => <CollectionCard c={c} onOpen={props.onOpen} />}
-                </For>
-              </div>
-            </div>
-          </Show>
-          <Show when={categories().length === 0}>
-            <div class="collection-list">
-              <For each={uncategorizedCollections()}>
-                {(c) => <CollectionCard c={c} onOpen={props.onOpen} />}
-              </For>
-            </div>
-          </Show>
-        </div>
+              <Icon name="fa-solid fa-grip-vertical" />
+            </span>
+          )}
+          emptyMessage={t.landing.emptyState}
+          dropHint={t.landing.dropHint}
+        />
       </div>
       <DateTimeTool
         style={{ display: activeNav() === 'datetime' ? '' : 'none' }}

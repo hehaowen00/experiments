@@ -1,6 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('api', {
+  // Collections
   listCollections: () => ipcRenderer.invoke('collections:list'),
   createCollection: (name) => ipcRenderer.invoke('collections:create', name),
   renameCollection: (id, name) =>
@@ -105,4 +106,5 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('db:deleteRow', id, schema, tableName, rowOffset),
   dbPickSqliteFile: () => ipcRenderer.invoke('db:pickSqliteFile'),
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
+  homeDir: () => ipcRenderer.invoke('app:homeDir'),
 });

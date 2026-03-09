@@ -1,14 +1,14 @@
 const strings = {
   app: {
-    name: 'API Client',
-    subtitle: 'Organize and send HTTP requests',
+    name: 'Conduit',
+    subtitle: '',
   },
 
   landing: {
     nav: {
       apiClient: 'API Client',
-      dateTime: 'Date / Time',
       database: 'Database',
+      dateTime: 'Date / Time',
     },
     newCollectionPlaceholder: 'New Collection',
     searchPlaceholder: 'Search',
