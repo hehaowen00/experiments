@@ -54,4 +54,55 @@ contextBridge.exposeInMainWorld('api', {
   onWsClose: (cb) => ipcRenderer.on('ws:close', (_, d) => cb(d)),
   onWsPing: (cb) => ipcRenderer.on('ws:ping', (_, d) => cb(d)),
   onWsPong: (cb) => ipcRenderer.on('ws:pong', (_, d) => cb(d)),
+
+  // Database Client - saved connections
+  dbConnList: () => ipcRenderer.invoke('dbConn:list'),
+  dbConnCreate: (data) => ipcRenderer.invoke('dbConn:create', data),
+  dbConnUpdate: (id, data) => ipcRenderer.invoke('dbConn:update', id, data),
+  dbConnDelete: (id) => ipcRenderer.invoke('dbConn:delete', id),
+  dbConnPin: (id, pinned) => ipcRenderer.invoke('dbConn:pin', id, pinned),
+  dbConnSetCategory: (id, categoryId) => ipcRenderer.invoke('dbConn:setCategory', id, categoryId),
+  dbConnTouchLastUsed: (id) => ipcRenderer.invoke('dbConn:touchLastUsed', id),
+
+  // Database Client - categories
+  dbCatList: () => ipcRenderer.invoke('dbCat:list'),
+  dbCatCreate: (name) => ipcRenderer.invoke('dbCat:create', name),
+  dbCatRename: (id, name) => ipcRenderer.invoke('dbCat:rename', id, name),
+  dbCatDelete: (id) => ipcRenderer.invoke('dbCat:delete', id),
+  dbCatToggleCollapse: (id, collapsed) => ipcRenderer.invoke('dbCat:toggleCollapse', id, collapsed),
+  dbCatReorder: (orderedIds) => ipcRenderer.invoke('dbCat:reorder', orderedIds),
+
+  // Database Client - active connections
+  dbConnect: (opts) => ipcRenderer.invoke('db:connect', opts),
+  dbSwitchDatabase: (id, database) => ipcRenderer.invoke('db:switchDatabase', id, database),
+  dbDisconnect: (id) => ipcRenderer.invoke('db:disconnect', id),
+  dbListDatabases: (id) => ipcRenderer.invoke('db:listDatabases', id),
+  dbListTables: (id) => ipcRenderer.invoke('db:listTables', id),
+  dbGetColumns: (id, schema, table) => ipcRenderer.invoke('db:getColumns', id, schema, table),
+  dbGetIndexes: (id, schema, table) => ipcRenderer.invoke('db:getIndexes', id, schema, table),
+  dbGetTableData: (id, schema, table, limit, offset) =>
+    ipcRenderer.invoke('db:getTableData', id, schema, table, limit, offset),
+  dbGetCellValue: (id, schema, table, column, rowOffset) =>
+    ipcRenderer.invoke('db:getCellValue', id, schema, table, column, rowOffset),
+  dbQuery: (id, sql) => ipcRenderer.invoke('db:query', id, sql),
+  dbUpdateCell: (id, schema, table, column, rowOffset, value) =>
+    ipcRenderer.invoke('db:updateCell', id, schema, table, column, rowOffset, value),
+  dbCreateDatabase: (id, name) => ipcRenderer.invoke('db:createDatabase', id, name),
+  dbDropDatabase: (id, name) => ipcRenderer.invoke('db:dropDatabase', id, name),
+  dbCreateTable: (id, schema, tableName, columns) =>
+    ipcRenderer.invoke('db:createTable', id, schema, tableName, columns),
+  dbDropTable: (id, schema, tableName) =>
+    ipcRenderer.invoke('db:dropTable', id, schema, tableName),
+  dbRenameTable: (id, schema, oldName, newName) =>
+    ipcRenderer.invoke('db:renameTable', id, schema, oldName, newName),
+  dbAddColumn: (id, schema, tableName, column) =>
+    ipcRenderer.invoke('db:addColumn', id, schema, tableName, column),
+  dbDropColumn: (id, schema, tableName, columnName) =>
+    ipcRenderer.invoke('db:dropColumn', id, schema, tableName, columnName),
+  dbInsertRow: (id, schema, tableName, values) =>
+    ipcRenderer.invoke('db:insertRow', id, schema, tableName, values),
+  dbDeleteRow: (id, schema, tableName, rowOffset) =>
+    ipcRenderer.invoke('db:deleteRow', id, schema, tableName, rowOffset),
+  dbPickSqliteFile: () => ipcRenderer.invoke('db:pickSqliteFile'),
+  openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
 });

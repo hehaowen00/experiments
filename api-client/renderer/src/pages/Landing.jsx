@@ -7,10 +7,16 @@ import Modal, {
 } from '../components/Modal';
 import { formatLastUsed } from '../helpers';
 import t from '../locale';
+import DatabaseClient from '../pages/DatabaseClient';
 import DateTimeTool from '../pages/DateTimeTool';
 
 export default function Landing(props) {
-  const [activeNav, setActiveNav] = createSignal('api');
+  const [activeNav, setActiveNavRaw] = createSignal('api');
+
+  function setActiveNav(val) {
+    setActiveNavRaw(val);
+    window.api.setSetting('lastActiveNav', val);
+  }
   const [sidebarOpen, setSidebarOpen] = createSignal(true);
 
   const mql = window.matchMedia('(max-aspect-ratio: 1/1)');
@@ -26,10 +32,12 @@ export default function Landing(props) {
     }
   }
 
-  onMount(() => {
+  onMount(async () => {
     mql.addEventListener('change', onLayoutChange);
     document.addEventListener('keydown', onKeyDown);
     if (mql.matches) setSidebarOpen(false);
+    const saved = await window.api.getSetting('lastActiveNav');
+    if (saved) setActiveNavRaw(saved);
   });
 
   onCleanup(() => {
@@ -345,6 +353,13 @@ export default function Landing(props) {
               <span>{t.landing.nav.apiClient}</span>
             </button>
             <button
+              class={`landing-nav-item ${activeNav() === 'database' ? 'active' : ''}`}
+              onClick={() => setActiveNav('database')}
+            >
+              <Icon name="fa-solid fa-database" />
+              <span>{t.landing.nav.database}</span>
+            </button>
+            <button
               class={`landing-nav-item ${activeNav() === 'datetime' ? 'active' : ''}`}
               onClick={() => setActiveNav('datetime')}
             >
@@ -526,6 +541,12 @@ export default function Landing(props) {
         style={{ display: activeNav() === 'datetime' ? '' : 'none' }}
         sidebarOpen={sidebarOpen()}
         onToggleSidebar={() => setSidebarOpen(!sidebarOpen())}
+      />
+      <DatabaseClient
+        style={{ display: activeNav() === 'database' ? '' : 'none' }}
+        sidebarOpen={sidebarOpen()}
+        onToggleSidebar={() => setSidebarOpen(!sidebarOpen())}
+        onOpenDb={props.onOpenDb}
       />
       <Modal />
     </div>

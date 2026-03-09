@@ -3,10 +3,9 @@ import {
   EditorView,
   lineNumbers,
   placeholder as cmPlaceholder,
+  keymap,
 } from '@codemirror/view';
-import { json } from '@codemirror/lang-json';
-import { xml } from '@codemirror/lang-xml';
-import { html } from '@codemirror/lang-html';
+import { sql, PostgreSQL, SQLite } from '@codemirror/lang-sql';
 import { syntaxHighlighting, HighlightStyle } from '@codemirror/language';
 import { tags } from '@lezer/highlight';
 import { createEffect, onCleanup, onMount } from 'solid-js';
@@ -66,40 +65,28 @@ const theme = EditorView.theme({
 });
 
 const highlightStyle = HighlightStyle.define([
-  { tag: tags.propertyName, color: '#7dc4e4' },
+  { tag: tags.keyword, color: '#e78284' },
   { tag: tags.string, color: '#a6d189' },
   { tag: tags.number, color: '#ef9f76' },
   { tag: tags.bool, color: '#e78284' },
   { tag: tags.null, color: '#e78284' },
-  { tag: tags.keyword, color: '#e78284' },
+  { tag: tags.operator, color: '#ef9f76' },
   { tag: tags.punctuation, color: 'var(--text-dim)' },
   { tag: tags.brace, color: 'var(--text-dim)' },
+  { tag: tags.paren, color: 'var(--text-dim)' },
   { tag: tags.squareBracket, color: 'var(--text-dim)' },
-  { tag: tags.tagName, color: '#e78284' },
-  { tag: tags.attributeName, color: '#ef9f76' },
-  { tag: tags.attributeValue, color: '#a6d189' },
-  { tag: tags.angleBracket, color: '#e78284' },
+  { tag: tags.typeName, color: '#7dc4e4' },
+  { tag: tags.propertyName, color: '#7dc4e4' },
   { tag: tags.comment, color: 'var(--text-dim)', fontStyle: 'italic' },
   { tag: tags.content, color: 'var(--text)' },
 ]);
 
-function getLangExtension(format) {
-  if (format === 'json') return json();
-  if (format === 'xml') return xml();
-  if (format === 'html') return html();
-  return [];
-}
-
-export default function CodeEditor(props) {
+export default function SqlEditor(props) {
   let containerRef;
   let view;
   let ignoreNextUpdate = false;
-  const langCompartment = new Compartment();
-  const readOnlyCompartment = new Compartment();
 
   onMount(() => {
-    const langExt = getLangExtension(props.format);
-
     const updateListener = EditorView.updateListener.of((update) => {
       if (update.docChanged) {
         ignoreNextUpdate = true;
@@ -114,16 +101,14 @@ export default function CodeEditor(props) {
         syntaxHighlighting(highlightStyle),
         lineNumbers(),
         updateListener,
+        sql({ dialect: props.dialect === 'sqlite' ? SQLite : PostgreSQL }),
         ...(props.placeholder ? [cmPlaceholder(props.placeholder)] : []),
-        langCompartment.of(Array.isArray(langExt) ? langExt : [langExt]),
-        readOnlyCompartment.of(props.readOnly ? [EditorState.readOnly.of(true), EditorView.editable.of(false)] : []),
       ],
     });
 
     view = new EditorView({ state, parent: containerRef });
   });
 
-  // Sync external value changes
   createEffect(() => {
     const val = props.value ?? '';
     if (!view) return;
@@ -137,18 +122,6 @@ export default function CodeEditor(props) {
         changes: { from: 0, to: current.length, insert: val },
       });
     }
-  });
-
-  // Reconfigure language when format changes
-  createEffect(() => {
-    const format = props.format;
-    if (!view) return;
-    const langExt = getLangExtension(format);
-    view.dispatch({
-      effects: langCompartment.reconfigure(
-        Array.isArray(langExt) ? langExt : [langExt],
-      ),
-    });
   });
 
   onCleanup(() => {
