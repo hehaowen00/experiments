@@ -86,6 +86,7 @@ export default function DateTimeTool(props) {
         <button class="btn btn-ghost btn-sm" onClick={props.onToggleSidebar}>
           <Icon name="fa-solid fa-bars" />
         </button>
+
       </div>
       <div class="dt-tool">
         <div class="dt-section">
