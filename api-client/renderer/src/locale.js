@@ -8,8 +8,6 @@ const strings = {
     nav: {
       apiClient: 'API Client',
       dateTime: 'Date / Time',
-      auth: 'Auth',
-      history: 'History',
     },
     newCollectionPlaceholder: 'New Collection',
     searchPlaceholder: 'Search',
