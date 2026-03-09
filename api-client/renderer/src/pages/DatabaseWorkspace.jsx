@@ -1,185 +1,19 @@
 import { createSignal, For, onCleanup, onMount, Show } from 'solid-js';
 import { createStore } from 'solid-js/store';
 import CodeEditor from '../components/CodeEditor';
+import FormModal, { FormField } from '../components/FormModal';
 import Icon from '../components/Icon';
 import Modal, { showConfirm, showPrompt } from '../components/Modal';
 import SqlEditor from '../components/SqlEditor';
-
-function detectFormat(val) {
-  if (!val || typeof val !== 'string') return null;
-  const trimmed = val.trimStart();
-  if ((trimmed[0] === '{' || trimmed[0] === '[') && trimmed.length > 1) {
-    try { JSON.parse(trimmed); return 'json'; } catch { }
-  }
-  if (trimmed[0] === '<') return 'xml';
-  return null;
-}
-
-function prettifyJson(val) {
-  if (!val || typeof val !== 'string') return val;
-  try {
-    return JSON.stringify(JSON.parse(val), null, 2);
-  } catch {
-    return val;
-  }
-}
-
-const COLUMN_FORMATS = [
-  { id: 'raw', label: 'Raw' },
-  { id: 'epoch_s', label: 'Epoch (seconds)' },
-  { id: 'epoch_ms', label: 'Epoch (milliseconds)' },
-  { id: 'url', label: 'URL' },
-  { id: 'json', label: 'JSON' },
-  { id: 'boolean', label: 'Boolean' },
-  { id: 'hex', label: 'Hex' },
-  { id: 'filesize', label: 'File Size' },
-  { id: 'array', label: 'Array' },
-];
-
-function parsePgArray(s) {
-  if (typeof s !== 'string') {
-    if (Array.isArray(s)) return s.map(String);
-    return null;
-  }
-  const trimmed = s.trim();
-  if (trimmed[0] === '{' && trimmed[trimmed.length - 1] === '}') {
-    const inner = trimmed.slice(1, -1);
-    if (inner === '') return [];
-    // Simple CSV parse handling quoted strings
-    const items = [];
-    let current = '';
-    let inQuote = false;
-    for (let i = 0; i < inner.length; i++) {
-      const ch = inner[i];
-      if (inQuote) {
-        if (ch === '\\' && i + 1 < inner.length) { current += inner[++i]; continue; }
-        if (ch === '"') { inQuote = false; continue; }
-        current += ch;
-      } else {
-        if (ch === '"') { inQuote = true; continue; }
-        if (ch === ',') { items.push(current.trim()); current = ''; continue; }
-        current += ch;
-      }
-    }
-    items.push(current.trim());
-    return items.map((v) => v === 'NULL' ? null : v);
-  }
-  // Try JSON array
-  try {
-    const parsed = JSON.parse(trimmed);
-    if (Array.isArray(parsed)) return parsed.map((v) => v === null ? null : String(v));
-  } catch { }
-  return null;
-}
-
-function serializePgArray(items) {
-  const parts = items.map((v) => {
-    if (v === null) return 'NULL';
-    const s = String(v);
-    if (s === '' || s.includes(',') || s.includes('"') || s.includes('\\') || s.includes('{') || s.includes('}') || s.includes(' ') || s.toUpperCase() === 'NULL') {
-      return '"' + s.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
-    }
-    return s;
-  });
-  return '{' + parts.join(',') + '}';
-}
-
-function formatCellValue(val, format) {
-  if (val === null || val === undefined || !format || format === 'raw') return null;
-  const s = String(val);
-  try {
-    switch (format) {
-      case 'epoch_s': {
-        const n = Number(s);
-        if (isNaN(n)) return null;
-        return new Date(n * 1000).toISOString().replace('T', ' ').replace('.000Z', ' UTC');
-      }
-      case 'epoch_ms': {
-        const n = Number(s);
-        if (isNaN(n)) return null;
-        return new Date(n).toISOString().replace('T', ' ').replace('.000Z', ' UTC');
-      }
-      case 'url':
-        return s;
-      case 'json':
-        return JSON.stringify(JSON.parse(s), null, 2);
-      case 'boolean': {
-        const lower = s.toLowerCase();
-        if (lower === '1' || lower === 'true' || lower === 't' || lower === 'yes') return 'true';
-        if (lower === '0' || lower === 'false' || lower === 'f' || lower === 'no' || lower === '') return 'false';
-        return s;
-      }
-      case 'hex': {
-        const n = Number(s);
-        if (isNaN(n) || !Number.isInteger(n)) return null;
-        return '0x' + n.toString(16).toUpperCase();
-      }
-      case 'filesize': {
-        const n = Number(s);
-        if (isNaN(n)) return null;
-        if (n < 1024) return n + ' B';
-        if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
-        if (n < 1024 * 1024 * 1024) return (n / (1024 * 1024)).toFixed(1) + ' MB';
-        return (n / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
-      }
-      case 'array': {
-        const items = parsePgArray(val);
-        if (!items) return null;
-        return `[${items.length} items]`;
-      }
-      default:
-        return null;
-    }
-  } catch {
-    return null;
-  }
-}
-
-function autoDetectColumnFormats(columns, rows, dbType) {
-  const formats = {};
-  if (!rows || rows.length === 0) return formats;
-  for (const col of columns) {
-    const values = rows.map((r) => r[col]).filter((v) => v !== null && v !== undefined && !(typeof v === 'string' && v.startsWith('[Large data:')));
-    if (values.length === 0) continue;
-    const sample = values.slice(0, 20);
-    // Check postgres array (postgres only)
-    if (dbType === 'postgres' && sample.every((v) => parsePgArray(v) !== null)) {
-      formats[col] = 'array';
-      continue;
-    }
-    // Check URL
-    if (sample.every((v) => /^https?:\/\/.+/i.test(String(v)))) {
-      formats[col] = 'url';
-      continue;
-    }
-    // Check JSON
-    if (sample.every((v) => { const s = String(v).trimStart(); return (s[0] === '{' || s[0] === '[') && (() => { try { JSON.parse(s); return true; } catch { return false; } })(); })) {
-      formats[col] = 'json';
-      continue;
-    }
-    // Check boolean
-    const boolVals = new Set(['0', '1', 'true', 'false', 't', 'f', 'yes', 'no']);
-    if (sample.every((v) => boolVals.has(String(v).toLowerCase()))) {
-      formats[col] = 'boolean';
-      continue;
-    }
-    // Check epoch — heuristic: numbers in plausible timestamp range
-    if (sample.every((v) => { const n = Number(v); return !isNaN(n) && Number.isFinite(n); })) {
-      const nums = sample.map(Number);
-      // Epoch seconds: between 2000-01-01 and 2100-01-01
-      if (nums.every((n) => n >= 946684800 && n <= 4102444800 && Number.isInteger(n))) {
-        formats[col] = 'epoch_s';
-        continue;
-      }
-      // Epoch milliseconds
-      if (nums.every((n) => n >= 946684800000 && n <= 4102444800000 && Number.isInteger(n))) {
-        formats[col] = 'epoch_ms';
-        continue;
-      }
-    }
-  }
-  return formats;
-}
+import {
+  autoDetectColumnFormats,
+  COLUMN_FORMATS,
+  detectFormat,
+  formatCellValue,
+  parsePgArray,
+  prettifyJson,
+  serializePgArray,
+} from '../db';
 
 export default function DatabaseWorkspace(props) {
   const { connData } = props;
@@ -1322,139 +1156,103 @@ export default function DatabaseWorkspace(props) {
 
       {/* Create Table Dialog */}
       <Show when={dialog.createTable}>
-        <div class="modal-overlay visible" onClick={() => setDialog('createTable', false)}>
-          <div class="modal modal-lg" onClick={(e) => e.stopPropagation()}>
-            <div class="modal-header">
-              <span>Create Table</span>
-              <button class="btn btn-ghost btn-sm" onClick={() => setDialog('createTable', false)}>
-                <Icon name="fa-solid fa-xmark" />
-              </button>
-            </div>
-            <div class="modal-body">
-              <div class="modal-field">
-                <label>Table Name</label>
-                <input type="text" value={dialog.newTableName} onInput={(e) => setDialog('newTableName', e.target.value)} placeholder="table_name" autofocus />
-              </div>
-              <div class="modal-field">
-                <label>Columns</label>
-                <table class="modal-col-table">
-                  <thead>
-                    <tr><th>Name</th><th>Type</th><th>PK</th><th>Nullable</th><th>Default</th><th></th></tr>
-                  </thead>
-                  <tbody>
-                    <For each={dialog.newTableCols}>
-                      {(col, idx) => (
-                        <tr>
-                          <td><input type="text" value={col.name} onInput={(e) => updateTableCol(idx(), 'name', e.target.value)} placeholder="column_name" /></td>
-                          <td><input type="text" value={col.type} onInput={(e) => updateTableCol(idx(), 'type', e.target.value)} placeholder="TEXT" /></td>
-                          <td><input type="checkbox" checked={col.pk} onChange={(e) => updateTableCol(idx(), 'pk', e.target.checked)} /></td>
-                          <td><input type="checkbox" checked={col.nullable} onChange={(e) => updateTableCol(idx(), 'nullable', e.target.checked)} /></td>
-                          <td><input type="text" value={col.defaultValue} onInput={(e) => updateTableCol(idx(), 'defaultValue', e.target.value)} placeholder="" /></td>
-                          <td>
-                            <button class="btn btn-ghost btn-xs" onClick={() => removeTableCol(idx())} title="Remove column">
-                              <Icon name="fa-solid fa-trash" />
-                            </button>
-                          </td>
-                        </tr>
-                      )}
-                    </For>
-                  </tbody>
-                </table>
-                <button class="btn btn-ghost btn-sm" onClick={addTableCol} style={{ 'margin-top': '4px' }}>
-                  <Icon name="fa-solid fa-plus" /> Add Column
-                </button>
-              </div>
-              <Show when={dialog.createTableError}>
-                <div class="modal-error">{dialog.createTableError}</div>
-              </Show>
-            </div>
-            <div class="modal-footer">
-              <button class="btn btn-ghost" onClick={() => setDialog('createTable', false)}>Cancel</button>
-              <button class="btn btn-primary" onClick={submitCreateTable}>Create</button>
-            </div>
-          </div>
-        </div>
+        <FormModal
+          title="Create Table"
+          size="modal-lg"
+          error={dialog.createTableError}
+          submitLabel="Create"
+          onClose={() => setDialog('createTable', false)}
+          onSubmit={submitCreateTable}
+        >
+          <FormField label="Table Name">
+            <input type="text" value={dialog.newTableName} onInput={(e) => setDialog('newTableName', e.target.value)} placeholder="table_name" autofocus />
+          </FormField>
+          <FormField label="Columns">
+            <table class="modal-col-table">
+              <thead>
+                <tr><th>Name</th><th>Type</th><th>PK</th><th>Nullable</th><th>Default</th><th></th></tr>
+              </thead>
+              <tbody>
+                <For each={dialog.newTableCols}>
+                  {(col, idx) => (
+                    <tr>
+                      <td><input type="text" value={col.name} onInput={(e) => updateTableCol(idx(), 'name', e.target.value)} placeholder="column_name" /></td>
+                      <td><input type="text" value={col.type} onInput={(e) => updateTableCol(idx(), 'type', e.target.value)} placeholder="TEXT" /></td>
+                      <td><input type="checkbox" checked={col.pk} onChange={(e) => updateTableCol(idx(), 'pk', e.target.checked)} /></td>
+                      <td><input type="checkbox" checked={col.nullable} onChange={(e) => updateTableCol(idx(), 'nullable', e.target.checked)} /></td>
+                      <td><input type="text" value={col.defaultValue} onInput={(e) => updateTableCol(idx(), 'defaultValue', e.target.value)} placeholder="" /></td>
+                      <td>
+                        <button class="btn btn-ghost btn-xs" onClick={() => removeTableCol(idx())} title="Remove column">
+                          <Icon name="fa-solid fa-trash" />
+                        </button>
+                      </td>
+                    </tr>
+                  )}
+                </For>
+              </tbody>
+            </table>
+            <button class="btn btn-ghost btn-sm" onClick={addTableCol} style={{ 'margin-top': '4px' }}>
+              <Icon name="fa-solid fa-plus" /> Add Column
+            </button>
+          </FormField>
+        </FormModal>
       </Show>
 
       {/* Insert Row Dialog */}
       <Show when={dialog.insertRow}>
-        <div class="modal-overlay visible" onClick={() => setDialog('insertRow', false)}>
-          <div class="modal modal-lg" onClick={(e) => e.stopPropagation()}>
-            <div class="modal-header">
-              <span>Insert Row into {sidebar.selectedTable?.table}</span>
-              <button class="btn btn-ghost btn-sm" onClick={() => setDialog('insertRow', false)}>
-                <Icon name="fa-solid fa-xmark" />
-              </button>
-            </div>
-            <div class="modal-body">
-              <For each={table.columns}>
-                {(col) => (
-                  <div class="modal-field modal-field modal-field-row">
-                    <label>
-                      {col.column_name}
-                      <span class="modal-field-type">{col.data_type}</span>
-                      <Show when={col.pk}><span class="db-col-pk">PK</span></Show>
-                    </label>
-                    <input
-                      type="text"
-                      value={dialog.insertRowValues[col.column_name] || ''}
-                      onInput={(e) => updateInsertValue(col.column_name, e.target.value)}
-                      placeholder={col.column_default ? `Default: ${col.column_default}` : ''}
-                    />
-                  </div>
-                )}
-              </For>
-              <Show when={dialog.insertRowError}>
-                <div class="modal-error">{dialog.insertRowError}</div>
-              </Show>
-            </div>
-            <div class="modal-footer">
-              <button class="btn btn-ghost" onClick={() => setDialog('insertRow', false)}>Cancel</button>
-              <button class="btn btn-primary" onClick={submitInsertRow}>Insert</button>
-            </div>
-          </div>
-        </div>
+        <FormModal
+          title={`Insert Row into ${sidebar.selectedTable?.table}`}
+          size="modal-lg"
+          error={dialog.insertRowError}
+          submitLabel="Insert"
+          onClose={() => setDialog('insertRow', false)}
+          onSubmit={submitInsertRow}
+        >
+          <For each={table.columns}>
+            {(col) => (
+              <FormField class="modal-field-row">
+                <label>
+                  {col.column_name}
+                  <span class="modal-field-type">{col.data_type}</span>
+                  <Show when={col.pk}><span class="db-col-pk">PK</span></Show>
+                </label>
+                <input
+                  type="text"
+                  value={dialog.insertRowValues[col.column_name] || ''}
+                  onInput={(e) => updateInsertValue(col.column_name, e.target.value)}
+                  placeholder={col.column_default ? `Default: ${col.column_default}` : ''}
+                />
+              </FormField>
+            )}
+          </For>
+        </FormModal>
       </Show>
 
       {/* Add Column Dialog */}
       <Show when={dialog.addColumn}>
-        <div class="modal-overlay visible" onClick={() => setDialog('addColumn', false)}>
-          <div class="modal modal-md" onClick={(e) => e.stopPropagation()}>
-            <div class="modal-header">
-              <span>Add Column to {sidebar.selectedTable?.table}</span>
-              <button class="btn btn-ghost btn-sm" onClick={() => setDialog('addColumn', false)}>
-                <Icon name="fa-solid fa-xmark" />
-              </button>
-            </div>
-            <div class="modal-body">
-              <div class="modal-field">
-                <label>Name</label>
-                <input type="text" value={dialog.newColDef.name} onInput={(e) => setDialog('newColDef', 'name', e.target.value)} placeholder="column_name" autofocus />
-              </div>
-              <div class="modal-field">
-                <label>Type</label>
-                <input type="text" value={dialog.newColDef.type} onInput={(e) => setDialog('newColDef', 'type', e.target.value)} placeholder="TEXT" />
-              </div>
-              <div class="modal-field modal-field modal-field-inline">
-                <label>
-                  <input type="checkbox" checked={dialog.newColDef.nullable} onChange={(e) => setDialog('newColDef', 'nullable', e.target.checked)} />
-                  Nullable
-                </label>
-              </div>
-              <div class="modal-field">
-                <label>Default</label>
-                <input type="text" value={dialog.newColDef.defaultValue} onInput={(e) => setDialog('newColDef', 'defaultValue', e.target.value)} placeholder="" />
-              </div>
-              <Show when={dialog.addColumnError}>
-                <div class="modal-error">{dialog.addColumnError}</div>
-              </Show>
-            </div>
-            <div class="modal-footer">
-              <button class="btn btn-ghost" onClick={() => setDialog('addColumn', false)}>Cancel</button>
-              <button class="btn btn-primary" onClick={submitAddColumn}>Add</button>
-            </div>
-          </div>
-        </div>
+        <FormModal
+          title={`Add Column to ${sidebar.selectedTable?.table}`}
+          error={dialog.addColumnError}
+          submitLabel="Add"
+          onClose={() => setDialog('addColumn', false)}
+          onSubmit={submitAddColumn}
+        >
+          <FormField label="Name">
+            <input type="text" value={dialog.newColDef.name} onInput={(e) => setDialog('newColDef', 'name', e.target.value)} placeholder="column_name" autofocus />
+          </FormField>
+          <FormField label="Type">
+            <input type="text" value={dialog.newColDef.type} onInput={(e) => setDialog('newColDef', 'type', e.target.value)} placeholder="TEXT" />
+          </FormField>
+          <FormField inline>
+            <label>
+              <input type="checkbox" checked={dialog.newColDef.nullable} onChange={(e) => setDialog('newColDef', 'nullable', e.target.checked)} />
+              Nullable
+            </label>
+          </FormField>
+          <FormField label="Default">
+            <input type="text" value={dialog.newColDef.defaultValue} onInput={(e) => setDialog('newColDef', 'defaultValue', e.target.value)} placeholder="" />
+          </FormField>
+        </FormModal>
       </Show>
 
       <Modal />
