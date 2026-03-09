@@ -351,14 +351,6 @@ export default function Landing(props) {
               <Icon name="fa-solid fa-clock" />
               <span>{t.landing.nav.dateTime}</span>
             </button>
-            <button class="landing-nav-item" disabled>
-              <Icon name="fa-solid fa-key" />
-              <span>{t.landing.nav.auth}</span>
-            </button>
-            <button class="landing-nav-item" disabled>
-              <Icon name="fa-solid fa-clock-rotate-left" />
-              <span>{t.landing.nav.history}</span>
-            </button>
           </div>
           <div class="landing-sidebar-footer">
             <button class="btn btn-ghost btn-sm" onClick={() => showSettings()}>
