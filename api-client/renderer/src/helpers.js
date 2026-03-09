@@ -1,3 +1,7 @@
+export function generateId() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
+
 // KSUID: 4-byte timestamp (seconds since epoch) + 16-byte random, base62-encoded to 27 chars
 const BASE62 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
 

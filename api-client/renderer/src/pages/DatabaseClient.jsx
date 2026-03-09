@@ -1,11 +1,9 @@
 import { For, Show, onMount } from 'solid-js';
 import { createStore } from 'solid-js/store';
+import FormModal, { FormField } from '../components/FormModal';
 import Icon from '../components/Icon';
 import { showConfirm, showPrompt } from '../components/Modal';
-
-function generateId() {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-}
+import { generateId } from '../helpers';
 
 export default function DatabaseClient(props) {
   const [state, setState] = createStore({
@@ -348,115 +346,63 @@ export default function DatabaseClient(props) {
         </div>
       </div>
 
-      {/* === CONNECTION FORM MODAL === */}
       <Show when={state.formOpen}>
-        <div class="modal-overlay visible" onClick={closeForm}>
-          <div class="modal modal-md" onClick={(e) => e.stopPropagation()}>
-            <div class="modal-header">
-              <span>{state.editingId ? 'Edit Connection' : 'New Connection'}</span>
-              <button class="btn btn-ghost btn-sm" onClick={closeForm}>
-                <Icon name="fa-solid fa-xmark" />
-              </button>
-            </div>
+        <FormModal
+          title={state.editingId ? 'Edit Connection' : 'New Connection'}
+          error={state.form.error}
+          submitLabel={state.editingId ? 'Save' : 'Create'}
+          onClose={closeForm}
+          onSubmit={saveForm}
+        >
+          <FormField label="Name">
+            <input type="text" value={state.form.name} onInput={(e) => setState('form', 'name', e.target.value)} placeholder="My Database" />
+          </FormField>
 
-            <div class="modal-body">
-              <div class="modal-field">
-                <label>Name</label>
-                <input
-                  type="text"
-                  value={state.form.name}
-                  onInput={(e) => setState('form', 'name', e.target.value)}
-                  placeholder="My Database"
-                />
+          <FormField label="Type">
+            <select value={state.form.type} onChange={(e) => setState('form', 'type', e.target.value)} class="body-type-select">
+              <option value="postgres">PostgreSQL</option>
+              <option value="sqlite">SQLite</option>
+            </select>
+          </FormField>
+
+          <Show when={state.form.type === 'postgres'}>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <FormField label="Host" style={{ flex: 1 }}>
+                <input type="text" value={state.form.host} onInput={(e) => setState('form', 'host', e.target.value)} />
+              </FormField>
+              <FormField label="Port" style={{ width: '80px' }}>
+                <input type="text" value={state.form.port} onInput={(e) => setState('form', 'port', e.target.value)} />
+              </FormField>
+            </div>
+            <FormField label="User">
+              <input type="text" value={state.form.user} onInput={(e) => setState('form', 'user', e.target.value)} />
+            </FormField>
+            <FormField label="Password">
+              <input type="password" value={state.form.password} onInput={(e) => setState('form', 'password', e.target.value)} />
+            </FormField>
+            <FormField label="Database">
+              <input type="text" value={state.form.database} onInput={(e) => setState('form', 'database', e.target.value)} placeholder="optional" />
+            </FormField>
+          </Show>
+
+          <Show when={state.form.type === 'sqlite'}>
+            <FormField label="File">
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <input type="text" value={state.form.sqlitePath} onInput={(e) => setState('form', 'sqlitePath', e.target.value)} placeholder="Path to .db file" style={{ flex: 1 }} />
+                <button class="btn btn-ghost btn-sm" onClick={pickSqliteFile}>Browse</button>
               </div>
+            </FormField>
+          </Show>
 
-              <div class="modal-field">
-                <label>Type</label>
-                <select
-                  value={state.form.type}
-                  onChange={(e) => setState('form', 'type', e.target.value)}
-                  class="body-type-select"
-                >
-                  <option value="postgres">PostgreSQL</option>
-                  <option value="sqlite">SQLite</option>
-                </select>
-              </div>
-
-              <Show when={state.form.type === 'postgres'}>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <div class="modal-field" style={{ flex: 1 }}>
-                    <label>Host</label>
-                    <input type="text" value={state.form.host} onInput={(e) => setState('form', 'host', e.target.value)} />
-                  </div>
-                  <div class="modal-field" style={{ width: '80px' }}>
-                    <label>Port</label>
-                    <input type="text" value={state.form.port} onInput={(e) => setState('form', 'port', e.target.value)} />
-                  </div>
-                </div>
-                <div class="modal-field">
-                  <label>User</label>
-                  <input type="text" value={state.form.user} onInput={(e) => setState('form', 'user', e.target.value)} />
-                </div>
-                <div class="modal-field">
-                  <label>Password</label>
-                  <input type="password" value={state.form.password} onInput={(e) => setState('form', 'password', e.target.value)} />
-                </div>
-                <div class="modal-field">
-                  <label>Database</label>
-                  <input
-                    type="text"
-                    value={state.form.database}
-                    onInput={(e) => setState('form', 'database', e.target.value)}
-                    placeholder="optional"
-                  />
-                </div>
-              </Show>
-
-              <Show when={state.form.type === 'sqlite'}>
-                <div class="modal-field">
-                  <label>File</label>
-                  <div style={{ display: 'flex', gap: '6px' }}>
-                    <input
-                      type="text"
-                      value={state.form.sqlitePath}
-                      onInput={(e) => setState('form', 'sqlitePath', e.target.value)}
-                      placeholder="Path to .db file"
-                      style={{ flex: 1 }}
-                    />
-                    <button class="btn btn-ghost btn-sm" onClick={pickSqliteFile}>Browse</button>
-                  </div>
-                </div>
-              </Show>
-
-              <Show when={state.categories.length > 0}>
-                <div class="modal-field">
-                  <label>Category</label>
-                  <select
-                    value={state.form.categoryId || ''}
-                    onChange={(e) => setState('form', 'categoryId', e.target.value || null)}
-                    class="body-type-select"
-                  >
-                    <option value="">None</option>
-                    <For each={state.categories}>
-                      {(cat) => <option value={cat.id}>{cat.name}</option>}
-                    </For>
-                  </select>
-                </div>
-              </Show>
-
-              <Show when={state.form.error}>
-                <div class="modal-error">{state.form.error}</div>
-              </Show>
-            </div>
-
-            <div class="modal-footer">
-              <button class="btn btn-ghost" onClick={closeForm}>Cancel</button>
-              <button class="btn btn-primary" onClick={saveForm}>
-                {state.editingId ? 'Save' : 'Create'}
-              </button>
-            </div>
-          </div>
-        </div>
+          <Show when={state.categories.length > 0}>
+            <FormField label="Category">
+              <select value={state.form.categoryId || ''} onChange={(e) => setState('form', 'categoryId', e.target.value || null)} class="body-type-select">
+                <option value="">None</option>
+                <For each={state.categories}>{(cat) => <option value={cat.id}>{cat.name}</option>}</For>
+              </select>
+            </FormField>
+          </Show>
+        </FormModal>
       </Show>
     </div>
   );
