@@ -1,15 +1,15 @@
-import { createSignal, For, Show, onCleanup, onMount } from 'solid-js';
+import { createSignal, For, onCleanup, onMount, Show } from 'solid-js';
 import { createStore } from 'solid-js/store';
-import Icon from '../components/Icon';
 import CodeEditor from '../components/CodeEditor';
-import Modal, { showPrompt, showConfirm } from '../components/Modal';
+import Icon from '../components/Icon';
+import Modal, { showConfirm, showPrompt } from '../components/Modal';
 import SqlEditor from '../components/SqlEditor';
 
 function detectFormat(val) {
   if (!val || typeof val !== 'string') return null;
   const trimmed = val.trimStart();
   if ((trimmed[0] === '{' || trimmed[0] === '[') && trimmed.length > 1) {
-    try { JSON.parse(trimmed); return 'json'; } catch {}
+    try { JSON.parse(trimmed); return 'json'; } catch { }
   }
   if (trimmed[0] === '<') return 'xml';
   return null;
@@ -68,7 +68,7 @@ function parsePgArray(s) {
   try {
     const parsed = JSON.parse(trimmed);
     if (Array.isArray(parsed)) return parsed.map((v) => v === null ? null : String(v));
-  } catch {}
+  } catch { }
   return null;
 }
 
@@ -279,8 +279,97 @@ export default function DatabaseWorkspace(props) {
   const [editorHeight, setEditorHeight] = createSignal(200);
   const [cellPanelWidth, setCellPanelWidth] = createSignal(320);
 
+  // Tab management
+  let tabCounter = 0;
+  const [tabs, setTabs] = createSignal([]);
+  const [activeTabId, setActiveTabId] = createSignal(null);
+  const tabStateCache = {};
+
+  function saveTabState(tabId) {
+    tabStateCache[tabId] = {
+      selectedTable: sidebar.selectedTable ? { schema: sidebar.selectedTable.schema, table: sidebar.selectedTable.table } : null,
+      table: {
+        columns: JSON.parse(JSON.stringify(table.columns)),
+        indexes: JSON.parse(JSON.stringify(table.indexes)),
+        data: table.data ? JSON.parse(JSON.stringify(table.data)) : null,
+        dataPage: table.dataPage,
+        dataTotal: table.dataTotal,
+        tab: table.tab,
+        columnFormats: JSON.parse(JSON.stringify(table.columnFormats)),
+      },
+      query: { text: query.text, result: query.result ? JSON.parse(JSON.stringify(query.result)) : null },
+      pending: { edits: JSON.parse(JSON.stringify(pending.edits)), deletes: JSON.parse(JSON.stringify(pending.deletes)) },
+    };
+  }
+
+  function restoreTabState(tabId) {
+    const c = tabStateCache[tabId];
+    if (!c) {
+      resetTabState();
+      return;
+    }
+    setSidebar('selectedTable', c.selectedTable);
+    setTable(c.table);
+    setQuery({ text: c.query.text, result: c.query.result, running: false });
+    setCell({ open: false, panel: null, editValue: '', dirty: false, saving: false });
+    setPending(c.pending);
+  }
+
+  function resetTabState() {
+    setSidebar('selectedTable', null);
+    setTable({ columns: [], indexes: [], data: null, dataPage: 0, dataTotal: 0, tab: 'data', columnFormats: {} });
+    setQuery({ text: '', result: null, running: false });
+    setCell({ open: false, panel: null, editValue: '', dirty: false, saving: false });
+    setPending({ edits: {}, deletes: {} });
+  }
+
+  function tabLabel(tableName) {
+    if (!tableName) return 'Query';
+    if (connData.type === 'sqlite') return tableName;
+    return `${sidebar.activeDatabase} - ${tableName}`;
+  }
+
+  function addTab() {
+    const currentId = activeTabId();
+    if (currentId) saveTabState(currentId);
+    tabCounter++;
+    const newId = tabCounter;
+    setTabs(prev => [...prev, { id: newId, label: tabLabel(null) }]);
+    setActiveTabId(newId);
+    resetTabState();
+  }
+
+  function switchToTab(tabId) {
+    const currentId = activeTabId();
+    if (currentId === tabId) return;
+    if (currentId) saveTabState(currentId);
+    setActiveTabId(tabId);
+    restoreTabState(tabId);
+  }
+
+  function closeTab(tabId) {
+    const tabsList = tabs();
+    const idx = tabsList.findIndex(t => t.id === tabId);
+    if (idx === -1) return;
+    delete tabStateCache[tabId];
+    const newTabs = tabsList.filter(t => t.id !== tabId);
+    setTabs(newTabs);
+    if (activeTabId() === tabId) {
+      if (newTabs.length > 0) {
+        const newIdx = Math.min(idx, newTabs.length - 1);
+        const newActive = newTabs[newIdx].id;
+        setActiveTabId(newActive);
+        restoreTabState(newActive);
+      } else {
+        setActiveTabId(null);
+        resetTabState();
+      }
+    }
+  }
+
   onMount(async () => {
     document.title = connData.name;
+    addTab();
     await loadSidebarData();
   });
 
@@ -337,6 +426,8 @@ export default function DatabaseWorkspace(props) {
     setSidebar('selectedTable', { schema, table: tableName });
     setTable({ tab: 'data', dataPage: 0, columnFormats: {} });
     setPending({ edits: {}, deletes: {} });
+    const id = activeTabId();
+    if (id) setTabs(prev => prev.map(t => t.id === id ? { ...t, label: tabLabel(tableName) } : t));
     const [colResult, idxResult] = await Promise.all([
       window.api.dbGetColumns(connData.liveId, schema, tableName),
       window.api.dbGetIndexes(connData.liveId, schema, tableName),
@@ -525,7 +616,10 @@ export default function DatabaseWorkspace(props) {
     const result = await window.api.dbRenameTable(connData.liveId, schema, oldName, newName.trim());
     if (result.error) return alert(result.error);
     if (sidebar.selectedTable?.schema === schema && sidebar.selectedTable?.table === oldName) {
-      setSidebar('selectedTable', { schema, table: newName.trim() });
+      const trimmed = newName.trim();
+      setSidebar('selectedTable', { schema, table: trimmed });
+      const id = activeTabId();
+      if (id) setTabs(prev => prev.map(t => t.id === id ? { ...t, label: tabLabel(trimmed) } : t));
     }
     await refreshTables();
   }
@@ -710,131 +804,153 @@ export default function DatabaseWorkspace(props) {
       <div class="db-workspace">
         {/* Left sidebar: tables */}
         <Show when={sidebarOpen()}>
-        <div class="db-sidebar" style={{ width: sidebarWidth() + 'px' }}>
-          <div class="sidebar-header">
-            <div class="back-row">
-              <button class="back-btn" onClick={props.onBack} title="Back to connections">
-                <Icon name="fa-solid fa-arrow-left" />
-              </button>
-              <span class="collection-name" style={{ cursor: 'default' }}>
-                {connData.name}
-              </span>
-              <button class="back-btn sidebar-close-btn" onClick={() => setSidebarOpen(false)} title="Close sidebar">
-                <Icon name="fa-solid fa-xmark" />
-              </button>
+          <div class="db-sidebar" style={{ width: sidebarWidth() + 'px' }}>
+            <div class="sidebar-header">
+              <div class="back-row">
+                <button class="back-btn" onClick={props.onBack} title="Back to connections">
+                  <Icon name="fa-solid fa-arrow-left" />
+                </button>
+                <span class="collection-name" style={{ cursor: 'default' }}>
+                  {connData.name}
+                </span>
+                <button class="back-btn sidebar-close-btn" onClick={() => setSidebarOpen(false)} title="Close sidebar">
+                  <Icon name="fa-solid fa-xmark" />
+                </button>
+              </div>
+            </div>
+
+            <div class="db-sidebar-content">
+              {/* PostgreSQL: databases with nested tables */}
+              <Show when={connData.type === 'postgres' && sidebar.databases.length > 0}>
+                <div class="db-section-label">
+                  Databases
+                  <button class="btn btn-ghost btn-xs db-section-action" onClick={createDatabase} title="Create database">
+                    <Icon name="fa-solid fa-plus" />
+                  </button>
+                </div>
+                <For each={sidebar.databases}>
+                  {(dbName) => {
+                    const isExpanded = () => sidebar.expandedDatabases.has(dbName);
+                    const isLoading = () => sidebar.loadingDb === dbName;
+                    const schemas = () => tablesBySchemaForDb(dbName);
+                    return (
+                      <div>
+                        <div
+                          class={`db-tree-item db-tree-db ${sidebar.activeDatabase === dbName ? 'active' : ''}`}
+                          onClick={() => toggleDatabase(dbName)}
+                        >
+                          <Icon name={isExpanded() ? 'fa-solid fa-caret-down' : 'fa-solid fa-caret-right'} />
+                          <Icon name="fa-solid fa-database" />
+                          <span>{dbName}</span>
+                          <Show when={isLoading()}>
+                            <span class="db-tree-badge">loading...</span>
+                          </Show>
+                          <div class="db-tree-actions" onClick={(e) => e.stopPropagation()}>
+                            <button class="btn btn-ghost btn-xs" onClick={() => dropDatabase(dbName)} title="Drop database">
+                              <Icon name="fa-solid fa-trash" />
+                            </button>
+                          </div>
+                        </div>
+                        <Show when={isExpanded()}>
+                          <div class="db-tree-nested">
+                            <For each={Object.entries(schemas())}>
+                              {([schema, schemaTables]) => (
+                                <>
+                                  <Show when={Object.keys(schemas()).length > 1}>
+                                    <div class="db-tree-schema">{schema}</div>
+                                  </Show>
+                                  <For each={schemaTables}>
+                                    {(t) => <TableTreeItem schema={schema} table={t} />}
+                                  </For>
+                                </>
+                              )}
+                            </For>
+                            <Show when={Object.keys(schemas()).length === 0 && !isLoading()}>
+                              <div class="db-empty" style={{ padding: '4px 12px 4px 32px', 'font-size': 'var(--ui-font-size-sm)' }}>No tables</div>
+                            </Show>
+                            <Show when={sidebar.activeDatabase === dbName}>
+                              <div
+                                class="db-tree-item db-tree-add"
+                                onClick={openCreateTable}
+                              >
+                                <Icon name="fa-solid fa-plus" />
+                                <span>New Table</span>
+                              </div>
+                            </Show>
+                          </div>
+                        </Show>
+                      </div>
+                    );
+                  }}
+                </For>
+              </Show>
+
+              {/* SQLite: tables directly */}
+              <Show when={connData.type === 'sqlite'}>
+                <div class="db-section-label">
+                  Tables
+                  <button class="btn btn-ghost btn-xs db-section-action" onClick={openCreateTable} title="Create table">
+                    <Icon name="fa-solid fa-plus" />
+                  </button>
+                </div>
+                <For each={Object.entries(tablesBySchemaForDb('_default'))}>
+                  {([schema, schemaTables]) => (
+                    <>
+                      <Show when={Object.keys(tablesBySchemaForDb('_default')).length > 1}>
+                        <div class="db-tree-schema">{schema}</div>
+                      </Show>
+                      <For each={schemaTables}>
+                        {(t) => <TableTreeItem schema={schema} table={t} />}
+                      </For>
+                    </>
+                  )}
+                </For>
+                <Show when={(sidebar.tablesByDb['_default'] || []).length === 0}>
+                  <div class="db-empty" style={{ padding: '12px', 'font-size': 'var(--ui-font-size-sm)' }}>No tables found</div>
+                </Show>
+              </Show>
+
+              {/* Postgres with no databases listed */}
+              <Show when={connData.type === 'postgres' && sidebar.databases.length === 0}>
+                <div class="db-empty" style={{ padding: '12px', 'font-size': 'var(--ui-font-size-sm)' }}>No databases found</div>
+              </Show>
             </div>
           </div>
 
-          <div class="db-sidebar-content">
-            {/* PostgreSQL: databases with nested tables */}
-            <Show when={connData.type === 'postgres' && sidebar.databases.length > 0}>
-              <div class="db-section-label">
-                Databases
-                <button class="btn btn-ghost btn-xs db-section-action" onClick={createDatabase} title="Create database">
-                  <Icon name="fa-solid fa-plus" />
-                </button>
-              </div>
-              <For each={sidebar.databases}>
-                {(dbName) => {
-                  const isExpanded = () => sidebar.expandedDatabases.has(dbName);
-                  const isLoading = () => sidebar.loadingDb === dbName;
-                  const schemas = () => tablesBySchemaForDb(dbName);
-                  return (
-                    <div>
-                      <div
-                        class={`db-tree-item db-tree-db ${sidebar.activeDatabase === dbName ? 'active' : ''}`}
-                        onClick={() => toggleDatabase(dbName)}
-                      >
-                        <Icon name={isExpanded() ? 'fa-solid fa-caret-down' : 'fa-solid fa-caret-right'} />
-                        <Icon name="fa-solid fa-database" />
-                        <span>{dbName}</span>
-                        <Show when={isLoading()}>
-                          <span class="db-tree-badge">loading...</span>
-                        </Show>
-                        <div class="db-tree-actions" onClick={(e) => e.stopPropagation()}>
-                          <button class="btn btn-ghost btn-xs" onClick={() => dropDatabase(dbName)} title="Drop database">
-                            <Icon name="fa-solid fa-trash" />
-                          </button>
-                        </div>
-                      </div>
-                      <Show when={isExpanded()}>
-                        <div class="db-tree-nested">
-                          <For each={Object.entries(schemas())}>
-                            {([schema, schemaTables]) => (
-                              <>
-                                <Show when={Object.keys(schemas()).length > 1}>
-                                  <div class="db-tree-schema">{schema}</div>
-                                </Show>
-                                <For each={schemaTables}>
-                                  {(t) => <TableTreeItem schema={schema} table={t} />}
-                                </For>
-                              </>
-                            )}
-                          </For>
-                          <Show when={Object.keys(schemas()).length === 0 && !isLoading()}>
-                            <div class="db-empty" style={{ padding: '4px 12px 4px 32px', 'font-size': '11px' }}>No tables</div>
-                          </Show>
-                          <Show when={sidebar.activeDatabase === dbName}>
-                            <div
-                              class="db-tree-item db-tree-add"
-                              onClick={openCreateTable}
-                            >
-                              <Icon name="fa-solid fa-plus" />
-                              <span>New Table</span>
-                            </div>
-                          </Show>
-                        </div>
-                      </Show>
-                    </div>
-                  );
-                }}
-              </For>
-            </Show>
-
-            {/* SQLite: tables directly */}
-            <Show when={connData.type === 'sqlite'}>
-              <div class="db-section-label">
-                Tables
-                <button class="btn btn-ghost btn-xs db-section-action" onClick={openCreateTable} title="Create table">
-                  <Icon name="fa-solid fa-plus" />
-                </button>
-              </div>
-              <For each={Object.entries(tablesBySchemaForDb('_default'))}>
-                {([schema, schemaTables]) => (
-                  <>
-                    <Show when={Object.keys(tablesBySchemaForDb('_default')).length > 1}>
-                      <div class="db-tree-schema">{schema}</div>
-                    </Show>
-                    <For each={schemaTables}>
-                      {(t) => <TableTreeItem schema={schema} table={t} />}
-                    </For>
-                  </>
-                )}
-              </For>
-              <Show when={(sidebar.tablesByDb['_default'] || []).length === 0}>
-                <div class="db-empty" style={{ padding: '12px', 'font-size': '11px' }}>No tables found</div>
-              </Show>
-            </Show>
-
-            {/* Postgres with no databases listed */}
-            <Show when={connData.type === 'postgres' && sidebar.databases.length === 0}>
-              <div class="db-empty" style={{ padding: '12px', 'font-size': '11px' }}>No databases found</div>
-            </Show>
-          </div>
-        </div>
-
-        <div class="db-resize-handle-v" onMouseDown={onSidebarResizeStart} />
+          <div class="db-resize-handle-v" onMouseDown={onSidebarResizeStart} />
         </Show>
 
         {/* Center: editor + results */}
         <div class="db-main">
+          <div class="db-tab-bar">
+            <Show when={!sidebarOpen()}>
+              <button class="btn btn-ghost btn-sm db-tab-bar-menu" onClick={() => setSidebarOpen(true)} title="Open sidebar">
+                <Icon name="fa-solid fa-bars" />
+              </button>
+            </Show>
+            <For each={tabs()}>
+              {(tab) => (
+                <div
+                  class={`db-tab-item ${activeTabId() === tab.id ? 'active' : ''}`}
+                  onClick={() => switchToTab(tab.id)}
+                  onMouseDown={(e) => { if (e.button === 1) { e.preventDefault(); closeTab(tab.id); } }}
+                >
+                  <span class="db-tab-item-label">{tab.label}</span>
+                  <button
+                    class="db-tab-item-close"
+                    onClick={(e) => { e.stopPropagation(); closeTab(tab.id); }}
+                  >
+                    <Icon name="fa-solid fa-xmark" />
+                  </button>
+                </div>
+              )}
+            </For>
+            <button class="btn btn-ghost btn-sm db-tab-bar-add" onClick={addTab} title="New tab">
+              <Icon name="fa-solid fa-plus" />
+            </button>
+          </div>
           <div class="db-editor-pane" style={{ height: editorHeight() + 'px' }}>
             <div class="db-editor-toolbar">
-              <Show when={!sidebarOpen()}>
-                <button class="btn btn-ghost btn-sm" onClick={() => setSidebarOpen(true)} title="Open sidebar">
-                  <Icon name="fa-solid fa-bars" />
-                </button>
-              </Show>
               <span class="db-editor-title">Query</span>
               <button
                 class="btn btn-primary btn-sm"
@@ -1046,16 +1162,6 @@ export default function DatabaseWorkspace(props) {
                 </span>
               </Show>
               <div class="db-cell-panel-actions">
-                <Show when={cell.dirty}>
-                  <button class="btn btn-ghost btn-sm" onClick={discardCellEdit} title="Discard changes">
-                    <Icon name="fa-solid fa-rotate-left" />
-                    Discard
-                  </button>
-                  <button class="btn btn-primary btn-sm" onClick={saveCellEdit} disabled={cell.saving} title="Save changes">
-                    <Icon name="fa-solid fa-check" />
-                    {cell.saving ? 'Saving...' : 'Save'}
-                  </button>
-                </Show>
                 <button class="btn btn-ghost btn-sm" onClick={closeCellPanel}>
                   <Icon name="fa-solid fa-xmark" />
                 </button>
@@ -1092,7 +1198,7 @@ export default function DatabaseWorkspace(props) {
                       const colFmt = () => table.columnFormats[cell.panel?.column];
                       const isArrayCol = () => colFmt() === 'array';
                       const editItems = () => isArrayCol() ? parsePgArray(cell.editValue) : null;
-                      const fmt = detectFormat(cell.editValue);
+                      const fmt = () => detectFormat(cell.editValue);
 
                       function updateArrayItem(idx, value) {
                         const items = editItems();
@@ -1178,14 +1284,14 @@ export default function DatabaseWorkspace(props) {
                             </div>
                           </Show>
                           <Show when={!isArrayCol() || !editItems()}>
-                            <Show when={fmt === 'json' || fmt === 'xml'}>
+                            <Show when={fmt() === 'json' || fmt() === 'xml'}>
                               <CodeEditor
                                 value={cell.editValue}
-                                format={fmt}
+                                format={fmt()}
                                 onInput={onCellEditInput}
                               />
                             </Show>
-                            <Show when={fmt !== 'json' && fmt !== 'xml'}>
+                            <Show when={fmt() !== 'json' && fmt() !== 'xml'}>
                               <textarea
                                 class="db-cell-textarea"
                                 value={cell.editValue}
@@ -1200,28 +1306,38 @@ export default function DatabaseWorkspace(props) {
                 </Show>
               </Show>
             </div>
+            <Show when={cell.dirty}>
+              <div class="db-cell-panel-footer">
+                <button class="btn btn-ghost btn-sm" onClick={discardCellEdit} title="Discard changes">
+                  Discard
+                </button>
+                <button class="btn btn-primary btn-sm" onClick={saveCellEdit} disabled={cell.saving} title="Save changes">
+                  {cell.saving ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+            </Show>
           </div>
         </Show>
       </div>
 
       {/* Create Table Dialog */}
       <Show when={dialog.createTable}>
-        <div class="db-dialog-overlay" onClick={() => setDialog('createTable', false)}>
-          <div class="db-dialog" onClick={(e) => e.stopPropagation()}>
-            <div class="db-dialog-header">
+        <div class="modal-overlay visible" onClick={() => setDialog('createTable', false)}>
+          <div class="modal modal-lg" onClick={(e) => e.stopPropagation()}>
+            <div class="modal-header">
               <span>Create Table</span>
               <button class="btn btn-ghost btn-sm" onClick={() => setDialog('createTable', false)}>
                 <Icon name="fa-solid fa-xmark" />
               </button>
             </div>
-            <div class="db-dialog-body">
-              <div class="db-dialog-field">
+            <div class="modal-body">
+              <div class="modal-field">
                 <label>Table Name</label>
                 <input type="text" value={dialog.newTableName} onInput={(e) => setDialog('newTableName', e.target.value)} placeholder="table_name" autofocus />
               </div>
-              <div class="db-dialog-field">
+              <div class="modal-field">
                 <label>Columns</label>
-                <table class="db-dialog-col-table">
+                <table class="modal-col-table">
                   <thead>
                     <tr><th>Name</th><th>Type</th><th>PK</th><th>Nullable</th><th>Default</th><th></th></tr>
                   </thead>
@@ -1249,10 +1365,10 @@ export default function DatabaseWorkspace(props) {
                 </button>
               </div>
               <Show when={dialog.createTableError}>
-                <div class="db-dialog-error">{dialog.createTableError}</div>
+                <div class="modal-error">{dialog.createTableError}</div>
               </Show>
             </div>
-            <div class="db-dialog-footer">
+            <div class="modal-footer">
               <button class="btn btn-ghost" onClick={() => setDialog('createTable', false)}>Cancel</button>
               <button class="btn btn-primary" onClick={submitCreateTable}>Create</button>
             </div>
@@ -1262,21 +1378,21 @@ export default function DatabaseWorkspace(props) {
 
       {/* Insert Row Dialog */}
       <Show when={dialog.insertRow}>
-        <div class="db-dialog-overlay" onClick={() => setDialog('insertRow', false)}>
-          <div class="db-dialog" onClick={(e) => e.stopPropagation()}>
-            <div class="db-dialog-header">
+        <div class="modal-overlay visible" onClick={() => setDialog('insertRow', false)}>
+          <div class="modal modal-lg" onClick={(e) => e.stopPropagation()}>
+            <div class="modal-header">
               <span>Insert Row into {sidebar.selectedTable?.table}</span>
               <button class="btn btn-ghost btn-sm" onClick={() => setDialog('insertRow', false)}>
                 <Icon name="fa-solid fa-xmark" />
               </button>
             </div>
-            <div class="db-dialog-body">
+            <div class="modal-body">
               <For each={table.columns}>
                 {(col) => (
-                  <div class="db-dialog-field db-dialog-field-row">
+                  <div class="modal-field modal-field modal-field-row">
                     <label>
                       {col.column_name}
-                      <span class="db-dialog-field-type">{col.data_type}</span>
+                      <span class="modal-field-type">{col.data_type}</span>
                       <Show when={col.pk}><span class="db-col-pk">PK</span></Show>
                     </label>
                     <input
@@ -1289,10 +1405,10 @@ export default function DatabaseWorkspace(props) {
                 )}
               </For>
               <Show when={dialog.insertRowError}>
-                <div class="db-dialog-error">{dialog.insertRowError}</div>
+                <div class="modal-error">{dialog.insertRowError}</div>
               </Show>
             </div>
-            <div class="db-dialog-footer">
+            <div class="modal-footer">
               <button class="btn btn-ghost" onClick={() => setDialog('insertRow', false)}>Cancel</button>
               <button class="btn btn-primary" onClick={submitInsertRow}>Insert</button>
             </div>
@@ -1302,38 +1418,38 @@ export default function DatabaseWorkspace(props) {
 
       {/* Add Column Dialog */}
       <Show when={dialog.addColumn}>
-        <div class="db-dialog-overlay" onClick={() => setDialog('addColumn', false)}>
-          <div class="db-dialog db-dialog-sm" onClick={(e) => e.stopPropagation()}>
-            <div class="db-dialog-header">
+        <div class="modal-overlay visible" onClick={() => setDialog('addColumn', false)}>
+          <div class="modal modal-md" onClick={(e) => e.stopPropagation()}>
+            <div class="modal-header">
               <span>Add Column to {sidebar.selectedTable?.table}</span>
               <button class="btn btn-ghost btn-sm" onClick={() => setDialog('addColumn', false)}>
                 <Icon name="fa-solid fa-xmark" />
               </button>
             </div>
-            <div class="db-dialog-body">
-              <div class="db-dialog-field">
+            <div class="modal-body">
+              <div class="modal-field">
                 <label>Name</label>
                 <input type="text" value={dialog.newColDef.name} onInput={(e) => setDialog('newColDef', 'name', e.target.value)} placeholder="column_name" autofocus />
               </div>
-              <div class="db-dialog-field">
+              <div class="modal-field">
                 <label>Type</label>
                 <input type="text" value={dialog.newColDef.type} onInput={(e) => setDialog('newColDef', 'type', e.target.value)} placeholder="TEXT" />
               </div>
-              <div class="db-dialog-field db-dialog-field-inline">
+              <div class="modal-field modal-field modal-field-inline">
                 <label>
                   <input type="checkbox" checked={dialog.newColDef.nullable} onChange={(e) => setDialog('newColDef', 'nullable', e.target.checked)} />
                   Nullable
                 </label>
               </div>
-              <div class="db-dialog-field">
+              <div class="modal-field">
                 <label>Default</label>
                 <input type="text" value={dialog.newColDef.defaultValue} onInput={(e) => setDialog('newColDef', 'defaultValue', e.target.value)} placeholder="" />
               </div>
               <Show when={dialog.addColumnError}>
-                <div class="db-dialog-error">{dialog.addColumnError}</div>
+                <div class="modal-error">{dialog.addColumnError}</div>
               </Show>
             </div>
-            <div class="db-dialog-footer">
+            <div class="modal-footer">
               <button class="btn btn-ghost" onClick={() => setDialog('addColumn', false)}>Cancel</button>
               <button class="btn btn-primary" onClick={submitAddColumn}>Add</button>
             </div>
@@ -1656,9 +1772,9 @@ function ResultsTable(props) {
                               ? 'NULL'
                               : isArray() && arrayItems()
                                 ? <span class="db-array-toggle" onClick={toggleArray}>
-                                    <Icon name={isExpanded() ? 'fa-solid fa-caret-down' : 'fa-solid fa-caret-right'} />
-                                    {' '}[{arrayItems().length}]
-                                  </span>
+                                  <Icon name={isExpanded() ? 'fa-solid fa-caret-down' : 'fa-solid fa-caret-right'} />
+                                  {' '}[{arrayItems().length}]
+                                </span>
                                 : isUrl()
                                   ? <a class="db-cell-url" href={String(val)} onClick={(e) => { e.preventDefault(); e.stopPropagation(); window.api.openExternal(String(val)); }}>{String(val)}</a>
                                   : (formatted() ?? String(val))}
