@@ -51,6 +51,16 @@ export function showTextarea(title, placeholder = '', description = '') {
   });
 }
 
+export function showAlert(title, description = '') {
+  return new Promise((resolve) => {
+    modalResolve = resolve;
+    setModalTitle(title);
+    setModalDescription(description);
+    setModalType('alert');
+    setModalVisible(true);
+  });
+}
+
 export function showSettings() {
   return new Promise((resolve) => {
     modalResolve = resolve;
@@ -87,19 +97,20 @@ export default function Modal() {
   });
 
   function onKeyDown(e) {
-    if (
-      e.key === 'Enter' &&
-      modalType() !== 'textarea' &&
-      modalType() !== 'settings'
-    )
-      close(modalType() === 'prompt' ? modalValue() : true);
+    if (e.key === 'Enter') {
+      if (modalType() === 'alert') close(null);
+      else if (modalType() !== 'textarea' && modalType() !== 'settings')
+        close(modalType() === 'prompt' ? modalValue() : true);
+    }
     if (e.key === 'Escape')
       close(
-        modalType() === 'prompt' || modalType() === 'textarea'
+        modalType() === 'alert'
           ? null
-          : modalType() === 'settings'
+          : modalType() === 'prompt' || modalType() === 'textarea'
             ? null
-            : false,
+            : modalType() === 'settings'
+              ? null
+              : false,
       );
   }
 
@@ -196,7 +207,14 @@ export default function Modal() {
               </div>
             </div>
           </Show>
-          <Show when={modalType() !== 'settings'}>
+          <Show when={modalType() === 'alert'}>
+            <div class="modal-buttons">
+              <button class="btn btn-primary" onClick={() => close(null)} autofocus>
+                {t.modal.okButton}
+              </button>
+            </div>
+          </Show>
+          <Show when={modalType() !== 'settings' && modalType() !== 'alert'}>
             <div class="modal-buttons">
               <button
                 class="btn btn-ghost"

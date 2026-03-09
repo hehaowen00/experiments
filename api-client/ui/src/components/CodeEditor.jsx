@@ -121,6 +121,15 @@ export default function CodeEditor(props) {
     });
 
     view = new EditorView({ state, parent: containerRef });
+    props.ref?.({
+      focus: () => view?.focus(),
+      focusEnd: () => {
+        if (!view) return;
+        const end = view.state.doc.length;
+        view.dispatch({ selection: { anchor: end } });
+        view.focus();
+      },
+    });
   });
 
   // Sync external value changes

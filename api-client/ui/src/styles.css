@@ -2753,6 +2753,9 @@ select {
 
 .db-query-error {
   margin: 8px;
+  flex: 1;
+  white-space: pre-wrap;
+  overflow: auto;
 }
 
 .db-empty {
@@ -2841,6 +2844,7 @@ select {
   overflow: hidden;
   text-overflow: ellipsis;
   cursor: default;
+  user-select: none;
 }
 
 .db-results-table tbody tr:hover {
@@ -2974,7 +2978,9 @@ select {
 .db-row-num {
   color: var(--text-dim);
   text-align: right;
-  min-width: 28px;
+  width: 40px;
+  min-width: 40px;
+  max-width: 40px;
   font-size: var(--ui-font-size-sm);
 }
 

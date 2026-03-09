@@ -1,5 +1,5 @@
 {
-  "name": "api-client-renderer",
+  "name": "api-client-ui",
   "private": true,
   "type": "module",
   "scripts": {

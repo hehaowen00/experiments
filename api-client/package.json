@@ -4,9 +4,9 @@
   "description": "",
   "main": "main.js",
   "scripts": {
-    "build": "cd renderer && npx vite build",
-    "start": "cd renderer && npx vite build && cd .. && electron .",
-    "dev": "cd renderer && npx vite",
+    "build": "cd ui && npx vite build",
+    "start": "cd ui && npx vite build && cd .. && electron .",
+    "dev": "cd ui && npx vite",
     "dist": "npm run build && electron-builder",
     "dist:mac": "npm run build && electron-builder --mac",
     "dist:win": "npm run build && electron-builder --win",
@@ -17,11 +17,12 @@
   "license": "ISC",
   "build": {
     "appId": "com.api-client.app",
-    "productName": "API Client",
+    "productName": "Conduit",
     "files": [
       "main.js",
+      "main/**/*",
       "preload.js",
-      "renderer/dist/**/*",
+      "ui/dist/**/*",
       "node_modules/**/*"
     ],
     "mac": {
