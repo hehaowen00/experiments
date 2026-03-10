@@ -8,6 +8,7 @@ const strings = {
     nav: {
       apiClient: 'API Client',
       database: 'Database',
+      git: 'Git',
       dateTime: 'Date / Time',
     },
     newCollectionPlaceholder: 'New Collection',

@@ -1,4 +1,4 @@
-# Project: API Client (Electron + Solid.js)
+# Project: Conduit (Electron + Solid.js)
 
 ## Rules
 

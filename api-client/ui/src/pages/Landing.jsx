@@ -11,6 +11,7 @@ import { formatLastUsed } from '../helpers';
 import t from '../locale';
 import DatabaseClient from '../pages/DatabaseClient';
 import DateTimeTool from '../pages/DateTimeTool';
+import GitClient from '../pages/GitClient';
 
 export default function Landing(props) {
   const [activeNav, setActiveNavRaw] = createSignal('api');
@@ -340,6 +341,13 @@ export default function Landing(props) {
               <span>{t.landing.nav.database}</span>
             </button>
             <button
+              class={`landing-nav-item ${activeNav() === 'git' ? 'active' : ''}`}
+              onClick={() => setActiveNav('git')}
+            >
+              <Icon name="fa-solid fa-code-branch" />
+              <span>{t.landing.nav.git}</span>
+            </button>
+            <button
               class={`landing-nav-item ${activeNav() === 'datetime' ? 'active' : ''}`}
               onClick={() => setActiveNav('datetime')}
             >
@@ -454,6 +462,12 @@ export default function Landing(props) {
         sidebarOpen={sidebarOpen()}
         onToggleSidebar={() => setSidebarOpen(!sidebarOpen())}
         onOpenDb={props.onOpenDb}
+      />
+      <GitClient
+        style={{ display: activeNav() === 'git' ? '' : 'none' }}
+        sidebarOpen={sidebarOpen()}
+        onToggleSidebar={() => setSidebarOpen(!sidebarOpen())}
+        onOpenGit={props.onOpenGit}
       />
       <Modal />
     </div>

@@ -5,6 +5,7 @@ const ipcCollections = require('./main/ipc-collections');
 const ipcRequests = require('./main/ipc-requests');
 const ipcWebsocket = require('./main/ipc-websocket');
 const ipcDatabase = require('./main/ipc-database');
+const ipcGit = require('./main/ipc-git');
 
 let mainWindow;
 
@@ -30,6 +31,7 @@ app.whenReady().then(() => {
   ipcRequests.register(mainWindow);
   ipcWebsocket.register(mainWindow);
   ipcDatabase.register(mainWindow);
+  ipcGit.register(mainWindow);
 
   ipcMain.handle('app:homeDir', () => require('os').homedir());
   ipcMain.handle('shell:openExternal', async (_, url) => {
