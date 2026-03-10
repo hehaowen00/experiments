@@ -21,6 +21,10 @@ export default function GitWorkspace(props) {
     content: '',
     filepath: null,
     staged: false,
+    isImage: false,
+    imageCurrent: null,
+    imageOld: null,
+    imageMime: null,
   });
 
   const [commit, setCommit] = createStore({
@@ -74,7 +78,7 @@ export default function GitWorkspace(props) {
   const [output, setOutput] = createSignal('');
   const [sidebarOpen, setSidebarOpen] = createSignal(true);
   const [selectedFiles, setSelectedFiles] = createSignal(new Set());
-  const [collapsedDirs, setCollapsedDirs] = createSignal(new Set());
+  const [expandedDirs, setExpandedDirs] = createSignal(new Set());
   const [collapsedSections, setCollapsedSections] = createSignal(new Set());
   const [switcherOpen, setSwitcherOpen] = createSignal(false);
   const [switcherQuery, setSwitcherQuery] = createSignal('');
@@ -421,8 +425,29 @@ export default function GitWorkspace(props) {
     return map[code] || '';
   }
 
+  const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.bmp', '.ico']);
+
+  function isImageFile(filepath) {
+    const ext = filepath.lastIndexOf('.') !== -1 ? filepath.slice(filepath.lastIndexOf('.')).toLowerCase() : '';
+    return IMAGE_EXTS.has(ext);
+  }
+
   // Diff viewing
   async function viewDiff(filepath, staged) {
+    if (isImageFile(filepath)) {
+      const result = await window.api.gitImageDiff(repoPath, filepath, staged);
+      setDiff({
+        content: '',
+        filepath,
+        staged,
+        isImage: true,
+        imageCurrent: result.current || null,
+        imageOld: result.old || null,
+        imageMime: result.mime || 'image/png',
+      });
+      return;
+    }
+
     const file = status.files.find(f => f.path === filepath);
     const isUntracked = file && file.index === '?' && file.working === '?';
 
@@ -434,9 +459,9 @@ export default function GitWorkspace(props) {
     }
 
     if (result.error) {
-      setDiff({ content: `Error: ${result.error}`, filepath, staged });
+      setDiff({ content: `Error: ${result.error}`, filepath, staged, isImage: false, imageCurrent: null, imageOld: null, imageMime: null });
     } else {
-      setDiff({ content: result.diff || '(no changes)', filepath, staged });
+      setDiff({ content: result.diff || '(no changes)', filepath, staged, isImage: false, imageCurrent: null, imageOld: null, imageMime: null });
     }
   }
 
@@ -789,7 +814,7 @@ export default function GitWorkspace(props) {
   }
 
   function toggleDir(dirPath) {
-    setCollapsedDirs(prev => {
+    setExpandedDirs(prev => {
       const next = new Set(prev);
       if (next.has(dirPath)) next.delete(dirPath);
       else next.add(dirPath);
@@ -816,7 +841,7 @@ export default function GitWorkspace(props) {
           style={{ 'padding-left': `${depth * 16 + 4}px` }}
           onClick={() => toggleDir(dirPath)}
         >
-          <Icon name={collapsedDirs().has(dirPath) ? 'fa-solid fa-chevron-right' : 'fa-solid fa-chevron-down'} class="git-tree-chevron" />
+          <Icon name={expandedDirs().has(dirPath) ? 'fa-solid fa-chevron-down' : 'fa-solid fa-chevron-right'} class="git-tree-chevron" />
           <Icon name="fa-solid fa-folder" class="git-tree-folder-icon" />
           <span class="git-tree-dir-name">{child.name}</span>
           <span class="git-tree-dir-count">{fileCount}</span>
@@ -841,7 +866,7 @@ export default function GitWorkspace(props) {
             )}
           </span>
         </div>
-        <Show when={!collapsedDirs().has(dirPath)}>
+        <Show when={expandedDirs().has(dirPath)}>
           {renderTree(child, section, depth + 1, dirPath)}
         </Show>
       </div>
@@ -1045,9 +1070,34 @@ export default function GitWorkspace(props) {
                   <span class="git-diff-filepath">{diff.filepath}</span>
                   <span class="git-diff-label">{diff.staged ? 'Staged' : 'Working'}</span>
                 </div>
-                <pre class="git-diff-content">
-                  <For each={parseDiffLines(diff.content)}>{(l) => renderDiffLine(l)}</For>
-                </pre>
+                <Show when={diff.isImage} fallback={
+                  <pre class="git-diff-content">
+                    <For each={parseDiffLines(diff.content)}>{(l) => renderDiffLine(l)}</For>
+                  </pre>
+                }>
+                  <div class="git-image-diff">
+                    <Show when={diff.imageOld}>
+                      <div class="git-image-diff-side">
+                        <div class="git-image-diff-label">Old</div>
+                        <img src={`data:${diff.imageMime};base64,${diff.imageOld}`} alt="Old version" />
+                      </div>
+                    </Show>
+                    <Show when={diff.imageCurrent}>
+                      <div class="git-image-diff-side">
+                        <div class="git-image-diff-label">{diff.imageOld ? 'New' : 'Added'}</div>
+                        <img src={`data:${diff.imageMime};base64,${diff.imageCurrent}`} alt="Current version" />
+                      </div>
+                    </Show>
+                    <Show when={!diff.imageCurrent && diff.imageOld}>
+                      <div class="git-image-diff-side">
+                        <div class="git-image-diff-label git-image-deleted">Deleted</div>
+                      </div>
+                    </Show>
+                    <Show when={!diff.imageCurrent && !diff.imageOld}>
+                      <div class="git-empty">No image data available</div>
+                    </Show>
+                  </div>
+                </Show>
               </Show>
             </div>
 

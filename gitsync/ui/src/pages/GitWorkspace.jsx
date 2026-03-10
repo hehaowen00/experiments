@@ -74,7 +74,7 @@ export default function GitWorkspace(props) {
   const [output, setOutput] = createSignal('');
   const [sidebarOpen, setSidebarOpen] = createSignal(true);
   const [selectedFiles, setSelectedFiles] = createSignal(new Set());
-  const [collapsedDirs, setCollapsedDirs] = createSignal(new Set());
+  const [expandedDirs, setExpandedDirs] = createSignal(new Set());
   const [collapsedSections, setCollapsedSections] = createSignal(new Set());
   const [switcherOpen, setSwitcherOpen] = createSignal(false);
   const [switcherQuery, setSwitcherQuery] = createSignal('');
@@ -789,7 +789,7 @@ export default function GitWorkspace(props) {
   }
 
   function toggleDir(dirPath) {
-    setCollapsedDirs(prev => {
+    setExpandedDirs(prev => {
       const next = new Set(prev);
       if (next.has(dirPath)) next.delete(dirPath);
       else next.add(dirPath);
@@ -816,7 +816,7 @@ export default function GitWorkspace(props) {
           style={{ 'padding-left': `${depth * 16 + 4}px` }}
           onClick={() => toggleDir(dirPath)}
         >
-          <Icon name={collapsedDirs().has(dirPath) ? 'fa-solid fa-chevron-right' : 'fa-solid fa-chevron-down'} class="git-tree-chevron" />
+          <Icon name={expandedDirs().has(dirPath) ? 'fa-solid fa-chevron-down' : 'fa-solid fa-chevron-right'} class="git-tree-chevron" />
           <Icon name="fa-solid fa-folder" class="git-tree-folder-icon" />
           <span class="git-tree-dir-name">{child.name}</span>
           <span class="git-tree-dir-count">{fileCount}</span>
@@ -841,7 +841,7 @@ export default function GitWorkspace(props) {
             )}
           </span>
         </div>
-        <Show when={!collapsedDirs().has(dirPath)}>
+        <Show when={expandedDirs().has(dirPath)}>
           {renderTree(child, section, depth + 1, dirPath)}
         </Show>
       </div>

@@ -3971,6 +3971,43 @@ tr:hover .db-row-actions .btn:hover {
   line-height: 1.5;
 }
 
+.git-image-diff {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  gap: 16px;
+  padding: 16px;
+  align-items: flex-start;
+}
+
+.git-image-diff-side {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.git-image-diff-label {
+  font-size: var(--ui-font-size-sm);
+  color: var(--text-dim);
+  font-weight: 600;
+}
+
+.git-image-deleted {
+  color: var(--danger);
+}
+
+.git-image-diff-side img {
+  max-width: 100%;
+  max-height: 400px;
+  object-fit: contain;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--checkerboard, repeating-conic-gradient(#80808020 0% 25%, transparent 0% 50%) 50% / 16px 16px);
+}
+
 .git-diff-line {
   display: flex;
   white-space: pre;

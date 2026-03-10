@@ -1,5 +1,6 @@
 const { ipcMain, dialog } = require('electron');
 const { execFile } = require('child_process');
+const fs = require('fs');
 const path = require('path');
 const store = require('./store');
 const { generateKSUID } = require('./ksuid');
@@ -183,6 +184,37 @@ function register(mainWindow) {
       return { error: result.stderr || 'Failed to diff untracked file' };
     }
     return { diff: result.stdout || '(empty file)' };
+  });
+
+  ipcMain.handle('git:imageDiff', async (_, repoPath, filepath, staged) => {
+    const ext = path.extname(filepath).toLowerCase();
+    const mimeMap = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.svg': 'image/svg+xml', '.webp': 'image/webp', '.bmp': 'image/bmp', '.ico': 'image/x-icon' };
+    const mime = mimeMap[ext] || 'image/png';
+
+    const result = { mime };
+
+    // Current working copy
+    const fullPath = path.join(repoPath, filepath);
+    if (fs.existsSync(fullPath)) {
+      try {
+        const buf = fs.readFileSync(fullPath);
+        result.current = buf.toString('base64');
+      } catch {}
+    }
+
+    // Old version (HEAD or staged)
+    try {
+      const ref = staged ? ':' + filepath : 'HEAD:' + filepath;
+      const buf = await new Promise((resolve, reject) => {
+        execFile('git', ['show', ref], { cwd: repoPath, maxBuffer: 10 * 1024 * 1024, encoding: 'buffer' }, (err, stdout) => {
+          if (err) reject(err);
+          else resolve(stdout);
+        });
+      });
+      result.old = buf.toString('base64');
+    } catch {}
+
+    return result;
   });
 
   ipcMain.handle('git:stage', async (_, repoPath, filepaths) => {

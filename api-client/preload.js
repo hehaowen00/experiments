@@ -132,6 +132,7 @@ contextBridge.exposeInMainWorld('api', {
   gitStatus: (repoPath) => ipcRenderer.invoke('git:status', repoPath),
   gitDiff: (repoPath, filepath, staged) => ipcRenderer.invoke('git:diff', repoPath, filepath, staged),
   gitDiffUntracked: (repoPath, filepath) => ipcRenderer.invoke('git:diffUntracked', repoPath, filepath),
+  gitImageDiff: (repoPath, filepath, staged) => ipcRenderer.invoke('git:imageDiff', repoPath, filepath, staged),
   gitStage: (repoPath, filepaths) => ipcRenderer.invoke('git:stage', repoPath, filepaths),
   gitUnstage: (repoPath, filepaths) => ipcRenderer.invoke('git:unstage', repoPath, filepaths),
   gitStageAll: (repoPath) => ipcRenderer.invoke('git:stageAll', repoPath),

@@ -21,9 +21,15 @@ export default function CategoryList(props) {
               class="landing-section landing-category"
               classList={props.categoryClassList?.(cat)}
               data-cat-id={cat.id}
-              onDragOver={(e) => props.onCategoryDragOver?.(e, cat)}
+              onDragOver={(e) => {
+                props.onCategoryDragOver?.(e, cat);
+                props.onCategorySectionDragOver?.(e);
+              }}
               onDragLeave={(e) => props.onCategoryDragLeave?.(e)}
-              onDrop={(e) => props.onCategoryDrop?.(e, cat.id)}
+              onDrop={(e) => {
+                props.onCategoryDrop?.(e, cat.id);
+                props.onCategorySectionDrop?.(e, cat.id);
+              }}
             >
               <div
                 class="landing-section-header category-header"
