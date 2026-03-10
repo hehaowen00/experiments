@@ -1138,13 +1138,16 @@ export default function GitWorkspace(props) {
 
           return (
             <div
-              class={`git-file-item ${diff.filepath === filepath ? 'active' : ''}`}
+              class={`git-file-item ${diff.filepath === filepath ? 'active' : ''} ${file.isGitRepo ? 'git-nested-repo' : ''}`}
               style={{ 'padding-left': `${depth * 16 + 4}px` }}
-              onClick={() => viewDiff(filepath, isStaged)}
+              onClick={() => !file.isGitRepo && viewDiff(filepath, isStaged)}
               onContextMenu={(e) => onFileContextMenu(e, filepath, section)}
             >
               <span class={`git-file-status ${statusClass(code)}`}>{code}</span>
-              <span class="git-file-path" title={filepath}>{filename}</span>
+              {file.isGitRepo
+                ? <><Icon name="fa-solid fa-code-branch" class="git-nested-repo-icon" /><span class="git-file-path git-nested-repo-label" title={filepath}>{filename}</span><span class="git-nested-repo-badge">repo</span></>
+                : <span class="git-file-path" title={filepath}>{filename}</span>
+              }
               <span class="git-file-actions">
                 {isStaged && (
                   <button class="btn btn-ghost btn-xs" onClick={(e) => { e.stopPropagation(); unstageFile(filepath); }} title="Unstage">

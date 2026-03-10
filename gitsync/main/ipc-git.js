@@ -149,10 +149,13 @@ function register(mainWindow) {
         behind = parseInt(b) || 0;
       } catch {}
 
+      const fs = require('fs');
       const files = out.split('\n').filter(Boolean).map(line => {
         const xy = line.substring(0, 2);
         const filepath = line.substring(3);
-        return { index: xy[0], working: xy[1], path: filepath };
+        const fullPath = path.join(repoPath, filepath);
+        const isGitRepo = fs.existsSync(path.join(fullPath, '.git'));
+        return { index: xy[0], working: xy[1], path: filepath, isGitRepo };
       });
 
       return { branch, upstream, ahead, behind, files };

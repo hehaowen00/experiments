@@ -3809,6 +3809,33 @@ tr:hover .db-row-actions .btn:hover {
   opacity: 1;
 }
 
+/* Nested git repos in file tree */
+.git-nested-repo {
+  cursor: pointer;
+}
+
+.git-nested-repo-icon {
+  color: var(--accent);
+  font-size: var(--ui-font-size-xs);
+  margin-right: 2px;
+  flex-shrink: 0;
+}
+
+.git-nested-repo-label {
+  color: var(--accent);
+}
+
+.git-nested-repo-badge {
+  font-size: 9px;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  color: var(--accent);
+  margin-left: 4px;
+  flex-shrink: 0;
+  line-height: 16px;
+}
+
 /* Submodules */
 .git-submodule-item {
   display: flex;
