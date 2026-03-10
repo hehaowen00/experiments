@@ -58,6 +58,18 @@ export default function GitWorkspace(props) {
     loading: false,
   });
 
+  const [submodules, setSubmodules] = createSignal([]);
+
+  const [stashes, setStashes] = createStore({
+    list: [],
+    loading: false,
+  });
+
+  const [stashDetail, setStashDetail] = createStore({
+    ref: null,
+    diff: '',
+  });
+
   const [commitDetail, setCommitDetail] = createStore({
     hash: null,
     body: '',
@@ -148,6 +160,7 @@ export default function GitWorkspace(props) {
   onMount(() => {
     refresh();
     loadLog();
+    loadStashes();
     document.addEventListener('keydown', onGlobalKeyDown);
     document.addEventListener('click', dismissCtxMenu);
     window.api.homeDir().then(d => { homeDir = d; });
@@ -160,15 +173,17 @@ export default function GitWorkspace(props) {
 
   async function refresh() {
     setStatus('loading', true);
-    const [result, opResult] = await Promise.all([
+    const [result, opResult, subResult] = await Promise.all([
       window.api.gitStatus(repoPath),
       window.api.gitOperationState(repoPath),
+      window.api.gitSubmodules(repoPath),
     ]);
     if (result.error) {
       setStatus({ loading: false, error: result.error });
     } else {
       setStatus({ ...result, loading: false, error: null });
     }
+    if (subResult.submodules) setSubmodules(subResult.submodules);
     setOpState(opResult.state);
   }
 
@@ -407,6 +422,7 @@ export default function GitWorkspace(props) {
     setTab(t);
     if (t === 'log') { loadLog(); loadLogBranches(); }
     if (t === 'remotes') { loadRemotes(); loadBranches(); }
+    if (t === 'stashes') { loadStashes(); }
   }
 
   // File categorization
@@ -795,6 +811,93 @@ export default function GitWorkspace(props) {
     loadLog();
   }
 
+  // Stash
+  // Submodules
+  async function initSubmodule(subPath) {
+    setOperating('Initializing submodule...');
+    const result = await window.api.gitSubmoduleUpdate(repoPath, subPath);
+    setOperating('');
+    if (result.error) showAlert('Error', result.error);
+    else setOutput(result.output || 'Submodule initialized');
+    await refresh();
+  }
+
+  function openSubmodule(sub) {
+    props.onSwitchRepo({ name: sub.name, path: sub.fullPath });
+  }
+
+  async function loadStashes() {
+    setStashes('loading', true);
+    const result = await window.api.gitStashList(repoPath);
+    if (!result.error) {
+      setStashes({ list: result.stashes, loading: false });
+    } else {
+      setStashes('loading', false);
+    }
+  }
+
+  async function doStashPush() {
+    const message = await showPrompt('Stash Message', '', '', 'Optional message');
+    if (message === null) return;
+    setOperating('Stashing...');
+    const result = await window.api.gitStashPush(repoPath, message || '', true);
+    setOperating('');
+    if (result.error) showAlert('Stash Failed', result.error);
+    else setOutput(result.output || 'Changes stashed');
+    await refresh();
+    if (tab() === 'stashes') loadStashes();
+  }
+
+  async function doStashPop(ref) {
+    setOperating('Popping stash...');
+    const result = await window.api.gitStashPop(repoPath, ref);
+    setOperating('');
+    if (result.error) {
+      showAlert('Stash Pop Failed', result.error);
+    } else if (result.conflict) {
+      setOutput(result.output || 'Stash applied with conflicts');
+    } else {
+      setOutput(result.output || 'Stash popped');
+    }
+    await refresh();
+    loadStashes();
+  }
+
+  async function doStashApply(ref) {
+    setOperating('Applying stash...');
+    const result = await window.api.gitStashApply(repoPath, ref);
+    setOperating('');
+    if (result.error) {
+      showAlert('Stash Apply Failed', result.error);
+    } else if (result.conflict) {
+      setOutput(result.output || 'Stash applied with conflicts');
+    } else {
+      setOutput(result.output || 'Stash applied');
+    }
+    await refresh();
+  }
+
+  async function doStashDrop(ref) {
+    if (!await showConfirm(`Drop "${ref}"?`, 'This cannot be undone.')) return;
+    const result = await window.api.gitStashDrop(repoPath, ref);
+    if (result.error) showAlert('Error', result.error);
+    else setOutput('Stash dropped');
+    loadStashes();
+  }
+
+  async function viewStashDiff(ref) {
+    if (stashDetail.ref === ref) {
+      setStashDetail({ ref: null, diff: '' });
+      return;
+    }
+    const result = await window.api.gitStashShow(repoPath, ref);
+    if (result.error) {
+      showAlert('Error', result.error);
+    } else {
+      setStashDetail({ ref, diff: result.diff });
+    }
+  }
+
   async function editRemoteUrl(name, currentUrl) {
     const url = await showPrompt('Remote URL', currentUrl);
     if (!url) return;
@@ -1109,6 +1212,9 @@ export default function GitWorkspace(props) {
         <Show when={operating()}>
           <span class="git-operating">{operating()}</span>
         </Show>
+        <button class="btn btn-ghost btn-sm" onClick={doStashPush} title="Stash">
+          <Icon name="fa-solid fa-box-archive" /> Stash
+        </button>
         <button class="btn btn-ghost btn-sm" onClick={doFetch} title="Fetch">
           <Icon name="fa-solid fa-cloud-arrow-down" /> Fetch
         </button>
@@ -1136,6 +1242,12 @@ export default function GitWorkspace(props) {
         </button>
         <button class={`git-tab ${tab() === 'remotes' ? 'active' : ''}`} onClick={() => onTabChange('remotes')}>
           Remotes
+        </button>
+        <button class={`git-tab ${tab() === 'stashes' ? 'active' : ''}`} onClick={() => onTabChange('stashes')}>
+          Stashes
+          <Show when={stashes.list.length > 0}>
+            <span class="git-tab-badge">{stashes.list.length}</span>
+          </Show>
         </button>
       </div>
 
@@ -1220,7 +1332,45 @@ export default function GitWorkspace(props) {
               </div>
             </Show>
 
-            <Show when={status.files.length === 0 && !status.loading}>
+            <Show when={submodules().length > 0}>
+              <div class="git-section">
+                <div class="git-section-header" onClick={() => toggleSection('submodules')}>
+                  <Icon name={collapsedSections().has('submodules') ? 'fa-solid fa-chevron-right' : 'fa-solid fa-chevron-down'} class="git-section-chevron" />
+                  <span>Submodules ({submodules().length})</span>
+                </div>
+                <Show when={!collapsedSections().has('submodules')}>
+                  <For each={submodules()}>{(sub) => (
+                    <div class="git-submodule-item">
+                      <span class={`git-submodule-status git-submodule-${sub.status}`} title={sub.status}>
+                        {sub.status === 'clean' ? '✓' : sub.status === 'dirty' ? '●' : '○'}
+                      </span>
+                      <Icon name={sub.type === 'submodule' ? 'fa-solid fa-cube' : 'fa-solid fa-folder-tree'} class="git-submodule-icon" />
+                      <div class="git-submodule-info">
+                        <span class="git-submodule-name">{sub.name}</span>
+                        <span class="git-submodule-meta">
+                          {sub.branch && <span class="git-submodule-branch"><Icon name="fa-solid fa-code-branch" /> {sub.branch}</span>}
+                          <span class="git-submodule-type">{sub.type}</span>
+                        </span>
+                      </div>
+                      <div class="git-submodule-actions">
+                        <Show when={sub.status === 'not-initialized'}>
+                          <button class="btn btn-ghost btn-xs" onClick={() => initSubmodule(sub.path)} title="Initialize">
+                            <Icon name="fa-solid fa-download" /> Init
+                          </button>
+                        </Show>
+                        <Show when={sub.status !== 'not-initialized'}>
+                          <button class="btn btn-ghost btn-xs" onClick={() => openSubmodule(sub)} title="Open">
+                            <Icon name="fa-solid fa-arrow-up-right-from-square" /> Open
+                          </button>
+                        </Show>
+                      </div>
+                    </div>
+                  )}</For>
+                </Show>
+              </div>
+            </Show>
+
+            <Show when={status.files.length === 0 && submodules().length === 0 && !status.loading}>
               <div class="git-empty">Working tree clean</div>
             </Show>
           </div>
@@ -1513,6 +1663,59 @@ export default function GitWorkspace(props) {
               );
             }}</For>
           </div>
+        </div>
+      </div>
+
+      {/* Stashes tab */}
+      <div class="git-content" style={{ display: tab() === 'stashes' ? '' : 'none' }}>
+        <div class="git-stashes-panel">
+          <div class="git-section">
+            <div class="git-section-header">
+              <span>Stashes</span>
+              <button class="btn btn-ghost btn-xs" onClick={doStashPush}>
+                <Icon name="fa-solid fa-plus" /> Stash
+              </button>
+              <button class="btn btn-ghost btn-xs" onClick={loadStashes}>
+                <Icon name="fa-solid fa-rotate" />
+              </button>
+            </div>
+            <Show when={stashes.list.length === 0 && !stashes.loading}>
+              <div class="git-empty">No stashes</div>
+            </Show>
+            <For each={stashes.list}>{(s) => (
+              <div class="git-stash-item">
+                <div class="git-stash-info" onClick={() => viewStashDiff(s.ref)}>
+                  <span class="git-stash-ref">{s.ref}</span>
+                  <span class="git-stash-message">{s.message}</span>
+                  <span class="git-stash-date">{new Date(s.date).toLocaleDateString()}</span>
+                </div>
+                <div class="git-stash-actions">
+                  <button class="btn btn-ghost btn-xs" onClick={() => doStashApply(s.ref)} title="Apply (keep stash)">
+                    <Icon name="fa-solid fa-paste" />
+                  </button>
+                  <button class="btn btn-ghost btn-xs" onClick={() => doStashPop(s.ref)} title="Pop (apply & drop)">
+                    <Icon name="fa-solid fa-arrow-up-from-bracket" />
+                  </button>
+                  <button class="btn btn-ghost btn-xs btn-danger-hover" onClick={() => doStashDrop(s.ref)} title="Drop">
+                    <Icon name="fa-solid fa-trash" />
+                  </button>
+                </div>
+              </div>
+            )}</For>
+          </div>
+          <Show when={stashDetail.ref}>
+            <div class="git-stash-diff">
+              <div class="git-diff-header">
+                <span class="git-diff-filepath">{stashDetail.ref}</span>
+                <button class="btn btn-ghost btn-xs" onClick={() => setStashDetail({ ref: null, diff: '' })}>
+                  <Icon name="fa-solid fa-xmark" />
+                </button>
+              </div>
+              <pre class="git-diff-content">
+                <For each={parseDiffLines(stashDetail.diff)}>{(l) => renderDiffLine(l)}</For>
+              </pre>
+            </div>
+          </Show>
         </div>
       </div>
 

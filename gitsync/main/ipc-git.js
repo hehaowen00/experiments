@@ -542,6 +542,149 @@ function register(mainWindow) {
       return { state: null };
     }
   });
+
+  // --- Submodules & nested repos ---
+  ipcMain.handle('git:submodules', async (_, repoPath) => {
+    const fs = require('fs');
+    const results = [];
+
+    // 1. Parse .gitmodules for registered submodules
+    const gitmodulesPath = path.join(repoPath, '.gitmodules');
+    if (fs.existsSync(gitmodulesPath)) {
+      try {
+        const content = fs.readFileSync(gitmodulesPath, 'utf8');
+        const entries = content.split(/\[submodule\s+"([^"]+)"\]/g).slice(1);
+        for (let i = 0; i < entries.length; i += 2) {
+          const name = entries[i];
+          const block = entries[i + 1] || '';
+          const pathMatch = block.match(/path\s*=\s*(.+)/);
+          const urlMatch = block.match(/url\s*=\s*(.+)/);
+          if (pathMatch) {
+            const subPath = pathMatch[1].trim();
+            const url = urlMatch ? urlMatch[1].trim() : '';
+            const fullPath = path.join(repoPath, subPath);
+            let status = 'unknown';
+            let branch = '';
+            try {
+              if (fs.existsSync(path.join(fullPath, '.git')) || fs.existsSync(path.join(fullPath, '.git', 'HEAD')) ||
+                  (fs.existsSync(path.join(fullPath, '.git')) && fs.statSync(path.join(fullPath, '.git')).isFile())) {
+                branch = (await git(fullPath, ['branch', '--show-current'])).trim();
+                const st = await git(fullPath, ['status', '--porcelain=v1']);
+                status = st.trim() ? 'dirty' : 'clean';
+              } else {
+                status = 'not-initialized';
+              }
+            } catch {
+              status = 'not-initialized';
+            }
+            results.push({ name, path: subPath, fullPath, url, type: 'submodule', status, branch });
+          }
+        }
+      } catch {}
+    }
+
+    // 2. Scan top-level directories for nested git repos (not submodules)
+    const submodulePaths = new Set(results.map(r => r.path));
+    try {
+      const entries = fs.readdirSync(repoPath, { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isDirectory() || entry.name === '.git' || entry.name === 'node_modules') continue;
+        if (submodulePaths.has(entry.name)) continue;
+        const dirPath = path.join(repoPath, entry.name);
+        const nestedGit = path.join(dirPath, '.git');
+        if (fs.existsSync(nestedGit)) {
+          let status = 'unknown';
+          let branch = '';
+          try {
+            branch = (await git(dirPath, ['branch', '--show-current'])).trim();
+            const st = await git(dirPath, ['status', '--porcelain=v1']);
+            status = st.trim() ? 'dirty' : 'clean';
+          } catch {}
+          results.push({ name: entry.name, path: entry.name, fullPath: dirPath, url: '', type: 'nested', status, branch });
+        }
+      }
+    } catch {}
+
+    return { submodules: results };
+  });
+
+  ipcMain.handle('git:submoduleUpdate', async (_, repoPath, subPath) => {
+    try {
+      const out = await git(repoPath, ['submodule', 'update', '--init', '--', subPath]);
+      return { ok: true, output: out };
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
+
+  // --- Stash ---
+  ipcMain.handle('git:stashList', async (_, repoPath) => {
+    try {
+      const out = await git(repoPath, ['stash', 'list', '--pretty=format:%gd%x00%s%x00%ai']);
+      if (!out.trim()) return { stashes: [] };
+      const stashes = out.trim().split('\n').map(line => {
+        const [ref, message, date] = line.split('\x00');
+        return { ref, message, date };
+      });
+      return { stashes };
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
+
+  ipcMain.handle('git:stashPush', async (_, repoPath, message, includeUntracked) => {
+    try {
+      const args = ['stash', 'push'];
+      if (includeUntracked) args.push('--include-untracked');
+      if (message) args.push('-m', message);
+      const out = await git(repoPath, args);
+      return { ok: true, output: out };
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
+
+  ipcMain.handle('git:stashPop', async (_, repoPath, ref) => {
+    try {
+      const out = await git(repoPath, ['stash', 'pop', ref || 'stash@{0}']);
+      return { ok: true, output: out };
+    } catch (e) {
+      if (e.message.includes('CONFLICT')) {
+        return { ok: false, conflict: true, output: e.message };
+      }
+      return { error: e.message };
+    }
+  });
+
+  ipcMain.handle('git:stashApply', async (_, repoPath, ref) => {
+    try {
+      const out = await git(repoPath, ['stash', 'apply', ref || 'stash@{0}']);
+      return { ok: true, output: out };
+    } catch (e) {
+      if (e.message.includes('CONFLICT')) {
+        return { ok: false, conflict: true, output: e.message };
+      }
+      return { error: e.message };
+    }
+  });
+
+  ipcMain.handle('git:stashDrop', async (_, repoPath, ref) => {
+    try {
+      const out = await git(repoPath, ['stash', 'drop', ref || 'stash@{0}']);
+      return { ok: true, output: out };
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
+
+  ipcMain.handle('git:stashShow', async (_, repoPath, ref) => {
+    try {
+      const out = await git(repoPath, ['stash', 'show', '-p', '--no-color', ref || 'stash@{0}']);
+      return { diff: out };
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
 }
 
 module.exports = { register };

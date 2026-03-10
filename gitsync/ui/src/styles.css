@@ -3809,6 +3809,76 @@ tr:hover .db-row-actions .btn:hover {
   opacity: 1;
 }
 
+/* Submodules */
+.git-submodule-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  font-size: var(--ui-font-size-sm);
+  border-bottom: 1px solid var(--border);
+}
+
+.git-submodule-item:hover {
+  background: var(--surface);
+}
+
+.git-submodule-status {
+  font-size: 10px;
+  width: 14px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.git-submodule-clean { color: var(--success); }
+.git-submodule-dirty { color: var(--warning); }
+.git-submodule-not-initialized { color: var(--text-dim); }
+.git-submodule-unknown { color: var(--text-dim); }
+
+.git-submodule-icon {
+  color: var(--text-dim);
+  font-size: var(--ui-font-size-xs);
+  flex-shrink: 0;
+}
+
+.git-submodule-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.git-submodule-name {
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.git-submodule-meta {
+  display: flex;
+  gap: 8px;
+  font-size: var(--ui-font-size-xs);
+  color: var(--text-dim);
+}
+
+.git-submodule-branch {
+  color: var(--accent);
+}
+
+.git-submodule-actions {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.git-submodule-item:hover .git-submodule-actions {
+  opacity: 1;
+}
+
 /* File context menu */
 .file-context-menu {
   position: fixed;
@@ -4439,4 +4509,82 @@ tr:hover .db-row-actions .btn:hover {
 .git-branch-item:hover .git-branch-checkout,
 .git-branch-item:hover .git-branch-action {
   opacity: 1;
+}
+
+/* Stashes */
+.git-stashes-panel {
+  padding: 12px;
+  overflow: auto;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.git-stashes-panel > .git-section {
+  flex-shrink: 0;
+}
+
+.git-stash-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.git-stash-item:hover {
+  background: var(--surface);
+}
+
+.git-stash-info {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.git-stash-ref {
+  font-family: var(--mono);
+  font-size: var(--ui-font-size-xs);
+  color: var(--accent);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.git-stash-message {
+  font-size: var(--ui-font-size-sm);
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+}
+
+.git-stash-date {
+  font-size: var(--ui-font-size-xs);
+  color: var(--text-dim);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.git-stash-actions {
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.git-stash-item:hover .git-stash-actions {
+  opacity: 1;
+}
+
+.git-stash-diff {
+  flex: 1;
+  overflow: auto;
+  border-top: 1px solid var(--border);
+  min-height: 0;
 }

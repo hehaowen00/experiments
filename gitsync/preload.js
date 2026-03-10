@@ -57,6 +57,18 @@ contextBridge.exposeInMainWorld('api', {
   gitShow: (repoPath, hash) => ipcRenderer.invoke('git:show', repoPath, hash),
   gitLastCommitMessage: (repoPath) => ipcRenderer.invoke('git:lastCommitMessage', repoPath),
 
+  // Submodules & nested repos
+  gitSubmodules: (repoPath) => ipcRenderer.invoke('git:submodules', repoPath),
+  gitSubmoduleUpdate: (repoPath, subPath) => ipcRenderer.invoke('git:submoduleUpdate', repoPath, subPath),
+
+  // Stash
+  gitStashList: (repoPath) => ipcRenderer.invoke('git:stashList', repoPath),
+  gitStashPush: (repoPath, message, includeUntracked) => ipcRenderer.invoke('git:stashPush', repoPath, message, includeUntracked),
+  gitStashPop: (repoPath, ref) => ipcRenderer.invoke('git:stashPop', repoPath, ref),
+  gitStashApply: (repoPath, ref) => ipcRenderer.invoke('git:stashApply', repoPath, ref),
+  gitStashDrop: (repoPath, ref) => ipcRenderer.invoke('git:stashDrop', repoPath, ref),
+  gitStashShow: (repoPath, ref) => ipcRenderer.invoke('git:stashShow', repoPath, ref),
+
   // Merge & rebase
   gitMerge: (repoPath, branch) => ipcRenderer.invoke('git:merge', repoPath, branch),
   gitMergeAbort: (repoPath) => ipcRenderer.invoke('git:mergeAbort', repoPath),
