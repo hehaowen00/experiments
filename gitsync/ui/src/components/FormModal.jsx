@@ -1,7 +1,16 @@
-import { Show } from 'solid-js';
+import { onMount, onCleanup, Show } from 'solid-js';
 import Icon from './Icon';
 
 export default function FormModal(props) {
+  function onKeyDown(e) {
+    if (e.key === 'Escape') {
+      e.stopPropagation();
+      props.onClose?.();
+    }
+  }
+  onMount(() => document.addEventListener('keydown', onKeyDown));
+  onCleanup(() => document.removeEventListener('keydown', onKeyDown));
+
   return (
     <div class="modal-overlay visible" onClick={() => props.onClose?.()}>
       <div class={`modal ${props.size || 'modal-md'}`} onClick={(e) => e.stopPropagation()}>

@@ -1,4 +1,4 @@
-import { createEffect, createSignal, For, Show } from 'solid-js';
+import { createEffect, createSignal, For, onCleanup, onMount, Show } from 'solid-js';
 import { createStore } from 'solid-js/store';
 import { applyEditorFontSize, applyUiFontSize } from '../index';
 import t from '../locale';
@@ -175,6 +175,7 @@ export default function Modal() {
   }
 
   function onKeyDown(e) {
+    if (!modalVisible()) return;
     if (e.key === 'Enter') {
       if (modalType() === 'alert') close(null);
       else if (modalType() === 'confirm-type') {
@@ -182,7 +183,8 @@ export default function Modal() {
       } else if (modalType() !== 'textarea' && modalType() !== 'settings')
         close(modalType() === 'prompt' ? modalValue() : true);
     }
-    if (e.key === 'Escape')
+    if (e.key === 'Escape') {
+      e.stopPropagation();
       close(
         modalType() === 'alert'
           ? null
@@ -194,11 +196,15 @@ export default function Modal() {
                 ? false
                 : false,
       );
+    }
   }
+
+  onMount(() => document.addEventListener('keydown', onKeyDown));
+  onCleanup(() => document.removeEventListener('keydown', onKeyDown));
 
   return (
     <Show when={modalVisible()}>
-      <div class="modal-overlay visible" onKeyDown={onKeyDown}>
+      <div class="modal-overlay visible">
         <div class="modal">
           <div class="modal-title-row">
             <div class="modal-title">{modalTitle()}</div>

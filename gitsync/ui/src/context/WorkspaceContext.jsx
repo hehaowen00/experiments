@@ -199,8 +199,12 @@ export function WorkspaceProvider(props) {
     if (diff.filepath === filepath) viewDiff(filepath, false);
   }
 
-  async function stageAll() {
-    await window.api.gitStageAll(repoPath);
+  async function stageAll(files) {
+    if (files && files.length > 0) {
+      await window.api.gitStage(repoPath, files.map(f => f.path));
+    } else {
+      await window.api.gitStageAll(repoPath);
+    }
     await refresh();
   }
 

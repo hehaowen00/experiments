@@ -35,7 +35,7 @@ export default function ChangesPanel() {
             <div class="git-section-header" onClick={() => ws.toggleSection('unstaged')}>
               <Icon name={ws.collapsedSections().has('unstaged') ? 'fa-solid fa-chevron-right' : 'fa-solid fa-chevron-down'} class="git-section-chevron" />
               <span>Changes ({unstaged().length})</span>
-              <button class="btn btn-ghost btn-xs" onClick={(e) => { e.stopPropagation(); ws.stageAll(); }} title="Stage all">
+              <button class="btn btn-ghost btn-xs" onClick={(e) => { e.stopPropagation(); ws.stageAll(unstaged()); }} title="Stage all changes">
                 <Icon name="fa-solid fa-plus" /> All
               </button>
             </div>
@@ -50,7 +50,7 @@ export default function ChangesPanel() {
             <div class="git-section-header" onClick={() => ws.toggleSection('untracked')}>
               <Icon name={ws.collapsedSections().has('untracked') ? 'fa-solid fa-chevron-right' : 'fa-solid fa-chevron-down'} class="git-section-chevron" />
               <span>Untracked ({untracked().length})</span>
-              <button class="btn btn-ghost btn-xs" onClick={(e) => { e.stopPropagation(); ws.stageAll(); }} title="Stage all">
+              <button class="btn btn-ghost btn-xs" onClick={(e) => { e.stopPropagation(); ws.stageAll(untracked()); }} title="Stage all untracked">
                 <Icon name="fa-solid fa-plus" /> All
               </button>
             </div>
