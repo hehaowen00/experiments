@@ -116,12 +116,20 @@ function register(mainWindow) {
     });
     if (result.canceled || !result.filePaths.length) return null;
     const dir = result.filePaths[0];
-    // Verify it's a git repo
     try {
       await git(dir, ['rev-parse', '--git-dir']);
-      return dir;
+      return { path: dir, isGit: true };
     } catch {
-      return { error: 'Not a git repository' };
+      return { path: dir, isGit: false };
+    }
+  });
+
+  ipcMain.handle('git:init', async (_, dirPath) => {
+    try {
+      await git(dirPath, ['init']);
+      return { ok: true };
+    } catch (e) {
+      return { error: e.message };
     }
   });
 

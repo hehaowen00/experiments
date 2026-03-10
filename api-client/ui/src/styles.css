@@ -3861,7 +3861,7 @@ tr:hover .db-row-actions .btn:hover {
   flex-shrink: 0;
 }
 
-.git-commit-input {
+.git-commit-subject {
   width: 100%;
   padding: 8px;
   background: var(--surface);
@@ -3870,11 +3870,28 @@ tr:hover .db-row-actions .btn:hover {
   color: var(--text);
   font-family: var(--font);
   font-size: var(--ui-font-size);
-  resize: none;
   outline: none;
 }
 
-.git-commit-input:focus {
+.git-commit-subject:focus {
+  border-color: var(--accent);
+}
+
+.git-commit-description {
+  width: 100%;
+  margin-top: 6px;
+  padding: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: var(--ui-font-size);
+  resize: vertical;
+  outline: none;
+}
+
+.git-commit-description:focus {
   border-color: var(--accent);
 }
 
@@ -3945,9 +3962,25 @@ tr:hover .db-row-actions .btn:hover {
 }
 
 .git-diff-line {
-  padding: 0 12px;
+  display: flex;
   white-space: pre;
   min-height: 1.5em;
+}
+
+.git-diff-ln {
+  display: inline-block;
+  width: 4ch;
+  text-align: right;
+  padding-right: 8px;
+  color: var(--text-dim);
+  opacity: 0.5;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.git-diff-text {
+  flex: 1;
+  padding-right: 12px;
 }
 
 .git-diff-add {

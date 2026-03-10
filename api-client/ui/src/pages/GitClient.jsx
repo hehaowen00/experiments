@@ -68,10 +68,19 @@ export default function GitClient(props) {
   async function pickFolder() {
     const result = await window.api.gitPickFolder();
     if (!result) return;
-    if (result.error) { setState('form', 'error', result.error); return; }
-    setState('form', 'path', result);
+    if (!result.isGit) {
+      const init = await showConfirm(
+        `"${result.path.split('/').pop()}" is not a git repository`,
+        'Would you like to initialize it with git init?',
+        { confirmLabel: 'Initialize', confirmStyle: 'primary' },
+      );
+      if (!init) return;
+      const initResult = await window.api.gitInit(result.path);
+      if (initResult.error) { setState('form', 'error', initResult.error); return; }
+    }
+    setState('form', 'path', result.path);
     if (!state.form.name) {
-      const parts = result.split('/');
+      const parts = result.path.split('/');
       setState('form', 'name', parts[parts.length - 1] || '');
     }
   }
@@ -260,14 +269,6 @@ export default function GitClient(props) {
             </div>
           </FormField>
 
-          <Show when={state.categories.length > 0}>
-            <FormField label="Category">
-              <select value={state.form.categoryId || ''} onChange={(e) => setState('form', 'categoryId', e.target.value || null)} class="body-type-select">
-                <option value="">None</option>
-                <For each={state.categories}>{(cat) => <option value={cat.id}>{cat.name}</option>}</For>
-              </select>
-            </FormField>
-          </Show>
         </FormModal>
       </Show>
     </div>

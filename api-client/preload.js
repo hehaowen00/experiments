@@ -127,6 +127,7 @@ contextBridge.exposeInMainWorld('api', {
 
   // Git Client - operations
   gitPickFolder: () => ipcRenderer.invoke('git:pickFolder'),
+  gitInit: (dirPath) => ipcRenderer.invoke('git:init', dirPath),
   gitStatus: (repoPath) => ipcRenderer.invoke('git:status', repoPath),
   gitDiff: (repoPath, filepath, staged) => ipcRenderer.invoke('git:diff', repoPath, filepath, staged),
   gitDiffUntracked: (repoPath, filepath) => ipcRenderer.invoke('git:diffUntracked', repoPath, filepath),

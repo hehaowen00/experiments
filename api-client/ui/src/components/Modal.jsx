@@ -11,6 +11,8 @@ const [modalValue, setModalValue] = createSignal('');
 const [modalPlaceholder, setModalPlaceholder] = createSignal('');
 const [modalDescription, setModalDescription] = createSignal('');
 const [modalType, setModalType] = createSignal('prompt'); // 'prompt' | 'confirm'
+const [modalConfirmLabel, setModalConfirmLabel] = createSignal('');
+const [modalConfirmStyle, setModalConfirmStyle] = createSignal('danger'); // 'danger' | 'primary'
 
 export function showPrompt(
   title,
@@ -29,11 +31,13 @@ export function showPrompt(
   });
 }
 
-export function showConfirm(title, description = '') {
+export function showConfirm(title, description = '', opts = {}) {
   return new Promise((resolve) => {
     modalResolve = resolve;
     setModalTitle(title);
     setModalDescription(description);
+    setModalConfirmLabel(opts.confirmLabel || '');
+    setModalConfirmStyle(opts.confirmStyle || 'danger');
     setModalType('confirm');
     setModalVisible(true);
   });
@@ -233,8 +237,8 @@ export default function Modal() {
                 </button>
               </Show>
               <Show when={modalType() === 'confirm'}>
-                <button class="btn btn-danger" onClick={() => close(true)}>
-                  {t.modal.deleteButton}
+                <button class={`btn btn-${modalConfirmStyle()}`} onClick={() => close(true)}>
+                  {modalConfirmLabel() || t.modal.deleteButton}
                 </button>
               </Show>
             </div>

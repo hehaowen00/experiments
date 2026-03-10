@@ -25,6 +25,7 @@ export default function GitWorkspace(props) {
 
   const [commit, setCommit] = createStore({
     message: '',
+    description: '',
     amend: false,
     running: false,
   });
@@ -132,10 +133,17 @@ export default function GitWorkspace(props) {
     }
   }
 
+  let homeDir = '';
+  function shortenPath(p) {
+    if (homeDir && p.startsWith(homeDir)) return '~' + p.slice(homeDir.length);
+    return p;
+  }
+
   onMount(() => {
     refresh();
     loadLog();
     document.addEventListener('keydown', onGlobalKeyDown);
+    window.api.homeDir().then(d => { homeDir = d; });
   });
 
   onCleanup(() => {
@@ -491,22 +499,25 @@ export default function GitWorkspace(props) {
 
   // Commit
   async function doCommit() {
-    const msg = commit.message.trim();
-    if (!msg && !commit.amend) { showAlert('Error', 'Commit message is required'); return; }
+    const subject = commit.message.trim();
+    const desc = commit.description.trim();
+    if (!subject && !commit.amend) { showAlert('Error', 'Commit message is required'); return; }
+
+    const fullMsg = desc ? `${subject}\n\n${desc}` : subject;
 
     setCommit('running', true);
     let result;
     if (commit.amend) {
-      result = await window.api.gitCommitAmend(repoPath, msg || null);
+      result = await window.api.gitCommitAmend(repoPath, fullMsg || null);
     } else {
-      result = await window.api.gitCommit(repoPath, msg);
+      result = await window.api.gitCommit(repoPath, fullMsg);
     }
     setCommit('running', false);
 
     if (result.error) {
       showAlert('Commit Failed', result.error);
     } else {
-      setCommit({ message: '', amend: false });
+      setCommit({ message: '', description: '', amend: false });
       setOutput(result.output || 'Committed successfully');
       await refresh();
       loadLog();
@@ -518,7 +529,11 @@ export default function GitWorkspace(props) {
     setCommit('amend', newAmend);
     if (newAmend && !commit.message) {
       const result = await window.api.gitLastCommitMessage(repoPath);
-      if (result.message) setCommit('message', result.message);
+      if (result.message) {
+        const parts = result.message.split(/\n\n(.*)$/s);
+        setCommit('message', parts[0] || '');
+        setCommit('description', parts[1] || '');
+      }
     }
   }
 
@@ -689,13 +704,42 @@ export default function GitWorkspace(props) {
     });
   }
 
-  function renderDiffLine(line, i) {
-    let cls = 'git-diff-line';
-    if (line.startsWith('+') && !line.startsWith('+++')) cls += ' git-diff-add';
-    else if (line.startsWith('-') && !line.startsWith('---')) cls += ' git-diff-del';
-    else if (line.startsWith('@@')) cls += ' git-diff-hunk';
-    else if (line.startsWith('diff ')) cls += ' git-diff-header';
-    return <div class={cls}>{line}</div>;
+  function parseDiffLines(raw) {
+    const lines = raw.split('\n');
+    const result = [];
+    let oldNum = 0, newNum = 0;
+    for (const line of lines) {
+      if (line.startsWith('@@')) {
+        const m = line.match(/@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+        if (m) { oldNum = parseInt(m[1]); newNum = parseInt(m[2]); }
+        result.push({ cls: 'git-diff-line git-diff-hunk', text: line, oldN: '', newN: '' });
+      } else if (line.startsWith('+') && !line.startsWith('+++')) {
+        result.push({ cls: 'git-diff-line git-diff-add', text: line, oldN: '', newN: newNum });
+        newNum++;
+      } else if (line.startsWith('-') && !line.startsWith('---')) {
+        result.push({ cls: 'git-diff-line git-diff-del', text: line, oldN: oldNum, newN: '' });
+        oldNum++;
+      } else if (line.startsWith('diff ')) {
+        result.push({ cls: 'git-diff-line git-diff-header', text: line, oldN: '', newN: '' });
+      } else if (line.startsWith('---') || line.startsWith('+++') || line.startsWith('index ') || line.startsWith('new file') || line.startsWith('deleted file') || line.startsWith('similarity') || line.startsWith('rename') || line.startsWith('old mode') || line.startsWith('new mode')) {
+        result.push({ cls: 'git-diff-line git-diff-header', text: line, oldN: '', newN: '' });
+      } else {
+        result.push({ cls: 'git-diff-line', text: line, oldN: oldNum, newN: newNum });
+        oldNum++;
+        newNum++;
+      }
+    }
+    return result;
+  }
+
+  function renderDiffLine(l) {
+    return (
+      <div class={l.cls}>
+        <span class="git-diff-ln">{l.oldN}</span>
+        <span class="git-diff-ln">{l.newN}</span>
+        <span class="git-diff-text">{l.text}</span>
+      </div>
+    );
   }
 
   // Build a tree from a flat list of files
@@ -1002,18 +1046,31 @@ export default function GitWorkspace(props) {
                   <span class="git-diff-label">{diff.staged ? 'Staged' : 'Working'}</span>
                 </div>
                 <pre class="git-diff-content">
-                  <For each={diff.content.split('\n')}>{(line, i) => renderDiffLine(line, i())}</For>
+                  <For each={parseDiffLines(diff.content)}>{(l) => renderDiffLine(l)}</For>
                 </pre>
               </Show>
             </div>
 
             <div class="git-commit-box">
-              <textarea
-                class="git-commit-input"
-                placeholder="Commit message..."
+              <input
+                type="text"
+                class="git-commit-subject"
+                placeholder="Commit message"
                 value={commit.message}
                 onInput={(e) => setCommit('message', e.target.value)}
-                rows={2}
+                onKeyDown={(e) => {
+                  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                    e.preventDefault();
+                    doCommit();
+                  }
+                }}
+              />
+              <textarea
+                class="git-commit-description"
+                placeholder="Description (optional)"
+                value={commit.description}
+                onInput={(e) => setCommit('description', e.target.value)}
+                rows={3}
                 onKeyDown={(e) => {
                   if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
                     e.preventDefault();
@@ -1165,7 +1222,7 @@ export default function GitWorkspace(props) {
                           </div>
                           <Show when={expandedDetailFiles().has(file.filename)}>
                             <pre class="git-diff-content git-detail-file-diff">
-                              <For each={file.diff.split('\n')}>{(line, i) => renderDiffLine(line, i())}</For>
+                              <For each={parseDiffLines(file.diff)}>{(l) => renderDiffLine(l)}</For>
                             </pre>
                           </Show>
                         </div>
@@ -1283,7 +1340,7 @@ export default function GitWorkspace(props) {
                   <Icon name="fa-solid fa-code-branch" class="git-switcher-item-icon" />
                   <div class="git-switcher-item-text">
                     <span class="git-switcher-item-name">{repo.name}</span>
-                    <span class="git-switcher-item-path">{repo.path}</span>
+                    <span class="git-switcher-item-path">{shortenPath(repo.path)}</span>
                   </div>
                 </button>
               )}</For>
