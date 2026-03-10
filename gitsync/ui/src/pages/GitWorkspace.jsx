@@ -28,6 +28,8 @@ export default function GitWorkspace(props) {
     description: '',
     amend: false,
     running: false,
+    originalAmendMsg: '',
+    amendHash: null, // HEAD hash before soft reset, used to restore on cancel
   });
 
   const LOG_PAGE_SIZE = 100;
@@ -80,6 +82,8 @@ export default function GitWorkspace(props) {
   const [switcherQuery, setSwitcherQuery] = createSignal('');
   const [switcherRepos, setSwitcherRepos] = createSignal([]);
   const [switcherIndex, setSwitcherIndex] = createSignal(0);
+  const [ctxMenu, setCtxMenu] = createSignal(null); // { x, y, filepath, filepaths, section, isFolder }
+  const [opState, setOpState] = createSignal(null); // null | 'merge' | 'rebase'
   let switcherInputRef;
 
   async function openSwitcher() {
@@ -139,25 +143,33 @@ export default function GitWorkspace(props) {
     return p;
   }
 
+  function dismissCtxMenu() { setCtxMenu(null); }
+
   onMount(() => {
     refresh();
     loadLog();
     document.addEventListener('keydown', onGlobalKeyDown);
+    document.addEventListener('click', dismissCtxMenu);
     window.api.homeDir().then(d => { homeDir = d; });
   });
 
   onCleanup(() => {
     document.removeEventListener('keydown', onGlobalKeyDown);
+    document.removeEventListener('click', dismissCtxMenu);
   });
 
   async function refresh() {
     setStatus('loading', true);
-    const result = await window.api.gitStatus(repoPath);
+    const [result, opResult] = await Promise.all([
+      window.api.gitStatus(repoPath),
+      window.api.gitOperationState(repoPath),
+    ]);
     if (result.error) {
       setStatus({ loading: false, error: result.error });
     } else {
       setStatus({ ...result, loading: false, error: null });
     }
+    setOpState(opResult.state);
   }
 
   async function loadLog() {
@@ -471,6 +483,48 @@ export default function GitWorkspace(props) {
     }
   }
 
+  function onFileContextMenu(e, filepath, section) {
+    e.preventDefault();
+    e.stopPropagation();
+    setCtxMenu({ x: e.clientX, y: e.clientY, filepath, filepaths: [filepath], section, isFolder: false });
+  }
+
+  function onFolderContextMenu(e, dirPath, treeNode, section) {
+    e.preventDefault();
+    e.stopPropagation();
+    const paths = allFilesInTree(treeNode).map(f => f.path);
+    setCtxMenu({ x: e.clientX, y: e.clientY, filepath: dirPath, filepaths: paths, section, isFolder: true });
+  }
+
+  async function discardFiles(filepaths) {
+    const label = filepaths.length === 1 ? `"${filepaths[0]}"` : `${filepaths.length} files`;
+    if (await showConfirm(`Discard changes to ${label}?`, 'This cannot be undone.')) {
+      await window.api.gitDiscard(repoPath, filepaths);
+      await refresh();
+      if (filepaths.includes(diff.filepath)) setDiff({ content: '', filepath: null });
+    }
+  }
+
+  async function deleteUntrackedFiles(filepaths) {
+    const label = filepaths.length === 1 ? `"${filepaths[0]}"` : `${filepaths.length} files`;
+    if (await showConfirm(`Delete ${label}?`, 'This cannot be undone.')) {
+      await window.api.gitDeleteUntracked(repoPath, filepaths);
+      await refresh();
+      if (filepaths.includes(diff.filepath)) setDiff({ content: '', filepath: null });
+    }
+  }
+
+  async function discardAllUnstaged() {
+    const files = unstagedFiles();
+    if (files.length === 0) return;
+    const paths = files.map(f => f.path);
+    if (await showConfirm(`Discard all ${paths.length} changed files?`, 'This cannot be undone.')) {
+      await window.api.gitDiscard(repoPath, paths);
+      await refresh();
+      if (paths.includes(diff.filepath)) setDiff({ content: '', filepath: null });
+    }
+  }
+
   // Staging selected
   function toggleFileSelection(filepath) {
     setSelectedFiles(prev => {
@@ -508,7 +562,9 @@ export default function GitWorkspace(props) {
     setCommit('running', true);
     let result;
     if (commit.amend) {
-      result = await window.api.gitCommitAmend(repoPath, fullMsg || null);
+      // We already did a soft reset, so just commit normally with the message
+      // This creates a new commit replacing the old one
+      result = await window.api.gitCommit(repoPath, fullMsg || commit.originalAmendMsg);
     } else {
       result = await window.api.gitCommit(repoPath, fullMsg);
     }
@@ -517,7 +573,7 @@ export default function GitWorkspace(props) {
     if (result.error) {
       showAlert('Commit Failed', result.error);
     } else {
-      setCommit({ message: '', description: '', amend: false });
+      setCommit({ message: '', description: '', amend: false, originalAmendMsg: '', amendHash: null });
       setOutput(result.output || 'Committed successfully');
       await refresh();
       loadLog();
@@ -526,14 +582,34 @@ export default function GitWorkspace(props) {
 
   async function toggleAmend() {
     const newAmend = !commit.amend;
-    setCommit('amend', newAmend);
-    if (newAmend && !commit.message) {
-      const result = await window.api.gitLastCommitMessage(repoPath);
-      if (result.message) {
-        const parts = result.message.split(/\n\n(.*)$/s);
-        setCommit('message', parts[0] || '');
-        setCommit('description', parts[1] || '');
+    if (newAmend) {
+      // Soft reset HEAD~1 to bring last commit's files into staging
+      const resetResult = await window.api.gitResetSoftHead(repoPath);
+      if (resetResult.error) {
+        showAlert('Error', resetResult.error);
+        return;
       }
+      setCommit('amend', true);
+      setCommit('amendHash', resetResult.hash);
+
+      // Get the message from the commit we just reset
+      const showResult = await window.api.gitShow(repoPath, resetResult.hash);
+      if (showResult.body) {
+        const parts = showResult.body.split(/\n\n(.*)$/s);
+        const subject = parts[0] || '';
+        const desc = parts[1] || '';
+        setCommit('message', subject);
+        setCommit('description', desc);
+        setCommit('originalAmendMsg', desc ? `${subject}\n\n${desc}` : subject);
+      }
+      await refresh();
+    } else {
+      // Restore original commit by resetting back to the saved hash
+      if (commit.amendHash) {
+        await window.api.gitResetSoftTo(repoPath, commit.amendHash);
+      }
+      setCommit({ message: '', description: '', amend: false, originalAmendMsg: '', amendHash: null });
+      await refresh();
     }
   }
 
@@ -647,6 +723,76 @@ export default function GitWorkspace(props) {
       loadBranches();
       loadLog();
     }
+  }
+
+  // Merge & Rebase
+  async function doMerge(branch) {
+    if (!await showConfirm(`Merge "${branch}" into "${status.branch}"?`, '')) return;
+    setOperating('Merging...');
+    const result = await window.api.gitMerge(repoPath, branch);
+    setOperating('');
+    if (result.error) {
+      showAlert('Merge Failed', result.error);
+    } else if (result.conflict) {
+      setOutput(result.output || 'Merge conflicts detected');
+    } else {
+      setOutput(result.output || 'Merge complete');
+    }
+    await refresh();
+    loadLog();
+  }
+
+  async function doMergeAbort() {
+    if (!await showConfirm('Abort merge?', 'This will discard all merge changes.')) return;
+    setOperating('Aborting merge...');
+    const result = await window.api.gitMergeAbort(repoPath);
+    setOperating('');
+    if (result.error) showAlert('Error', result.error);
+    else setOutput('Merge aborted');
+    await refresh();
+    loadLog();
+  }
+
+  async function doRebase(branch) {
+    if (!await showConfirm(`Rebase "${status.branch}" onto "${branch}"?`, '')) return;
+    setOperating('Rebasing...');
+    const result = await window.api.gitRebase(repoPath, branch);
+    setOperating('');
+    if (result.error) {
+      showAlert('Rebase Failed', result.error);
+    } else if (result.conflict) {
+      setOutput(result.output || 'Rebase conflicts detected — resolve and continue');
+    } else {
+      setOutput(result.output || 'Rebase complete');
+    }
+    await refresh();
+    loadLog();
+  }
+
+  async function doRebaseContinue() {
+    setOperating('Continuing rebase...');
+    const result = await window.api.gitRebaseContinue(repoPath);
+    setOperating('');
+    if (result.error) {
+      showAlert('Rebase Continue Failed', result.error);
+    } else if (result.conflict) {
+      setOutput(result.output || 'More conflicts — resolve and continue');
+    } else {
+      setOutput(result.output || 'Rebase complete');
+    }
+    await refresh();
+    loadLog();
+  }
+
+  async function doRebaseAbort() {
+    if (!await showConfirm('Abort rebase?', 'This will restore the branch to its original state.')) return;
+    setOperating('Aborting rebase...');
+    const result = await window.api.gitRebaseAbort(repoPath);
+    setOperating('');
+    if (result.error) showAlert('Error', result.error);
+    else setOutput('Rebase aborted');
+    await refresh();
+    loadLog();
   }
 
   async function editRemoteUrl(name, currentUrl) {
@@ -807,6 +953,8 @@ export default function GitWorkspace(props) {
 
   function TreeDir(treeProps) {
     const { child, dirPath, section, depth, isStaged } = treeProps;
+    const isUnstaged = section === 'unstaged';
+    const isUntracked = section === 'untracked';
     const fileCount = allFilesInTree(child).length;
 
     return (
@@ -815,6 +963,7 @@ export default function GitWorkspace(props) {
           class="git-tree-dir-header"
           style={{ 'padding-left': `${depth * 16 + 4}px` }}
           onClick={() => toggleDir(dirPath)}
+          onContextMenu={(e) => onFolderContextMenu(e, dirPath, child, section)}
         >
           <Icon name={expandedDirs().has(dirPath) ? 'fa-solid fa-chevron-down' : 'fa-solid fa-chevron-right'} class="git-tree-chevron" />
           <Icon name="fa-solid fa-folder" class="git-tree-folder-icon" />
@@ -837,6 +986,24 @@ export default function GitWorkspace(props) {
                 window.api.gitStage(repoPath, paths).then(refresh);
               }} title="Stage all in folder">
                 <Icon name="fa-solid fa-plus" />
+              </button>
+            )}
+            {isUnstaged && (
+              <button class="btn btn-ghost btn-xs btn-danger-hover" onClick={(e) => {
+                e.stopPropagation();
+                const paths = allFilesInTree(child).map(f => f.path);
+                discardFiles(paths);
+              }} title="Discard all in folder">
+                <Icon name="fa-solid fa-xmark" />
+              </button>
+            )}
+            {isUntracked && (
+              <button class="btn btn-ghost btn-xs btn-danger-hover" onClick={(e) => {
+                e.stopPropagation();
+                const paths = allFilesInTree(child).map(f => f.path);
+                deleteUntrackedFiles(paths);
+              }} title="Delete all in folder">
+                <Icon name="fa-solid fa-xmark" />
               </button>
             )}
           </span>
@@ -871,6 +1038,7 @@ export default function GitWorkspace(props) {
               class={`git-file-item ${diff.filepath === filepath ? 'active' : ''}`}
               style={{ 'padding-left': `${depth * 16 + 4}px` }}
               onClick={() => viewDiff(filepath, isStaged)}
+              onContextMenu={(e) => onFileContextMenu(e, filepath, section)}
             >
               <span class={`git-file-status ${statusClass(code)}`}>{code}</span>
               <span class="git-file-path" title={filepath}>{filename}</span>
@@ -891,9 +1059,14 @@ export default function GitWorkspace(props) {
                   </>
                 )}
                 {isUntracked && (
-                  <button class="btn btn-ghost btn-xs" onClick={(e) => { e.stopPropagation(); stageFile(filepath); }} title="Stage">
-                    <Icon name="fa-solid fa-plus" />
-                  </button>
+                  <>
+                    <button class="btn btn-ghost btn-xs" onClick={(e) => { e.stopPropagation(); stageFile(filepath); }} title="Stage">
+                      <Icon name="fa-solid fa-plus" />
+                    </button>
+                    <button class="btn btn-ghost btn-xs btn-danger-hover" onClick={(e) => { e.stopPropagation(); deleteUntrackedFiles([filepath]); }} title="Delete">
+                      <Icon name="fa-solid fa-xmark" />
+                    </button>
+                  </>
                 )}
               </span>
             </div>
@@ -977,6 +1150,23 @@ export default function GitWorkspace(props) {
           <button class="btn btn-ghost btn-xs" onClick={() => setOutput('')}>
             <Icon name="fa-solid fa-xmark" />
           </button>
+        </div>
+      </Show>
+
+      {/* Merge/rebase operation banner */}
+      <Show when={opState()}>
+        <div class="git-op-banner">
+          <Show when={opState() === 'merge'}>
+            <Icon name="fa-solid fa-code-merge" />
+            <span>Merge in progress — resolve conflicts, stage files, then commit</span>
+            <button class="btn btn-danger btn-sm" onClick={doMergeAbort}>Abort Merge</button>
+          </Show>
+          <Show when={opState() === 'rebase'}>
+            <Icon name="fa-solid fa-arrow-right-arrow-left" />
+            <span>Rebase in progress — resolve conflicts, stage files, then continue</span>
+            <button class="btn btn-primary btn-sm" onClick={doRebaseContinue}>Continue</button>
+            <button class="btn btn-danger btn-sm" onClick={doRebaseAbort}>Abort Rebase</button>
+          </Show>
         </div>
       </Show>
 
@@ -1286,6 +1476,12 @@ export default function GitWorkspace(props) {
                 <Show when={b.current}><Icon name="fa-solid fa-circle" class="git-branch-dot" /></Show>
                 <span class="git-branch-name">{b.name}</span>
                 <Show when={!b.current}>
+                  <button class="btn btn-ghost btn-xs git-branch-action" onClick={() => doMerge(b.name)} title={`Merge ${b.name} into ${status.branch}`}>
+                    <Icon name="fa-solid fa-code-merge" />
+                  </button>
+                  <button class="btn btn-ghost btn-xs git-branch-action" onClick={() => doRebase(b.name)} title={`Rebase ${status.branch} onto ${b.name}`}>
+                    <Icon name="fa-solid fa-arrow-right-arrow-left" />
+                  </button>
                   <button class="btn btn-ghost btn-xs git-branch-checkout" onClick={() => checkoutBranch(b.name)} title="Checkout">
                     <Icon name="fa-solid fa-right-to-bracket" />
                   </button>
@@ -1298,15 +1494,24 @@ export default function GitWorkspace(props) {
             <div class="git-section-header">
               <span>Remote Branches</span>
             </div>
-            <For each={branches.list.filter(b => b.remote && !b.name.includes('/HEAD'))}>{(b) => (
-              <div class="git-branch-item">
-                <Icon name="fa-solid fa-cloud" class="git-branch-dot" style={{ 'font-size': '8px', opacity: 0.5 }} />
-                <span class="git-branch-name">{b.name.replace(/^remotes\//, '')}</span>
-                <button class="btn btn-ghost btn-xs git-branch-checkout" onClick={() => checkoutRemoteBranch(b.name)} title="Checkout to local">
-                  <Icon name="fa-solid fa-download" />
-                </button>
-              </div>
-            )}</For>
+            <For each={branches.list.filter(b => b.remote && !b.name.includes('/HEAD'))}>{(b) => {
+              const shortName = b.name.replace(/^remotes\//, '');
+              return (
+                <div class="git-branch-item">
+                  <Icon name="fa-solid fa-cloud" class="git-branch-dot" style={{ 'font-size': '8px', opacity: 0.5 }} />
+                  <span class="git-branch-name">{shortName}</span>
+                  <button class="btn btn-ghost btn-xs git-branch-action" onClick={() => doMerge(b.name)} title={`Merge ${shortName} into ${status.branch}`}>
+                    <Icon name="fa-solid fa-code-merge" />
+                  </button>
+                  <button class="btn btn-ghost btn-xs git-branch-action" onClick={() => doRebase(b.name)} title={`Rebase ${status.branch} onto ${shortName}`}>
+                    <Icon name="fa-solid fa-arrow-right-arrow-left" />
+                  </button>
+                  <button class="btn btn-ghost btn-xs git-branch-checkout" onClick={() => checkoutRemoteBranch(b.name)} title="Checkout to local">
+                    <Icon name="fa-solid fa-download" />
+                  </button>
+                </div>
+              );
+            }}</For>
           </div>
         </div>
       </div>
@@ -1347,6 +1552,59 @@ export default function GitWorkspace(props) {
             </div>
           </div>
         </div>
+      </Show>
+
+      <Show when={ctxMenu()}>
+        {(() => {
+          const menu = ctxMenu();
+          const isStaged = menu.section === 'staged';
+          const isUntracked = menu.section === 'untracked';
+          const label = menu.isFolder ? 'Folder' : 'File';
+          return (
+            <div
+              class="file-context-menu"
+              style={{ left: `${menu.x}px`, top: `${menu.y}px` }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {isStaged && (
+                <button class="file-context-menu-item" onClick={() => {
+                  setCtxMenu(null);
+                  menu.filepaths.forEach(p => unstageFile(p));
+                }}>
+                  <Icon name="fa-solid fa-minus" /> Unstage {label}
+                </button>
+              )}
+              {!isStaged && (
+                <button class="file-context-menu-item" onClick={() => {
+                  setCtxMenu(null);
+                  if (menu.isFolder) {
+                    window.api.gitStage(repoPath, menu.filepaths).then(refresh);
+                  } else {
+                    stageFile(menu.filepath);
+                  }
+                }}>
+                  <Icon name="fa-solid fa-plus" /> Stage {label}
+                </button>
+              )}
+              {!isStaged && !isUntracked && (
+                <button class="file-context-menu-item danger" onClick={() => {
+                  setCtxMenu(null);
+                  discardFiles(menu.filepaths);
+                }}>
+                  <Icon name="fa-solid fa-xmark" /> Discard Changes
+                </button>
+              )}
+              {isUntracked && (
+                <button class="file-context-menu-item danger" onClick={() => {
+                  setCtxMenu(null);
+                  deleteUntrackedFiles(menu.filepaths);
+                }}>
+                  <Icon name="fa-solid fa-trash" /> Delete {label}
+                </button>
+              )}
+            </div>
+          );
+        })()}
       </Show>
     </div>
   );

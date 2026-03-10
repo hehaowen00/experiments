@@ -230,6 +230,15 @@ function register(mainWindow) {
     }
   });
 
+  ipcMain.handle('git:deleteUntracked', async (_, repoPath, filepaths) => {
+    try {
+      await git(repoPath, ['clean', '-f', '--', ...filepaths]);
+      return { ok: true };
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
+
   ipcMain.handle('git:commit', async (_, repoPath, message) => {
     try {
       const out = await git(repoPath, ['commit', '-m', message]);
@@ -249,6 +258,26 @@ function register(mainWindow) {
       }
       const out = await git(repoPath, args);
       return { ok: true, output: out };
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
+
+  ipcMain.handle('git:resetSoftHead', async (_, repoPath) => {
+    try {
+      // Store the current HEAD hash so we can restore it
+      const hash = (await git(repoPath, ['rev-parse', 'HEAD'])).trim();
+      await git(repoPath, ['reset', '--soft', 'HEAD~1']);
+      return { ok: true, hash };
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
+
+  ipcMain.handle('git:resetSoftTo', async (_, repoPath, hash) => {
+    try {
+      await git(repoPath, ['reset', '--soft', hash]);
+      return { ok: true };
     } catch (e) {
       return { error: e.message };
     }
@@ -437,6 +466,80 @@ function register(mainWindow) {
       return { message: out.trim() };
     } catch (e) {
       return { error: e.message };
+    }
+  });
+
+  // --- Merge ---
+  ipcMain.handle('git:merge', async (_, repoPath, branch) => {
+    try {
+      const out = await git(repoPath, ['merge', branch]);
+      return { ok: true, output: out };
+    } catch (e) {
+      // Merge conflicts produce a non-zero exit but aren't fatal
+      if (e.message.includes('CONFLICT') || e.message.includes('Automatic merge failed')) {
+        return { ok: false, conflict: true, output: e.message };
+      }
+      return { error: e.message };
+    }
+  });
+
+  ipcMain.handle('git:mergeAbort', async (_, repoPath) => {
+    try {
+      const out = await git(repoPath, ['merge', '--abort']);
+      return { ok: true, output: out };
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
+
+  // --- Rebase ---
+  ipcMain.handle('git:rebase', async (_, repoPath, branch) => {
+    try {
+      const out = await git(repoPath, ['rebase', branch]);
+      return { ok: true, output: out };
+    } catch (e) {
+      if (e.message.includes('CONFLICT') || e.message.includes('could not apply')) {
+        return { ok: false, conflict: true, output: e.message };
+      }
+      return { error: e.message };
+    }
+  });
+
+  ipcMain.handle('git:rebaseContinue', async (_, repoPath) => {
+    try {
+      const out = await git(repoPath, ['rebase', '--continue']);
+      return { ok: true, output: out };
+    } catch (e) {
+      if (e.message.includes('CONFLICT') || e.message.includes('could not apply')) {
+        return { ok: false, conflict: true, output: e.message };
+      }
+      return { error: e.message };
+    }
+  });
+
+  ipcMain.handle('git:rebaseAbort', async (_, repoPath) => {
+    try {
+      const out = await git(repoPath, ['rebase', '--abort']);
+      return { ok: true, output: out };
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
+
+  // --- Operation state (detect in-progress merge/rebase) ---
+  ipcMain.handle('git:operationState', async (_, repoPath) => {
+    const fs = require('fs');
+    const gitDir = path.join(repoPath, '.git');
+    try {
+      if (fs.existsSync(path.join(gitDir, 'rebase-merge')) || fs.existsSync(path.join(gitDir, 'rebase-apply'))) {
+        return { state: 'rebase' };
+      }
+      if (fs.existsSync(path.join(gitDir, 'MERGE_HEAD'))) {
+        return { state: 'merge' };
+      }
+      return { state: null };
+    } catch {
+      return { state: null };
     }
   });
 }

@@ -36,8 +36,11 @@ contextBridge.exposeInMainWorld('api', {
   gitStageAll: (repoPath) => ipcRenderer.invoke('git:stageAll', repoPath),
   gitUnstageAll: (repoPath) => ipcRenderer.invoke('git:unstageAll', repoPath),
   gitDiscard: (repoPath, filepaths) => ipcRenderer.invoke('git:discard', repoPath, filepaths),
+  gitDeleteUntracked: (repoPath, filepaths) => ipcRenderer.invoke('git:deleteUntracked', repoPath, filepaths),
   gitCommit: (repoPath, message) => ipcRenderer.invoke('git:commit', repoPath, message),
   gitCommitAmend: (repoPath, message) => ipcRenderer.invoke('git:commitAmend', repoPath, message),
+  gitResetSoftHead: (repoPath) => ipcRenderer.invoke('git:resetSoftHead', repoPath),
+  gitResetSoftTo: (repoPath, hash) => ipcRenderer.invoke('git:resetSoftTo', repoPath, hash),
   gitLog: (repoPath, count, allBranches, branchName, skip) => ipcRenderer.invoke('git:log', repoPath, count, allBranches, branchName, skip),
   gitPull: (repoPath) => ipcRenderer.invoke('git:pull', repoPath),
   gitPush: (repoPath) => ipcRenderer.invoke('git:push', repoPath),
@@ -53,4 +56,12 @@ contextBridge.exposeInMainWorld('api', {
   gitCheckoutNewBranch: (repoPath, branch) => ipcRenderer.invoke('git:checkoutNewBranch', repoPath, branch),
   gitShow: (repoPath, hash) => ipcRenderer.invoke('git:show', repoPath, hash),
   gitLastCommitMessage: (repoPath) => ipcRenderer.invoke('git:lastCommitMessage', repoPath),
+
+  // Merge & rebase
+  gitMerge: (repoPath, branch) => ipcRenderer.invoke('git:merge', repoPath, branch),
+  gitMergeAbort: (repoPath) => ipcRenderer.invoke('git:mergeAbort', repoPath),
+  gitRebase: (repoPath, branch) => ipcRenderer.invoke('git:rebase', repoPath, branch),
+  gitRebaseContinue: (repoPath) => ipcRenderer.invoke('git:rebaseContinue', repoPath),
+  gitRebaseAbort: (repoPath) => ipcRenderer.invoke('git:rebaseAbort', repoPath),
+  gitOperationState: (repoPath) => ipcRenderer.invoke('git:operationState', repoPath),
 });

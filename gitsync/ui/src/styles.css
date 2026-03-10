@@ -3685,6 +3685,21 @@ tr:hover .db-row-actions .btn:hover {
   overflow-y: auto;
 }
 
+.git-op-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: color-mix(in srgb, var(--warning, #f0a030) 12%, var(--bg-primary));
+  border-bottom: 1px solid color-mix(in srgb, var(--warning, #f0a030) 30%, var(--border));
+  font-size: var(--ui-font-size-sm);
+  color: var(--text-primary);
+}
+
+.git-op-banner span {
+  flex: 1;
+}
+
 .git-content {
   flex: 1;
   overflow: hidden;
@@ -3792,6 +3807,44 @@ tr:hover .db-row-actions .btn:hover {
 .git-file-item:hover .git-file-actions,
 .git-tree-dir-header:hover .git-file-actions {
   opacity: 1;
+}
+
+/* File context menu */
+.file-context-menu {
+  position: fixed;
+  z-index: 1000;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 0;
+  min-width: 160px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.file-context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 12px;
+  border: none;
+  background: none;
+  color: var(--text-primary);
+  font-size: var(--ui-font-size-sm);
+  cursor: pointer;
+  text-align: left;
+}
+
+.file-context-menu-item:hover {
+  background: var(--surface2);
+}
+
+.file-context-menu-item.danger {
+  color: var(--danger);
+}
+
+.file-context-menu-item.danger:hover {
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
 }
 
 /* Tree view */
@@ -4377,11 +4430,13 @@ tr:hover .db-row-actions .btn:hover {
   color: var(--success);
 }
 
-.git-branch-checkout {
+.git-branch-checkout,
+.git-branch-action {
   opacity: 0;
   transition: opacity 0.15s;
 }
 
-.git-branch-item:hover .git-branch-checkout {
+.git-branch-item:hover .git-branch-checkout,
+.git-branch-item:hover .git-branch-action {
   opacity: 1;
 }
