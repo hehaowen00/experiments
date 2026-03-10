@@ -3,7 +3,6 @@ import t from './locale';
 import Collection from './pages/Collection';
 import Landing from './pages/Landing';
 import DatabaseWorkspace from './pages/DatabaseWorkspace';
-import GitWorkspace from './pages/GitWorkspace';
 
 export default function App() {
   const [page, setPage] = createSignal({ type: 'landing' });
@@ -16,12 +15,6 @@ export default function App() {
     setPage({ type: 'database', connData });
   }
 
-  function openGit(repoData) {
-    // Force remount by briefly clearing the page so Solid destroys the old component
-    setPage({ type: 'none' });
-    queueMicrotask(() => setPage({ type: 'git', repoData }));
-  }
-
   function goHome() {
     setPage({ type: 'landing' });
     document.title = t.app.name;
@@ -30,16 +23,13 @@ export default function App() {
   return (
     <>
       {page().type === 'landing' && (
-        <Landing onOpen={openCollection} onOpenDb={openDatabase} onOpenGit={openGit} />
+        <Landing onOpen={openCollection} onOpenDb={openDatabase} />
       )}
       {page().type === 'collection' && (
         <Collection id={page().id} onBack={goHome} />
       )}
       {page().type === 'database' && (
         <DatabaseWorkspace connData={page().connData} onBack={goHome} />
-      )}
-      {page().type === 'git' && (
-        <GitWorkspace repoData={page().repoData} onBack={goHome} onSwitchRepo={openGit} />
       )}
     </>
   );

@@ -5,7 +5,6 @@ const ipcCollections = require('./main/ipc-collections');
 const ipcRequests = require('./main/ipc-requests');
 const ipcWebsocket = require('./main/ipc-websocket');
 const ipcDatabase = require('./main/ipc-database');
-const ipcGit = require('./main/ipc-git');
 const ipcDrop = require('./main/ipc-drop');
 
 let mainWindow;
@@ -32,7 +31,6 @@ app.whenReady().then(() => {
   ipcRequests.register(mainWindow);
   ipcWebsocket.register(mainWindow);
   ipcDatabase.register(mainWindow);
-  ipcGit.register(mainWindow);
   ipcDrop.register(mainWindow);
 
   ipcMain.handle('app:homeDir', () => require('os').homedir());
