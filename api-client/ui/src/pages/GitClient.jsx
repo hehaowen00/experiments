@@ -1,4 +1,4 @@
-import { For, Show, onCleanup, onMount } from 'solid-js';
+import { createSignal, For, Show, onCleanup, onMount } from 'solid-js';
 import { createStore } from 'solid-js/store';
 import CategoryList from '../components/CategoryList';
 import FormModal, { FormField } from '../components/FormModal';
@@ -17,6 +17,7 @@ export default function GitClient(props) {
   });
 
   let dragRepoId = null;
+  let dragCategoryId = null;
   let searchRef;
 
   function onKeyDown(e) {
@@ -150,7 +151,7 @@ export default function GitClient(props) {
     setState('categories', (c) => c.id === id, 'collapsed', (v) => v ? 0 : 1);
   }
 
-  // Drag and drop
+  // Drag and drop (repos into categories)
   function onDragStart(e, repoId) {
     dragRepoId = repoId;
     e.dataTransfer.effectAllowed = 'move';
@@ -176,6 +177,65 @@ export default function GitClient(props) {
     await window.api.gitRepoSetCategory(dragRepoId, categoryId);
     dragRepoId = null;
     loadList();
+  }
+
+  // Category reorder drag and drop
+  const [dropIndicator, setDropIndicator] = createSignal(null);
+
+  function onCategoryDragStart(e, catId) {
+    dragCategoryId = catId;
+    dragRepoId = null;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', catId);
+    e.currentTarget.closest('.landing-category').classList.add('dragging');
+  }
+
+  function onCategoryDragEnd(e) {
+    e.currentTarget.closest('.landing-category')?.classList.remove('dragging');
+    dragCategoryId = null;
+    setDropIndicator(null);
+  }
+
+  function onCategorySectionDragOver(e) {
+    if (!dragCategoryId) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const rect = e.currentTarget.getBoundingClientRect();
+    const mid = rect.top + rect.height / 2;
+    const catId = e.currentTarget.dataset.catId;
+    setDropIndicator({ catId, position: e.clientY < mid ? 'above' : 'below' });
+  }
+
+  async function onCategorySectionDrop(e, targetCatId) {
+    e.preventDefault();
+    setDropIndicator(null);
+
+    if (!dragCategoryId || dragCategoryId === targetCatId) return;
+
+    const cats = state.categories;
+    const fromIdx = cats.findIndex((c) => c.id === dragCategoryId);
+    let toIdx = cats.findIndex((c) => c.id === targetCatId);
+    if (fromIdx === -1 || toIdx === -1) return;
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const mid = rect.top + rect.height / 2;
+    if (e.clientY >= mid && fromIdx < toIdx) {
+      /* already correct */
+    } else if (e.clientY >= mid && fromIdx > toIdx) {
+      toIdx += 1;
+    } else if (e.clientY < mid && fromIdx > toIdx) {
+      /* already correct */
+    } else if (e.clientY < mid && fromIdx < toIdx) {
+      toIdx -= 1;
+    }
+
+    const reordered = [...cats];
+    const [moved] = reordered.splice(fromIdx, 1);
+    reordered.splice(toIdx, 0, moved);
+
+    setState('categories', reordered);
+    await window.api.gitCatReorder(reordered.map((c) => c.id));
+    dragCategoryId = null;
   }
 
   function filterBySearch(list) {
@@ -258,9 +318,34 @@ export default function GitClient(props) {
           onToggleCollapse={toggleCategoryCollapse}
           onRenameCategory={renameCategory}
           onRemoveCategory={removeCategory}
-          onCategoryDragOver={(e) => onCategoryDragOver(e)}
+          onCategoryDragOver={(e, cat) => {
+            onCategoryDragOver(e);
+            if (cat) onCategorySectionDragOver(e);
+          }}
           onCategoryDragLeave={(e) => onCategoryDragLeave(e)}
-          onCategoryDrop={(e, catId) => onCategoryDrop(e, catId)}
+          onCategoryDrop={(e, catId) => {
+            onCategoryDrop(e, catId);
+            if (catId !== null) onCategorySectionDrop(e, catId);
+          }}
+          categoryClassList={(cat) => ({
+            'cat-drop-above':
+              dropIndicator()?.catId === String(cat.id) &&
+              dropIndicator()?.position === 'above',
+            'cat-drop-below':
+              dropIndicator()?.catId === String(cat.id) &&
+              dropIndicator()?.position === 'below',
+          })}
+          categoryExtras={(cat) => (
+            <span
+              class="category-drag-handle"
+              draggable="true"
+              onDragStart={(e) => onCategoryDragStart(e, cat.id)}
+              onDragEnd={onCategoryDragEnd}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <Icon name="fa-solid fa-grip-vertical" />
+            </span>
+          )}
           emptyMessage="No repositories yet. Add one to get started."
           dropHint="Drop repos here"
         />

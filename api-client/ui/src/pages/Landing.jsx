@@ -12,6 +12,7 @@ import { formatLastUsed } from '../helpers';
 import t from '../locale';
 import DatabaseClient from '../pages/DatabaseClient';
 import DateTimeTool from '../pages/DateTimeTool';
+import Drop from '../pages/Drop';
 import GitClient from '../pages/GitClient';
 
 export default function Landing(props) {
@@ -133,6 +134,13 @@ export default function Landing(props) {
 
   async function importCollection() {
     const result = await window.api.importCollection();
+    if (!result) return;
+    if (result.error) return alert(result.error);
+    load();
+  }
+
+  async function importFromDb() {
+    const result = await window.api.importFromDb();
     if (!result) return;
     if (result.error) return alert(result.error);
     load();
@@ -363,6 +371,13 @@ export default function Landing(props) {
               <Icon name="fa-solid fa-clock" />
               <span>{t.landing.nav.dateTime}</span>
             </button>
+            <button
+              class={`landing-nav-item ${activeNav() === 'drop' ? 'active' : ''}`}
+              onClick={() => setActiveNav('drop')}
+            >
+              <Icon name="fa-solid fa-cloud-arrow-up" />
+              <span>{t.landing.nav.drop}</span>
+            </button>
           </div>
           <div class="landing-sidebar-footer">
             <button class="btn btn-ghost btn-sm" onClick={() => showSettings()}>
@@ -397,6 +412,9 @@ export default function Landing(props) {
           </button>
           <button class="btn btn-ghost btn-sm" onClick={importCollection}>
             <Icon name="fa-solid fa-file-import" /> {t.landing.importButton}
+          </button>
+          <button class="btn btn-ghost btn-sm" onClick={importFromDb}>
+            <Icon name="fa-solid fa-database" /> {t.landing.importDbButton}
           </button>
           <button class="btn btn-ghost btn-sm" onClick={addCategory}>
             <Icon name="fa-solid fa-folder-plus" />{' '}
@@ -478,6 +496,11 @@ export default function Landing(props) {
         sidebarOpen={sidebarOpen()}
         onToggleSidebar={() => setSidebarOpen(!sidebarOpen())}
         onOpenGit={props.onOpenGit}
+      />
+      <Drop
+        style={{ display: activeNav() === 'drop' ? '' : 'none' }}
+        sidebarOpen={sidebarOpen()}
+        onToggleSidebar={() => setSidebarOpen(!sidebarOpen())}
       />
       <Modal />
     </div>

@@ -122,7 +122,7 @@ export function getThemeList() {
 
 export function getStoredThemeId() {
   const id = localStorage.getItem(THEME_KEY);
-  return id && themes[id] ? id : 'dark';
+  return id && themes[id] ? id : 'tokyonight';
 }
 
 export function applyTheme(themeId) {

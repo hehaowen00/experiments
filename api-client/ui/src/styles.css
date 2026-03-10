@@ -4385,3 +4385,185 @@ tr:hover .db-row-actions .btn:hover {
 .git-branch-item:hover .git-branch-checkout {
   opacity: 1;
 }
+
+/* Drop tool */
+
+.drop-tool {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 600px;
+  padding: 8px 0 24px;
+}
+
+.drop-config {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.drop-config-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.drop-config-row label {
+  min-width: 60px;
+  color: var(--text-dim);
+  font-size: var(--ui-font-size);
+}
+
+.drop-config-row input[type="number"] {
+  width: 100px;
+  padding: 6px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: var(--ui-font-size);
+  font-family: var(--font-mono);
+  outline: none;
+}
+
+.drop-config-row input[type="number"]:focus {
+  border-color: var(--accent);
+}
+
+.drop-path-picker {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.drop-path-display {
+  flex: 1;
+  padding: 6px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: var(--ui-font-size);
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drop-btn-stop {
+  background: var(--danger) !important;
+  color: #fff !important;
+}
+
+.drop-btn-stop:hover {
+  opacity: 0.85;
+}
+
+.drop-error {
+  color: var(--danger);
+  font-size: var(--ui-font-size-sm);
+}
+
+.drop-status {
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.drop-status-label {
+  font-size: var(--ui-font-size-sm);
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+
+.drop-url {
+  font-family: var(--font-mono);
+  font-size: var(--ui-font-size);
+  color: var(--accent);
+  padding: 2px 0;
+  cursor: default;
+  user-select: all;
+}
+
+.drop-files {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.drop-files-header {
+  font-size: var(--ui-font-size-lg);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.drop-empty {
+  color: var(--text-dim);
+  font-size: var(--ui-font-size);
+  padding: 16px 0;
+}
+
+.drop-file-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--success);
+}
+
+.drop-file-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.drop-file-name {
+  color: var(--text);
+  font-size: var(--ui-font-size);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drop-file-meta {
+  font-size: var(--ui-font-size-sm);
+  color: var(--text-dim);
+}
+
+.drop-file-pending {
+  border-color: var(--warning, #ffa726);
+  color: var(--warning, #ffa726);
+}
+
+.drop-file-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.drop-btn-accept {
+  background: var(--success);
+  color: #fff;
+  border: none;
+}
+
+.drop-btn-accept:hover {
+  opacity: 0.85;
+}
+
+.drop-btn-reject {
+  background: var(--danger);
+  color: #fff;
+  border: none;
+}
+
+.drop-btn-reject:hover {
+  opacity: 0.85;
+}

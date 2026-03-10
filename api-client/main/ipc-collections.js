@@ -1,7 +1,7 @@
 const fs = require('fs');
 const { ipcMain, dialog } = require('electron');
 const { generateKSUID } = require('./ksuid');
-const { parseImportData, countRequests } = require('./import');
+const { parseImportData, countRequests, importFromSqliteDb } = require('./import');
 const store = require('./store');
 
 function register(mainWindow) {
@@ -169,6 +169,58 @@ function register(mainWindow) {
         created.push({ id, name: col.name, count: countRequests(col.items) });
       }
       return { collections: created };
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
+
+  ipcMain.handle('import:db', async () => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openFile'],
+      filters: [{ name: 'SQLite Database', extensions: ['db', 'sqlite', 'sqlite3'] }],
+    });
+    if (result.canceled || !result.filePaths.length) return null;
+    try {
+      const { collections, responses } = importFromSqliteDb(result.filePaths[0]);
+      if (collections.length === 0) return { error: 'No collections found in database' };
+
+      const db = store.getDb();
+      const created = [];
+
+      // Import collections (use the ID already assigned during import)
+      for (const col of collections) {
+        const collection = {
+          id: col.id,
+          name: col.name,
+          items: col.items,
+          variables: col.variables || [],
+        };
+        store.saveCollection(collection);
+        created.push({ id: col.id, name: col.name, count: countRequests(col.items) });
+      }
+
+      // Import responses
+      if (responses.length > 0) {
+        const insertRes = db.prepare(`
+          INSERT INTO responses (request_id, collection_id, status, status_text,
+            response_headers, response_body, timeline, time_ms, request_method,
+            request_url, request_headers, request_body, content_type, error, messages)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+        const tx = db.transaction(() => {
+          for (const r of responses) {
+            insertRes.run(
+              r.request_id, r.collection_id, r.status, r.status_text,
+              r.response_headers, r.response_body, r.timeline, r.time_ms,
+              r.request_method, r.request_url, r.request_headers, r.request_body,
+              r.content_type, r.error, r.messages,
+            );
+          }
+        });
+        tx();
+      }
+
+      return { collections: created, responseCount: responses.length };
     } catch (e) {
       return { error: e.message };
     }

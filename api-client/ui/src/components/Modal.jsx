@@ -1,4 +1,4 @@
-import { createEffect, createSignal, For, Show } from 'solid-js';
+import { createEffect, createSignal, For, onCleanup, onMount, Show } from 'solid-js';
 import { applyEditorFontSize, applyUiFontSize } from '../index';
 import t from '../locale';
 import { applyTheme, getStoredThemeId, getThemeList } from '../themes';
@@ -113,6 +113,24 @@ export default function Modal() {
     }
   });
 
+  function cancelModal() {
+    if (!modalVisible()) return;
+    const type = modalType();
+    if (type === 'confirm' || type === 'confirm-type') close(false);
+    else close(null);
+  }
+
+  function onGlobalKeyDown(e) {
+    if (e.key === 'Escape' && modalVisible()) {
+      e.preventDefault();
+      e.stopPropagation();
+      cancelModal();
+    }
+  }
+
+  onMount(() => document.addEventListener('keydown', onGlobalKeyDown, true));
+  onCleanup(() => document.removeEventListener('keydown', onGlobalKeyDown, true));
+
   function onKeyDown(e) {
     if (e.key === 'Enter') {
       if (modalType() === 'alert') close(null);
@@ -121,18 +139,6 @@ export default function Modal() {
       } else if (modalType() !== 'textarea' && modalType() !== 'settings')
         close(modalType() === 'prompt' ? modalValue() : true);
     }
-    if (e.key === 'Escape')
-      close(
-        modalType() === 'alert'
-          ? null
-          : modalType() === 'prompt' || modalType() === 'textarea'
-            ? null
-            : modalType() === 'settings'
-              ? null
-              : modalType() === 'confirm-type'
-                ? false
-                : false,
-      );
   }
 
   return (

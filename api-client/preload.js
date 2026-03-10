@@ -32,6 +32,7 @@ contextBridge.exposeInMainWorld('api', {
   loadResponse: (id) => ipcRenderer.invoke('response:load', id),
   pickFile: () => ipcRenderer.invoke('file:pick'),
   importCollection: () => ipcRenderer.invoke('import:pick'),
+  importFromDb: () => ipcRenderer.invoke('import:db'),
   importRequests: () => ipcRenderer.invoke('import:requests'),
   readFile: (path) => ipcRenderer.invoke('file:read', path),
   getSetting: (key) => ipcRenderer.invoke('settings:get', key),
@@ -153,4 +154,18 @@ contextBridge.exposeInMainWorld('api', {
   gitCheckoutNewBranch: (repoPath, branch) => ipcRenderer.invoke('git:checkoutNewBranch', repoPath, branch),
   gitShow: (repoPath, hash) => ipcRenderer.invoke('git:show', repoPath, hash),
   gitLastCommitMessage: (repoPath) => ipcRenderer.invoke('git:lastCommitMessage', repoPath),
+
+  // Drop
+  dropStart: (opts) => ipcRenderer.invoke('drop:start', opts),
+  dropStop: (id) => ipcRenderer.invoke('drop:stop', id),
+  dropAccept: (fileId) => ipcRenderer.invoke('drop:accept', fileId),
+  dropReject: (fileId) => ipcRenderer.invoke('drop:reject', fileId),
+  dropListFiles: (id) => ipcRenderer.invoke('drop:listFiles', id),
+  dropPickFolder: () => ipcRenderer.invoke('drop:pickFolder'),
+  onDropStarted: (cb) => ipcRenderer.on('drop:started', (_, d) => cb(d)),
+  onDropStopped: (cb) => ipcRenderer.on('drop:stopped', (_, d) => cb(d)),
+  onDropPending: (cb) => ipcRenderer.on('drop:pending', (_, d) => cb(d)),
+  onDropAccepted: (cb) => ipcRenderer.on('drop:accepted', (_, d) => cb(d)),
+  onDropRejected: (cb) => ipcRenderer.on('drop:rejected', (_, d) => cb(d)),
+  onDropError: (cb) => ipcRenderer.on('drop:error', (_, d) => cb(d)),
 });
