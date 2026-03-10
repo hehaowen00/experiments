@@ -17,8 +17,13 @@ export function buildGraph(commits, initialLanes) {
     const hash = c.hash;
     const parents = c.parents;
 
+    // Snapshot lanes before any modification for pass-through tracking
+    const prevLanes = [...lanes];
+
+    // Find or assign column for this commit
     let col = lanes.indexOf(hash);
-    if (col === -1) {
+    const isNew = col === -1;
+    if (isNew) {
       col = lanes.indexOf(null);
       if (col === -1) { col = lanes.length; lanes.push(hash); }
       else lanes[col] = hash;
@@ -27,21 +32,40 @@ export function buildGraph(commits, initialLanes) {
     const topPipes = [];
     const botPipes = [];
 
-    topPipes.push({ from: col, to: col, color: col });
+    // --- Top half: lines coming from above into this row ---
 
+    // The commit's own lane (only if it was expected from a previous row)
+    if (!isNew) {
+      topPipes.push({ from: col, to: col, color: col });
+    }
+
+    // Collect which lanes merge into this commit
+    const mergedLanes = new Set();
     for (let l = 0; l < lanes.length; l++) {
       if (l === col) continue;
       if (lanes[l] === hash) {
         topPipes.push({ from: l, to: col, color: l });
+        mergedLanes.add(l);
         lanes[l] = null;
-      } else if (lanes[l] && lanes[l] !== null) {
+      }
+    }
+
+    // Pass-through lanes (top half): lanes that were occupied before and
+    // are NOT this commit and NOT merging into it
+    for (let l = 0; l < prevLanes.length; l++) {
+      if (l === col) continue;
+      if (mergedLanes.has(l)) continue;
+      if (prevLanes[l] && prevLanes[l] !== null) {
         topPipes.push({ from: l, to: l, color: l });
       }
     }
 
+    // --- Bottom half: lines going from this row downward ---
+
     const nextLanes = [...lanes];
     nextLanes[col] = null;
 
+    // First parent
     if (parents.length > 0) {
       const p0 = parents[0];
       const existing = nextLanes.indexOf(p0);
@@ -53,6 +77,7 @@ export function buildGraph(commits, initialLanes) {
       }
     }
 
+    // Additional parents (merge)
     for (let p = 1; p < parents.length; p++) {
       const ph = parents[p];
       const existing = nextLanes.indexOf(ph);
@@ -66,17 +91,26 @@ export function buildGraph(commits, initialLanes) {
       }
     }
 
+    // Pass-through lanes (bottom half): occupied lanes that are not the
+    // commit's column and continue into nextLanes
+    const botPipeSet = new Set(botPipes.map(p => `${p.from}-${p.to}`));
     for (let l = 0; l < Math.max(lanes.length, nextLanes.length); l++) {
       if (l === col) continue;
+      // Use the current lanes state (after merges cleared)
       const laneHash = lanes[l];
-      if (laneHash && laneHash !== hash && laneHash !== null) {
+      if (laneHash && laneHash !== hash) {
         const dest = nextLanes.indexOf(laneHash);
         if (dest !== -1) {
-          botPipes.push({ from: l, to: dest, color: dest });
+          const key = `${l}-${dest}`;
+          if (!botPipeSet.has(key)) {
+            botPipes.push({ from: l, to: dest, color: dest });
+            botPipeSet.add(key);
+          }
         }
       }
     }
 
+    // Trim trailing empty lanes
     while (nextLanes.length > 0 && nextLanes[nextLanes.length - 1] === null) {
       nextLanes.pop();
     }
@@ -105,8 +139,9 @@ export function parseRefs(refStr) {
 export function GraphCell(props) {
   const { row, maxCols } = props;
   const w = Math.max(maxCols, 1) * 16 + 8;
-  const h = 24;
-  const mid = h / 2;
+  // Slightly taller than the row to overlap the 1px border between rows
+  const h = 26;
+  const mid = 13;
   const cx = row.col * 16 + 12;
 
   function pipeHalf(pipe, y0, y1) {
@@ -121,7 +156,7 @@ export function GraphCell(props) {
   }
 
   return (
-    <svg width={w} height={h} class="git-graph-svg">
+    <svg width={w} height={h} class="git-graph-svg" style={{ 'margin-top': '-1px', 'margin-bottom': '-1px' }}>
       <For each={row.topPipes}>{(pipe) => pipeHalf(pipe, 0, mid)}</For>
       <For each={row.botPipes}>{(pipe) => pipeHalf(pipe, mid, h)}</For>
       <circle cx={cx} cy={mid} r={row.isMerge ? 5 : 4} fill={GRAPH_COLORS[row.col % GRAPH_COLORS.length]}

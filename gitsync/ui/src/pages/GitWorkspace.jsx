@@ -1,9 +1,9 @@
-import { onMount, onCleanup, Show, For } from 'solid-js';
+import { onCleanup, onMount, Show } from 'solid-js';
+import ContextMenu from '../components/ContextMenu';
 import Icon from '../components/Icon';
 import Modal from '../components/Modal';
-import ContextMenu from '../components/ContextMenu';
 import RepoSwitcher from '../components/RepoSwitcher';
-import { WorkspaceProvider, useWorkspace } from '../context/WorkspaceContext';
+import { useWorkspace, WorkspaceProvider } from '../context/WorkspaceContext';
 import ChangesPanel from '../panels/ChangesPanel';
 import LogPanel from '../panels/LogPanel';
 import RemotesPanel from '../panels/RemotesPanel';
@@ -46,19 +46,6 @@ function WorkspaceInner() {
             </Show>
           </span>
         </Show>
-        <Show when={ws.identities().length > 0}>
-          <select
-            class="git-identity-select"
-            value={ws.currentIdentity()?.id || ''}
-            onChange={(e) => ws.setRepoIdentity(e.target.value || null)}
-            title="Git identity for this repo"
-          >
-            <option value="">No identity</option>
-            <For each={ws.identities()}>
-              {(id) => <option value={id.id}>{id.name} &lt;{id.email}&gt;</option>}
-            </For>
-          </select>
-        </Show>
         <div style={{ flex: 1 }} />
         <Show when={ws.operating()}>
           <span class="git-operating">{ws.operating()}</span>
@@ -89,7 +76,7 @@ function WorkspaceInner() {
           </Show>
         </button>
         <button class={`git-tab ${ws.tab() === 'log' ? 'active' : ''}`} onClick={() => ws.onTabChange('log')}>
-          Log
+          History
         </button>
         <button class={`git-tab ${ws.tab() === 'remotes' ? 'active' : ''}`} onClick={() => ws.onTabChange('remotes')}>
           Remotes

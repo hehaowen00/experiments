@@ -1,4 +1,4 @@
-import { Show, For } from 'solid-js';
+import { Show, For, createSignal } from 'solid-js';
 import Icon from '../components/Icon';
 import FileTree from '../components/FileTree';
 import { useWorkspace } from '../context/WorkspaceContext';
@@ -165,6 +165,19 @@ export default function ChangesPanel() {
         </div>
 
         <div class="git-commit-box">
+          <Show when={ws.identities().length > 0}>
+            <select
+              class="git-identity-select"
+              value={ws.currentIdentity()?.id || ''}
+              onChange={(e) => ws.setRepoIdentity(e.target.value || null)}
+              title="Git identity for this repo"
+            >
+              <option value="">No identity</option>
+              <For each={ws.identities()}>
+                {(id) => <option value={id.id}>{id.name} &lt;{id.email}&gt;</option>}
+              </For>
+            </select>
+          </Show>
           <input
             type="text"
             class="git-commit-subject"
