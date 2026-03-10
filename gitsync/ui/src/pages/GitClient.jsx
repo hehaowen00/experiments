@@ -5,6 +5,7 @@ import FormModal, { FormField } from '../components/FormModal';
 import Icon from '../components/Icon';
 import ItemCard from '../components/ItemCard';
 import { showAlert, showConfirm, showConfirmTyped, showPrompt, showSettings } from '../components/Modal';
+import { initHomeDir, shortenPath } from '../utils/path';
 
 export default function GitClient(props) {
   const [state, setState] = createStore({
@@ -252,13 +253,7 @@ export default function GitClient(props) {
     );
   }
 
-  let homeDir = '';
-  window.api.homeDir().then((d) => { homeDir = d; });
-
-  function shortenPath(p) {
-    if (homeDir && p.startsWith(homeDir)) return '~' + p.slice(homeDir.length);
-    return p;
-  }
+  initHomeDir();
 
   const cardActions = [
     { label: 'Pin', onClick: (e, item) => togglePin(e, item.id, item.pinned), labelFn: (item) => item.pinned ? 'Unpin' : 'Pin' },
