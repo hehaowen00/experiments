@@ -1,4 +1,4 @@
-import { onMount, onCleanup, Show } from 'solid-js';
+import { onMount, onCleanup, Show, For } from 'solid-js';
 import Icon from '../components/Icon';
 import Modal from '../components/Modal';
 import ContextMenu from '../components/ContextMenu';
@@ -7,7 +7,6 @@ import { WorkspaceProvider, useWorkspace } from '../context/WorkspaceContext';
 import ChangesPanel from '../panels/ChangesPanel';
 import LogPanel from '../panels/LogPanel';
 import RemotesPanel from '../panels/RemotesPanel';
-import StashesPanel from '../panels/StashesPanel';
 
 function WorkspaceInner() {
   const ws = useWorkspace();
@@ -47,6 +46,19 @@ function WorkspaceInner() {
             </Show>
           </span>
         </Show>
+        <Show when={ws.identities().length > 0}>
+          <select
+            class="git-identity-select"
+            value={ws.currentIdentity()?.id || ''}
+            onChange={(e) => ws.setRepoIdentity(e.target.value || null)}
+            title="Git identity for this repo"
+          >
+            <option value="">No identity</option>
+            <For each={ws.identities()}>
+              {(id) => <option value={id.id}>{id.name} &lt;{id.email}&gt;</option>}
+            </For>
+          </select>
+        </Show>
         <div style={{ flex: 1 }} />
         <Show when={ws.operating()}>
           <span class="git-operating">{ws.operating()}</span>
@@ -82,12 +94,6 @@ function WorkspaceInner() {
         <button class={`git-tab ${ws.tab() === 'remotes' ? 'active' : ''}`} onClick={() => ws.onTabChange('remotes')}>
           Remotes
         </button>
-        <button class={`git-tab ${ws.tab() === 'stashes' ? 'active' : ''}`} onClick={() => ws.onTabChange('stashes')}>
-          Stashes
-          <Show when={ws.stashes.list.length > 0}>
-            <span class="git-tab-badge">{ws.stashes.list.length}</span>
-          </Show>
-        </button>
       </div>
 
       <Show when={ws.status.error}>
@@ -98,7 +104,7 @@ function WorkspaceInner() {
       <Show when={ws.output()}>
         <div class="git-output-bar">
           <pre>{ws.output()}</pre>
-          <button class="btn btn-ghost btn-xs" onClick={() => ws.setOutput('')}>
+          <button class="btn btn-ghost btn-xs" onClick={() => ws.setOutput('')} title="Dismiss">
             <Icon name="fa-solid fa-xmark" />
           </button>
         </div>
@@ -130,9 +136,6 @@ function WorkspaceInner() {
       </div>
       <div class="git-content" style={{ display: ws.tab() === 'remotes' ? '' : 'none' }}>
         <RemotesPanel />
-      </div>
-      <div class="git-content" style={{ display: ws.tab() === 'stashes' ? '' : 'none' }}>
-        <StashesPanel />
       </div>
 
       <Modal />

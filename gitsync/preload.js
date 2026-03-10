@@ -8,6 +8,17 @@ contextBridge.exposeInMainWorld('api', {
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
   homeDir: () => ipcRenderer.invoke('app:homeDir'),
 
+  // Git identities
+  identityList: () => ipcRenderer.invoke('identity:list'),
+  identityCreate: (data) => ipcRenderer.invoke('identity:create', data),
+  identityUpdate: (id, data) => ipcRenderer.invoke('identity:update', id, data),
+  identityDelete: (id) => ipcRenderer.invoke('identity:delete', id),
+  identityGetForRepo: (repoId) => ipcRenderer.invoke('identity:getForRepo', repoId),
+  identitySetForRepo: (repoId, identityId, repoPath) => ipcRenderer.invoke('identity:setForRepo', repoId, identityId, repoPath),
+  gitGetLocalIdentity: (repoPath) => ipcRenderer.invoke('git:getLocalIdentity', repoPath),
+  gitGetGlobalIdentity: () => ipcRenderer.invoke('git:getGlobalIdentity'),
+  identityImport: (data) => ipcRenderer.invoke('identity:import', data),
+
   // Git Client - saved repos
   gitRepoList: () => ipcRenderer.invoke('gitRepo:list'),
   gitRepoCreate: (data) => ipcRenderer.invoke('gitRepo:create', data),
@@ -41,7 +52,7 @@ contextBridge.exposeInMainWorld('api', {
   gitCommitAmend: (repoPath, message) => ipcRenderer.invoke('git:commitAmend', repoPath, message),
   gitResetSoftHead: (repoPath) => ipcRenderer.invoke('git:resetSoftHead', repoPath),
   gitResetSoftTo: (repoPath, hash) => ipcRenderer.invoke('git:resetSoftTo', repoPath, hash),
-  gitLog: (repoPath, count, allBranches, branchName, skip) => ipcRenderer.invoke('git:log', repoPath, count, allBranches, branchName, skip),
+  gitLog: (repoPath, count, allBranches, branchName, skip, search) => ipcRenderer.invoke('git:log', repoPath, count, allBranches, branchName, skip, search),
   gitPull: (repoPath) => ipcRenderer.invoke('git:pull', repoPath),
   gitPush: (repoPath) => ipcRenderer.invoke('git:push', repoPath),
   gitPushSetUpstream: (repoPath, remote, branch) => ipcRenderer.invoke('git:pushSetUpstream', repoPath, remote, branch),

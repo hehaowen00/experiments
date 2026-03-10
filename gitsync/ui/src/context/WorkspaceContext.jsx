@@ -53,9 +53,14 @@ export function WorkspaceProvider(props) {
   const [opState, setOpState] = createSignal(null);
   const [submodules, setSubmodules] = createSignal([]);
   const [expandedDetailFiles, setExpandedDetailFiles] = createSignal(new Set());
-  const [logBranch, setLogBranch] = createSignal('__current__');
+  const [logBranch, setLogBranch] = createSignal('__all__');
   const [logBranches, setLogBranches] = createSignal([]);
+  const [logSearch, setLogSearch] = createSignal('');
   const [selectedFiles, setSelectedFiles] = createSignal(new Set());
+
+  // --- Identity ---
+  const [identities, setIdentities] = createSignal([]);
+  const [currentIdentity, setCurrentIdentity] = createSignal(null);
 
   // --- Switcher ---
   const [switcherOpen, setSwitcherOpen] = createSignal(false);
@@ -83,9 +88,10 @@ export function WorkspaceProvider(props) {
   async function loadLog() {
     setLog('loading', true);
     const branch = logBranch();
+    const search = logSearch();
     const allBranches = branch === '__all__';
     const branchName = (branch === '__current__' || branch === '__all__') ? null : branch;
-    const result = await window.api.gitLog(repoPath, LOG_PAGE_SIZE, allBranches, branchName, 0);
+    const result = await window.api.gitLog(repoPath, LOG_PAGE_SIZE, allBranches, branchName, 0, search);
     if (!result.error) {
       const { graph, maxCols, lanes } = buildGraph(result.commits, []);
       setLog({
@@ -102,10 +108,11 @@ export function WorkspaceProvider(props) {
     if (log.loadingMore || !log.hasMore) return;
     setLog('loadingMore', true);
     const branch = logBranch();
+    const search = logSearch();
     const allBranches = branch === '__all__';
     const branchName = (branch === '__current__' || branch === '__all__') ? null : branch;
     const skip = log.commits.length;
-    const result = await window.api.gitLog(repoPath, LOG_PAGE_SIZE, allBranches, branchName, skip);
+    const result = await window.api.gitLog(repoPath, LOG_PAGE_SIZE, allBranches, branchName, skip, search);
     if (!result.error) {
       if (result.commits.length === 0) {
         setLog({ loadingMore: false, hasMore: false });
@@ -615,11 +622,33 @@ export function WorkspaceProvider(props) {
     onSwitchRepo({ savedId: repo.id, name: repo.name, path: repo.path, category_id: repo.category_id });
   }
 
+  // --- Identity ---
+  async function loadIdentities() {
+    const list = await window.api.identityList();
+    setIdentities(list);
+    if (repoData.savedId) {
+      const assigned = await window.api.identityGetForRepo(repoData.savedId);
+      setCurrentIdentity(assigned);
+    }
+  }
+
+  async function setRepoIdentity(identityId) {
+    if (!repoData.savedId) return;
+    await window.api.identitySetForRepo(repoData.savedId, identityId, repoPath);
+    if (identityId) {
+      const match = identities().find((i) => i.id === identityId);
+      setCurrentIdentity(match || null);
+    } else {
+      setCurrentIdentity(null);
+    }
+  }
+
   // --- Lifecycle ---
   onMount(() => {
     refresh();
     loadLog();
     loadStashes();
+    loadIdentities();
     initHomeDir();
     document.addEventListener('click', dismissCtxMenu);
   });
@@ -638,7 +667,7 @@ export function WorkspaceProvider(props) {
     tab, setTab, operating, output, setOutput,
     expandedDirs, collapsedSections, ctxMenu, setCtxMenu, opState, submodules,
     expandedDetailFiles, setExpandedDetailFiles,
-    logBranch, setLogBranch, logBranches, selectedFiles,
+    logBranch, setLogBranch, logBranches, logSearch, setLogSearch, selectedFiles,
     switcherOpen, switcherQuery, setSwitcherQuery, switcherRepos, switcherIndex, setSwitcherIndex,
     // Operations
     refresh, loadLog, loadMoreLog, loadLogBranches, loadRemotes, loadBranches, loadStashes,
@@ -655,6 +684,7 @@ export function WorkspaceProvider(props) {
     onFileContextMenu, onFolderContextMenu, dismissCtxMenu,
     toggleSection, toggleDir, toggleFileSelection,
     openSwitcher, closeSwitcher, filteredSwitcherRepos, switcherSelect,
+    identities, currentIdentity, setRepoIdentity, loadIdentities,
   };
 
   return (

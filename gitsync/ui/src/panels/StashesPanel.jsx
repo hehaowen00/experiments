@@ -46,7 +46,7 @@ export default function StashesPanel() {
         <div class="git-stash-diff">
           <div class="git-diff-header">
             <span class="git-diff-filepath">{ws.stashDetail.ref}</span>
-            <button class="btn btn-ghost btn-xs" onClick={() => ws.setStashDetail({ ref: null, diff: '' })}>
+            <button class="btn btn-ghost btn-xs" onClick={() => ws.setStashDetail({ ref: null, diff: '' })} title="Close stash diff">
               <Icon name="fa-solid fa-xmark" />
             </button>
           </div>

@@ -43,7 +43,19 @@ function initDb() {
       sort_order INTEGER NOT NULL DEFAULT 0,
       collapsed INTEGER NOT NULL DEFAULT 0
     );
+
+    CREATE TABLE IF NOT EXISTS git_identities (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      email TEXT NOT NULL
+    );
   `);
+
+  // Add identity_id column to git_repos if missing
+  const cols = db.pragma('table_info(git_repos)').map(c => c.name);
+  if (!cols.includes('identity_id')) {
+    db.exec('ALTER TABLE git_repos ADD COLUMN identity_id TEXT DEFAULT NULL');
+  }
 }
 
 function closeDb() {

@@ -33,12 +33,35 @@ function register(mainWindow) {
       .all();
   });
 
-  ipcMain.handle('gitRepo:create', (_, data) => {
+  ipcMain.handle('gitRepo:create', async (_, data) => {
     const id = generateKSUID();
+
+    // Auto-assign global git identity if one matches
+    let identityId = null;
+    try {
+      const os = require('os');
+      const name = (await git(os.homedir(), ['config', '--global', 'user.name'])).trim();
+      const email = (await git(os.homedir(), ['config', '--global', 'user.email'])).trim();
+      if (name && email) {
+        // Import if not already saved
+        let row = store.getDb().prepare(
+          'SELECT id FROM git_identities WHERE name = ? AND email = ?',
+        ).get(name, email);
+        if (!row) {
+          const iid = generateKSUID();
+          store.getDb().prepare(
+            'INSERT INTO git_identities (id, name, email) VALUES (?, ?, ?)',
+          ).run(iid, name, email);
+          row = { id: iid };
+        }
+        identityId = row.id;
+      }
+    } catch {}
+
     store.getDb().prepare(
-      "INSERT INTO git_repos (id, name, path, category_id, last_used) VALUES (?, ?, ?, ?, datetime('now'))",
-    ).run(id, data.name, data.path, data.category_id || null);
-    return { id, name: data.name, path: data.path, category_id: data.category_id || null, pinned: 0 };
+      "INSERT INTO git_repos (id, name, path, category_id, identity_id, last_used) VALUES (?, ?, ?, ?, ?, datetime('now'))",
+    ).run(id, data.name, data.path, data.category_id || null, identityId);
+    return { id, name: data.name, path: data.path, category_id: data.category_id || null, identity_id: identityId, pinned: 0 };
   });
 
   ipcMain.handle('gitRepo:update', (_, id, data) => {
@@ -107,6 +130,92 @@ function register(mainWindow) {
     });
     tx();
     return true;
+  });
+
+  // --- Git identities ---
+  ipcMain.handle('identity:list', () => {
+    return store.getDb()
+      .prepare('SELECT id, name, email FROM git_identities ORDER BY rowid ASC')
+      .all();
+  });
+
+  ipcMain.handle('identity:create', (_, data) => {
+    const id = generateKSUID();
+    store.getDb().prepare(
+      'INSERT INTO git_identities (id, name, email) VALUES (?, ?, ?)',
+    ).run(id, data.name, data.email);
+    return { id, name: data.name, email: data.email };
+  });
+
+  ipcMain.handle('identity:update', (_, id, data) => {
+    store.getDb().prepare(
+      'UPDATE git_identities SET name = ?, email = ? WHERE id = ?',
+    ).run(data.name, data.email, id);
+    return true;
+  });
+
+  ipcMain.handle('identity:delete', (_, id) => {
+    store.getDb().prepare('UPDATE git_repos SET identity_id = NULL WHERE identity_id = ?').run(id);
+    store.getDb().prepare('DELETE FROM git_identities WHERE id = ?').run(id);
+    return true;
+  });
+
+  ipcMain.handle('identity:getForRepo', (_, repoId) => {
+    const repo = store.getDb().prepare('SELECT identity_id FROM git_repos WHERE id = ?').get(repoId);
+    if (!repo || !repo.identity_id) return null;
+    return store.getDb().prepare('SELECT id, name, email FROM git_identities WHERE id = ?').get(repo.identity_id) || null;
+  });
+
+  ipcMain.handle('identity:setForRepo', async (_, repoId, identityId, repoPath) => {
+    store.getDb().prepare('UPDATE git_repos SET identity_id = ? WHERE id = ?').run(identityId || null, repoId);
+    // Apply to local git config
+    if (identityId) {
+      const identity = store.getDb().prepare('SELECT name, email FROM git_identities WHERE id = ?').get(identityId);
+      if (identity) {
+        await git(repoPath, ['config', 'user.name', identity.name]);
+        await git(repoPath, ['config', 'user.email', identity.email]);
+      }
+    } else {
+      // Unset local config
+      try { await git(repoPath, ['config', '--unset', 'user.name']); } catch {}
+      try { await git(repoPath, ['config', '--unset', 'user.email']); } catch {}
+    }
+    return true;
+  });
+
+  ipcMain.handle('git:getLocalIdentity', async (_, repoPath) => {
+    try {
+      const name = (await git(repoPath, ['config', '--local', 'user.name'])).trim();
+      const email = (await git(repoPath, ['config', '--local', 'user.email'])).trim();
+      return { name, email };
+    } catch {
+      return { name: '', email: '' };
+    }
+  });
+
+  ipcMain.handle('git:getGlobalIdentity', async () => {
+    const os = require('os');
+    const homeDir = os.homedir();
+    try {
+      const name = (await git(homeDir, ['config', '--global', 'user.name'])).trim();
+      const email = (await git(homeDir, ['config', '--global', 'user.email'])).trim();
+      return { name, email };
+    } catch {
+      return { name: '', email: '' };
+    }
+  });
+
+  ipcMain.handle('identity:import', (_, data) => {
+    if (!data.name || !data.email) return null;
+    const existing = store.getDb().prepare(
+      'SELECT id FROM git_identities WHERE name = ? AND email = ?',
+    ).get(data.name, data.email);
+    if (existing) return existing;
+    const id = generateKSUID();
+    store.getDb().prepare(
+      'INSERT INTO git_identities (id, name, email) VALUES (?, ?, ?)',
+    ).run(id, data.name, data.email);
+    return { id, name: data.name, email: data.email };
   });
 
   ipcMain.handle('git:pickFolder', async () => {
@@ -286,21 +395,11 @@ function register(mainWindow) {
     }
   });
 
-  ipcMain.handle('git:log', async (_, repoPath, count, allBranches, branchName, skip) => {
-    try {
-      const args = [
-        'log', `--max-count=${count || 50}`,
-        '--pretty=format:%H%x00%h%x00%P%x00%an%x00%ae%x00%at%x00%s%x00%D',
-      ];
-      if (skip) args.push(`--skip=${skip}`);
-      if (allBranches) {
-        args.push('--all');
-      } else if (branchName) {
-        args.push(branchName);
-      }
-      const out = await git(repoPath, args);
-      if (!out.trim()) return { commits: [] };
-      const commits = out.trim().split('\n').map(line => {
+  ipcMain.handle('git:log', async (_, repoPath, count, allBranches, branchName, skip, search) => {
+    const fmt = '--pretty=format:%H%x00%h%x00%P%x00%an%x00%ae%x00%at%x00%s%x00%D';
+    const parseCommits = (out) => {
+      if (!out.trim()) return [];
+      return out.trim().split('\n').map(line => {
         const [hash, short, parents, author, email, timestamp, subject, refs] = line.split('\x00');
         return {
           hash, short,
@@ -310,7 +409,48 @@ function register(mainWindow) {
           subject, refs,
         };
       });
-      return { commits };
+    };
+
+    try {
+      // If search looks like a commit hash, try exact lookup first
+      if (search && /^[0-9a-f]{4,40}$/i.test(search.trim())) {
+        try {
+          const out = await git(repoPath, ['log', '--max-count=1', fmt, search.trim()]);
+          const exact = parseCommits(out);
+          if (exact.length) return { commits: exact };
+        } catch {}
+      }
+
+      const args = ['log', `--max-count=${count || 50}`, fmt];
+      if (skip) args.push(`--skip=${skip}`);
+      if (allBranches) {
+        args.push('--all');
+      } else if (branchName) {
+        args.push(branchName);
+      }
+      if (search && search.trim()) {
+        const q = search.trim();
+        // Run two searches and merge: one by message, one by author
+        const baseArgs = args.slice();
+        const msgArgs = [...baseArgs, `--grep=${q}`, '-i'];
+        const authorArgs = [...baseArgs, `--author=${q}`, '-i'];
+        const [msgOut, authorOut] = await Promise.all([
+          git(repoPath, msgArgs).catch(() => ''),
+          git(repoPath, authorArgs).catch(() => ''),
+        ]);
+        const seen = new Set();
+        const merged = [];
+        for (const c of [...parseCommits(msgOut), ...parseCommits(authorOut)]) {
+          if (!seen.has(c.hash)) {
+            seen.add(c.hash);
+            merged.push(c);
+          }
+        }
+        merged.sort((a, b) => new Date(b.date) - new Date(a.date));
+        return { commits: merged };
+      }
+      const out = await git(repoPath, args);
+      return { commits: parseCommits(out) };
     } catch (e) {
       return { error: e.message };
     }

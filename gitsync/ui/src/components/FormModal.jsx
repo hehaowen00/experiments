@@ -7,7 +7,7 @@ export default function FormModal(props) {
       <div class={`modal ${props.size || 'modal-md'}`} onClick={(e) => e.stopPropagation()}>
         <div class="modal-header">
           <span>{props.title}</span>
-          <button class="btn btn-ghost btn-sm" onClick={() => props.onClose?.()}>
+          <button class="btn btn-ghost btn-sm" onClick={() => props.onClose?.()} title="Close">
             <Icon name="fa-solid fa-xmark" />
           </button>
         </div>

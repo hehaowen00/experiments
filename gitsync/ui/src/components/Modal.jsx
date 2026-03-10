@@ -1,4 +1,5 @@
 import { createEffect, createSignal, For, Show } from 'solid-js';
+import { createStore } from 'solid-js/store';
 import { applyEditorFontSize, applyUiFontSize } from '../index';
 import t from '../locale';
 import { applyTheme, getStoredThemeId, getThemeList } from '../themes';
@@ -103,15 +104,75 @@ export default function Modal() {
   const [uiFontSize, setUiFontSize] = createSignal(14);
   const [editorFontSize, setEditorFontSize] = createSignal(12);
 
-  // Load font size settings from DB when settings modal opens
+  // Identity management
+  const [identities, setIdentities] = createStore([]);
+  const [editingIdentity, setEditingIdentity] = createSignal(null);
+  const [identityName, setIdentityName] = createSignal('');
+  const [identityEmail, setIdentityEmail] = createSignal('');
+
+  // Load settings and identities when settings modal opens
   createEffect(() => {
     if (modalVisible() && modalType() === 'settings') {
       window.api.getAllSettings().then((s) => {
         if (s.uiFontSize) setUiFontSize(parseInt(s.uiFontSize));
         if (s.editorFontSize) setEditorFontSize(parseInt(s.editorFontSize));
       });
+      window.api.identityList().then((list) => setIdentities(list));
     }
   });
+
+  function resetIdentityForm() {
+    setEditingIdentity(null);
+    setIdentityName('');
+    setIdentityEmail('');
+  }
+
+  async function saveIdentity() {
+    const name = identityName().trim();
+    const email = identityEmail().trim();
+    if (!name || !email) return;
+    if (editingIdentity()) {
+      await window.api.identityUpdate(editingIdentity(), { name, email });
+    } else {
+      await window.api.identityCreate({ name, email });
+    }
+    const list = await window.api.identityList();
+    setIdentities(list);
+    resetIdentityForm();
+  }
+
+  function startEditIdentity(id) {
+    const item = identities.find((i) => i.id === id);
+    if (!item) return;
+    setEditingIdentity(id);
+    setIdentityName(item.name);
+    setIdentityEmail(item.email);
+  }
+
+  async function deleteIdentity(id) {
+    await window.api.identityDelete(id);
+    const list = await window.api.identityList();
+    setIdentities(list);
+    if (editingIdentity() === id) resetIdentityForm();
+  }
+
+  async function importGlobalIdentity() {
+    const global = await window.api.gitGetGlobalIdentity();
+    if (!global.name && !global.email) return;
+    await window.api.identityImport(global);
+    setIdentities(await window.api.identityList());
+  }
+
+  async function importRepoIdentities() {
+    const repos = await window.api.gitRepoList();
+    for (const repo of repos) {
+      const local = await window.api.gitGetLocalIdentity(repo.path);
+      if (local.name && local.email) {
+        await window.api.identityImport(local);
+      }
+    }
+    setIdentities(await window.api.identityList());
+  }
 
   function onKeyDown(e) {
     if (e.key === 'Enter') {
@@ -145,6 +206,7 @@ export default function Modal() {
               <button
                 class="btn btn-ghost btn-sm modal-close-btn"
                 onClick={() => close(null)}
+                title="Close settings"
               >
                 <Icon name="fa-solid fa-xmark" />
               </button>
@@ -225,6 +287,58 @@ export default function Modal() {
                     {(s) => <option value={s}>{s}px</option>}
                   </For>
                 </select>
+              </div>
+            </div>
+            <div class="settings-section">
+              <div class="settings-label">Git Identities</div>
+              <div class="settings-identities-list">
+                <For each={identities}>{(id) => (
+                  <div class="settings-identity-row">
+                    <div class="settings-identity-info">
+                      <span class="settings-identity-name">{id.name}</span>
+                      <span class="settings-identity-email">{id.email}</span>
+                    </div>
+                    <div class="settings-identity-actions">
+                      <button class="btn btn-ghost btn-xs" onClick={() => startEditIdentity(id.id)} title="Edit">
+                        <Icon name="fa-solid fa-pen" />
+                      </button>
+                      <button class="btn btn-ghost btn-xs" onClick={() => deleteIdentity(id.id)} title="Delete">
+                        <Icon name="fa-solid fa-trash" />
+                      </button>
+                    </div>
+                  </div>
+                )}</For>
+              </div>
+              <div class="settings-identity-form">
+                <input
+                  type="text"
+                  class="settings-identity-input"
+                  placeholder="Name"
+                  value={identityName()}
+                  onInput={(e) => setIdentityName(e.target.value)}
+                />
+                <input
+                  type="text"
+                  class="settings-identity-input"
+                  placeholder="Email"
+                  value={identityEmail()}
+                  onInput={(e) => setIdentityEmail(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') saveIdentity(); }}
+                />
+                <button class="btn btn-primary btn-xs" onClick={saveIdentity} disabled={!identityName().trim() || !identityEmail().trim()}>
+                  {editingIdentity() ? 'Update' : 'Add'}
+                </button>
+                <Show when={editingIdentity()}>
+                  <button class="btn btn-ghost btn-xs" onClick={resetIdentityForm}>Cancel</button>
+                </Show>
+              </div>
+              <div class="settings-identity-import">
+                <button class="btn btn-ghost btn-xs" onClick={importGlobalIdentity} title="Import from git global config">
+                  <Icon name="fa-solid fa-globe" /> Import Global
+                </button>
+                <button class="btn btn-ghost btn-xs" onClick={importRepoIdentities} title="Import from all saved repos' local git config">
+                  <Icon name="fa-solid fa-folder-open" /> Import from Repos
+                </button>
               </div>
             </div>
           </Show>

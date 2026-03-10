@@ -1,4 +1,4 @@
-import { Show, For } from 'solid-js';
+import { Show, For, createSignal } from 'solid-js';
 import Icon from '../components/Icon';
 import { useWorkspace } from '../context/WorkspaceContext';
 import { GraphCell, parseRefs } from '../utils/graph';
@@ -7,12 +7,24 @@ import { parseDiffFiles, parseDiffLines, DiffLine } from '../utils/diff';
 export default function LogPanel() {
   const ws = useWorkspace();
   let logPanelRef;
+  let searchTimer;
 
   function onLogScroll(e) {
     const el = e.target;
     if (el.scrollHeight - el.scrollTop - el.clientHeight < 200) {
       ws.loadMoreLog();
     }
+  }
+
+  function onSearchInput(value) {
+    ws.setLogSearch(value);
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => ws.loadLog(), 300);
+  }
+
+  function clearSearch() {
+    ws.setLogSearch('');
+    ws.loadLog();
   }
 
   return (
@@ -29,7 +41,23 @@ export default function LogPanel() {
             <option value={b.name}>{b.name}{b.current ? ' *' : ''}</option>
           )}</For>
         </select>
-        <button class="btn btn-ghost btn-xs" onClick={ws.loadLog}>
+        <div class="git-log-search">
+          <Icon name="fa-solid fa-magnifying-glass" class="git-log-search-icon" />
+          <input
+            type="text"
+            class="git-log-search-input"
+            placeholder="Search hash, author, message..."
+            value={ws.logSearch()}
+            onInput={(e) => onSearchInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') { clearTimeout(searchTimer); ws.loadLog(); } }}
+          />
+          <Show when={ws.logSearch()}>
+            <button class="btn btn-ghost btn-xs git-log-search-clear" onClick={clearSearch} title="Clear search">
+              <Icon name="fa-solid fa-xmark" />
+            </button>
+          </Show>
+        </div>
+        <button class="btn btn-ghost btn-xs" onClick={ws.loadLog} title="Refresh log">
           <Icon name="fa-solid fa-rotate" />
         </button>
       </div>

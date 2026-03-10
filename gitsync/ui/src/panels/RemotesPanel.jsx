@@ -10,7 +10,7 @@ export default function RemotesPanel() {
       <div class="git-section">
         <div class="git-section-header">
           <span>Remotes</span>
-          <button class="btn btn-ghost btn-xs" onClick={ws.addRemote}>
+          <button class="btn btn-ghost btn-xs" onClick={ws.addRemote} title="Add remote">
             <Icon name="fa-solid fa-plus" /> Add
           </button>
         </div>
@@ -21,7 +21,7 @@ export default function RemotesPanel() {
           <div class="git-remote-item">
             <div class="git-remote-name">{r.name}</div>
             <div class="git-remote-urls">
-              <div class="git-remote-url" onClick={() => ws.editRemoteUrl(r.name, r.fetch)}>
+              <div class="git-remote-url" onClick={() => ws.editRemoteUrl(r.name, r.fetch)} title="Click to edit URL">
                 <span class="git-remote-url-label">fetch</span>
                 <span class="git-remote-url-value">{r.fetch}</span>
               </div>
@@ -32,7 +32,7 @@ export default function RemotesPanel() {
                 </div>
               </Show>
             </div>
-            <button class="btn btn-ghost btn-xs btn-danger-hover" onClick={() => ws.removeRemote(r.name)} title="Remove">
+            <button class="btn btn-ghost btn-xs btn-danger-hover" onClick={() => ws.removeRemote(r.name)} title={`Remove remote ${r.name}`}>
               <Icon name="fa-solid fa-trash" />
             </button>
           </div>
@@ -42,10 +42,10 @@ export default function RemotesPanel() {
       <div class="git-section" style={{ 'margin-top': '16px' }}>
         <div class="git-section-header">
           <span>Local Branches</span>
-          <button class="btn btn-ghost btn-xs" onClick={ws.createBranch}>
+          <button class="btn btn-ghost btn-xs" onClick={ws.createBranch} title="Create new branch">
             <Icon name="fa-solid fa-plus" /> New
           </button>
-          <button class="btn btn-ghost btn-xs" onClick={ws.loadBranches}>
+          <button class="btn btn-ghost btn-xs" onClick={ws.loadBranches} title="Refresh branches">
             <Icon name="fa-solid fa-rotate" />
           </button>
         </div>
@@ -60,7 +60,7 @@ export default function RemotesPanel() {
               <button class="btn btn-ghost btn-xs git-branch-action" onClick={() => ws.doRebase(b.name)} title={`Rebase ${ws.status.branch} onto ${b.name}`}>
                 <Icon name="fa-solid fa-arrow-right-arrow-left" />
               </button>
-              <button class="btn btn-ghost btn-xs git-branch-checkout" onClick={() => ws.checkoutBranch(b.name)} title="Checkout">
+              <button class="btn btn-ghost btn-xs git-branch-checkout" onClick={() => ws.checkoutBranch(b.name)} title={`Checkout ${b.name}`}>
                 <Icon name="fa-solid fa-right-to-bracket" />
               </button>
             </Show>
@@ -84,7 +84,7 @@ export default function RemotesPanel() {
               <button class="btn btn-ghost btn-xs git-branch-action" onClick={() => ws.doRebase(b.name)} title={`Rebase ${ws.status.branch} onto ${shortName}`}>
                 <Icon name="fa-solid fa-arrow-right-arrow-left" />
               </button>
-              <button class="btn btn-ghost btn-xs git-branch-checkout" onClick={() => ws.checkoutRemoteBranch(b.name)} title="Checkout to local">
+              <button class="btn btn-ghost btn-xs git-branch-checkout" onClick={() => ws.checkoutRemoteBranch(b.name)} title={`Checkout ${shortName} to local`}>
                 <Icon name="fa-solid fa-download" />
               </button>
             </div>

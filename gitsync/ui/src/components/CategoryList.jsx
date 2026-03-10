@@ -39,10 +39,10 @@ export default function CategoryList(props) {
                 <Icon name={cat.collapsed ? 'fa-solid fa-caret-right' : 'fa-solid fa-caret-down'} />
                 <span class="category-name">{cat.name}</span>
                 <div class="category-actions">
-                  <button class="btn btn-ghost btn-sm" onClick={(e) => props.onRenameCategory?.(e, cat.id, cat.name)}>
+                  <button class="btn btn-ghost btn-sm" onClick={(e) => props.onRenameCategory?.(e, cat.id, cat.name)} title="Rename category">
                     <Icon name="fa-solid fa-pen" /> Rename
                   </button>
-                  <button class="btn btn-danger btn-sm" onClick={(e) => props.onRemoveCategory?.(e, cat.id, cat.name)}>
+                  <button class="btn btn-danger btn-sm" onClick={(e) => props.onRemoveCategory?.(e, cat.id, cat.name)} title="Delete category">
                     <Icon name="fa-solid fa-trash" /> Delete
                   </button>
                 </div>

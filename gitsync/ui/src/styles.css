@@ -26,6 +26,29 @@
   background: transparent;
 }
 
+.custom-tooltip {
+  position: fixed;
+  z-index: 10000;
+  padding: 4px 8px;
+  background: var(--surface2);
+  color: var(--text);
+  font-size: var(--ui-font-size-xs);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  pointer-events: none;
+  opacity: 0;
+  white-space: nowrap;
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: opacity 0.1s;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.custom-tooltip.visible {
+  opacity: 1;
+}
+
 button,
 label,
 h1,
@@ -348,6 +371,74 @@ select {
   font-size: var(--ui-font-size);
   cursor: pointer;
   outline: none;
+}
+
+.settings-identities-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.settings-identity-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.settings-identity-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.settings-identity-name {
+  font-size: var(--ui-font-size);
+  color: var(--text);
+  font-weight: 500;
+}
+
+.settings-identity-email {
+  font-size: var(--ui-font-size-sm);
+  color: var(--text-dim);
+}
+
+.settings-identity-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.settings-identity-form {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.settings-identity-input {
+  flex: 1;
+  padding: 6px 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: var(--ui-font-size);
+  outline: none;
+}
+
+.settings-identity-input:focus {
+  border-color: var(--accent);
+}
+
+.settings-identity-import {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
 }
 
 .landing-section {
@@ -3424,6 +3515,29 @@ tr:hover .db-row-actions .btn:hover {
   white-space: nowrap;
 }
 
+.git-repo-sync {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 6px;
+  font-size: var(--ui-font-size-sm);
+  font-weight: normal;
+}
+
+.git-repo-ahead {
+  color: var(--success);
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.git-repo-behind {
+  color: var(--warning);
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
 /* Git Workspace */
 .git-workspace {
   display: flex;
@@ -3607,6 +3721,22 @@ tr:hover .db-row-actions .btn:hover {
   display: flex;
   align-items: center;
   gap: 2px;
+}
+
+.git-identity-select {
+  padding: 2px 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: var(--ui-font-size-sm);
+  cursor: pointer;
+  outline: none;
+  max-width: 240px;
+}
+
+.git-identity-select:hover {
+  border-color: var(--accent);
 }
 
 .git-operating {
@@ -4196,6 +4326,49 @@ tr:hover .db-row-actions .btn:hover {
   border-color: var(--accent);
 }
 
+.git-log-search {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0 8px;
+  gap: 6px;
+  min-width: 0;
+}
+
+.git-log-search:focus-within {
+  border-color: var(--accent);
+}
+
+.git-log-search-icon {
+  color: var(--text-dim);
+  font-size: var(--ui-font-size-sm);
+  flex-shrink: 0;
+}
+
+.git-log-search-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-size: var(--ui-font-size-sm);
+  font-family: var(--mono);
+  padding: 4px 0;
+  min-width: 0;
+}
+
+.git-log-search-input::placeholder {
+  color: var(--text-dim);
+}
+
+.git-log-search-clear {
+  flex-shrink: 0;
+  padding: 0 2px;
+}
+
 .git-log-panel {
   flex: 1;
   overflow: auto;
@@ -4607,6 +4780,29 @@ tr:hover .db-row-actions .btn:hover {
 
 .git-stash-item:hover .git-stash-actions {
   opacity: 1;
+}
+
+.git-stash-item.selected {
+  background: var(--surface2);
+}
+
+.git-stash-item.selected .git-stash-actions {
+  opacity: 1;
+}
+
+.git-stashes-sidebar {
+  margin-top: auto;
+  border-top: 1px solid var(--border);
+}
+
+.git-stashes-sidebar .git-stash-item {
+  padding: 4px 10px;
+}
+
+.git-stashes-sidebar .git-stash-info {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
 }
 
 .git-stash-diff {

@@ -1,5 +1,5 @@
 import { For, Show, createSignal, onCleanup, onMount } from 'solid-js';
-import { createStore } from 'solid-js/store';
+import { createStore, reconcile } from 'solid-js/store';
 import CategoryList from '../components/CategoryList';
 import FormModal, { FormField } from '../components/FormModal';
 import Icon from '../components/Icon';
@@ -16,6 +16,8 @@ export default function GitClient(props) {
     editingId: null,
     form: { name: '', path: '', categoryId: null, error: '' },
   });
+
+  const [repoStatus, setRepoStatus] = createStore({});
 
   let dragRepoId = null;
   let dragCategoryId = null;
@@ -44,6 +46,21 @@ export default function GitClient(props) {
       window.api.gitCatList(),
     ]);
     setState({ repos, categories: cats });
+    loadRepoStatuses(repos);
+  }
+
+  async function loadRepoStatuses(repos) {
+    for (const repo of repos) {
+      window.api.gitStatus(repo.path).then((result) => {
+        if (!result.error) {
+          setRepoStatus(repo.id, {
+            branch: result.branch,
+            ahead: result.ahead,
+            behind: result.behind,
+          });
+        }
+      });
+    }
   }
 
   function openNewForm() {
@@ -262,10 +279,23 @@ export default function GitClient(props) {
   ];
 
   function renderRepoCard(c) {
+    const st = () => repoStatus[c.id];
     return (
       <ItemCard
         item={c}
-        name={<><Icon name="fa-solid fa-code-branch" /> {c.name}</>}
+        name={<>
+          <Icon name="fa-solid fa-code-branch" /> {c.name}
+          <Show when={st()}>
+            <span class="git-repo-sync">
+              <Show when={st().ahead > 0}>
+                <span class="git-repo-ahead" title={`${st().ahead} ahead`}>{st().ahead}<Icon name="fa-solid fa-arrow-up" /></span>
+              </Show>
+              <Show when={st().behind > 0}>
+                <span class="git-repo-behind" title={`${st().behind} behind`}>{st().behind}<Icon name="fa-solid fa-arrow-down" /></span>
+              </Show>
+            </span>
+          </Show>
+        </>}
         subtitle={shortenPath(c.path)}
         subtitleClass="git-repo-subtitle"
         actions={cardActions.map((a) => ({ ...a, label: a.labelFn ? a.labelFn(c) : a.label }))}
@@ -287,10 +317,10 @@ export default function GitClient(props) {
             value={state.searchQuery}
             onInput={(e) => setState('searchQuery', e.target.value)}
           />
-          <button class="btn btn-primary btn-sm" onClick={openNewForm}>
+          <button class="btn btn-primary btn-sm" onClick={openNewForm} title="Add repository">
             <Icon name="fa-solid fa-plus" /> Add
           </button>
-          <button class="btn btn-ghost btn-sm" onClick={addCategory}>
+          <button class="btn btn-ghost btn-sm" onClick={addCategory} title="Add category">
             <Icon name="fa-solid fa-folder-plus" /> Category
           </button>
           <button class="btn btn-ghost btn-sm" onClick={showSettings} title="Settings">

@@ -101,19 +101,65 @@ export default function ChangesPanel() {
         <Show when={ws.status.files.length === 0 && ws.submodules().length === 0 && !ws.status.loading}>
           <div class="git-empty">Working tree clean</div>
         </Show>
+
+        <div class="git-section git-stashes-sidebar">
+          <div class="git-section-header" onClick={() => ws.toggleSection('stashes')}>
+            <Icon name={ws.collapsedSections().has('stashes') ? 'fa-solid fa-chevron-right' : 'fa-solid fa-chevron-down'} class="git-section-chevron" />
+            <span>Stashes{ws.stashes.list.length > 0 ? ` (${ws.stashes.list.length})` : ''}</span>
+            <button class="btn btn-ghost btn-xs" onClick={(e) => { e.stopPropagation(); ws.doStashPush(); }} title="Stash changes">
+              <Icon name="fa-solid fa-plus" />
+            </button>
+          </div>
+          <Show when={!ws.collapsedSections().has('stashes')}>
+            <Show when={ws.stashes.list.length === 0 && !ws.stashes.loading}>
+              <div class="git-empty">No stashes</div>
+            </Show>
+            <For each={ws.stashes.list}>{(s) => (
+              <div class={`git-stash-item ${ws.stashDetail.ref === s.ref ? 'selected' : ''}`} onClick={() => ws.viewStashDiff(s.ref)}>
+                <div class="git-stash-info">
+                  <span class="git-stash-ref">{s.ref}</span>
+                  <span class="git-stash-message">{s.message}</span>
+                </div>
+                <div class="git-stash-actions">
+                  <button class="btn btn-ghost btn-xs" onClick={(e) => { e.stopPropagation(); ws.doStashApply(s.ref); }} title="Apply">
+                    <Icon name="fa-solid fa-paste" />
+                  </button>
+                  <button class="btn btn-ghost btn-xs" onClick={(e) => { e.stopPropagation(); ws.doStashPop(s.ref); }} title="Pop">
+                    <Icon name="fa-solid fa-arrow-up-from-bracket" />
+                  </button>
+                  <button class="btn btn-ghost btn-xs btn-danger-hover" onClick={(e) => { e.stopPropagation(); ws.doStashDrop(s.ref); }} title="Drop">
+                    <Icon name="fa-solid fa-trash" />
+                  </button>
+                </div>
+              </div>
+            )}</For>
+          </Show>
+        </div>
       </div>
 
       <div class="git-right-panel">
         <div class="git-diff-panel">
-          <Show when={ws.diff.filepath} fallback={
-            <div class="git-empty">Select a file to view diff</div>
+          <Show when={ws.stashDetail.ref} fallback={
+            <Show when={ws.diff.filepath} fallback={
+              <div class="git-empty">Select a file to view diff</div>
+            }>
+              <div class="git-diff-header">
+                <span class="git-diff-filepath">{ws.diff.filepath}</span>
+                <span class="git-diff-label">{ws.diff.staged ? 'Staged' : 'Working'}</span>
+              </div>
+              <pre class="git-diff-content">
+                <For each={parseDiffLines(ws.diff.content)}>{(l) => <DiffLine line={l} />}</For>
+              </pre>
+            </Show>
           }>
             <div class="git-diff-header">
-              <span class="git-diff-filepath">{ws.diff.filepath}</span>
-              <span class="git-diff-label">{ws.diff.staged ? 'Staged' : 'Working'}</span>
+              <span class="git-diff-filepath">{ws.stashDetail.ref}</span>
+              <button class="btn btn-ghost btn-xs" onClick={() => ws.setStashDetail({ ref: null, diff: '' })} title="Close stash diff">
+                <Icon name="fa-solid fa-xmark" />
+              </button>
             </div>
             <pre class="git-diff-content">
-              <For each={parseDiffLines(ws.diff.content)}>{(l) => <DiffLine line={l} />}</For>
+              <For each={parseDiffLines(ws.stashDetail.diff)}>{(l) => <DiffLine line={l} />}</For>
             </pre>
           </Show>
         </div>
