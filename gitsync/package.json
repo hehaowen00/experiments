@@ -1,0 +1,53 @@
+{
+  "name": "gitsync",
+  "version": "1.0.0",
+  "description": "Git client desktop app",
+  "main": "main.js",
+  "scripts": {
+    "build": "cd ui && npx vite build",
+    "start": "cd ui && npx vite build && cd .. && electron .",
+    "dev": "cd ui && npx vite",
+    "dist": "npm run build && electron-builder",
+    "dist:mac": "npm run build && electron-builder --mac",
+    "dist:win": "npm run build && electron-builder --win",
+    "dist:linux": "npm run build && electron-builder --linux"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "build": {
+    "appId": "com.gitsync.app",
+    "productName": "GitSync",
+    "files": [
+      "main.js",
+      "main/**/*",
+      "preload.js",
+      "ui/dist/**/*",
+      "node_modules/**/*"
+    ],
+    "mac": {
+      "target": "dmg"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": "AppImage"
+    },
+    "nsis": {
+      "oneClick": true,
+      "allowToChangeInstallationDirectory": false
+    }
+  },
+  "type": "commonjs",
+  "devDependencies": {
+    "electron": "^40.7.0",
+    "electron-builder": "^26.8.1"
+  },
+  "dependencies": {
+    "@fortawesome/fontawesome-free": "^7.2.0",
+    "better-sqlite3": "^12.6.2",
+    "vite": "^7.3.1",
+    "vite-plugin-solid": "^2.11.10"
+  }
+}

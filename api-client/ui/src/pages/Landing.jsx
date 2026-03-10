@@ -4,6 +4,7 @@ import Icon from '../components/Icon';
 import ItemCard from '../components/ItemCard';
 import Modal, {
   showConfirm,
+  showConfirmTyped,
   showPrompt,
   showSettings,
 } from '../components/Modal';
@@ -28,10 +29,16 @@ export default function Landing(props) {
     if (e.matches) setSidebarOpen(false);
   }
 
+  let searchRef;
+
   function onKeyDown(e) {
     if ((e.metaKey || e.ctrlKey) && e.key === 'b') {
       e.preventDefault();
       setSidebarOpen(!sidebarOpen());
+    }
+    if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
+      e.preventDefault();
+      searchRef?.focus();
     }
   }
 
@@ -93,8 +100,9 @@ export default function Landing(props) {
 
   async function remove(id, name) {
     if (
-      await showConfirm(
+      await showConfirmTyped(
         t.landing.deleteCollectionModal.title(name),
+        name,
         t.landing.deleteCollectionModal.description,
       )
     ) {
@@ -145,8 +153,9 @@ export default function Landing(props) {
 
   async function removeCategory(e, id, name) {
     e.stopPropagation();
-    let future = await showConfirm(
+    let future = await showConfirmTyped(
       t.landing.deleteCategoryModal.title(name),
+      name,
       t.landing.deleteCategoryModal.description,
     );
     if (future) {
@@ -377,6 +386,7 @@ export default function Landing(props) {
             </button>
           </Show>
           <input
+            ref={searchRef}
             type="text"
             placeholder={t.landing.searchPlaceholder}
             value={searchQuery()}

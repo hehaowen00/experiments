@@ -1,6 +1,6 @@
 import { createContext, onCleanup, onMount, useContext } from 'solid-js';
 import { createStore, produce, reconcile } from 'solid-js/store';
-import { showConfirm, showPrompt, showTextarea } from '../components/Modal';
+import { showConfirm, showConfirmTyped, showPrompt, showTextarea } from '../components/Modal';
 import {
   buildUrlWithParams,
   findItem,
@@ -493,7 +493,7 @@ export function CollectionProvider(props) {
   async function handleDelete(id) {
     const item = findItem(state.collection.items, id);
     if (!item) return;
-    if (await showConfirm(t.collection.deleteItemModal.title(item.name))) {
+    if (await showConfirmTyped(t.collection.deleteItemModal.title(item.name), item.name)) {
       setState(
         'collection',
         produce((col) => {

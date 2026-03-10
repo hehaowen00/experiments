@@ -4,7 +4,7 @@ import CategoryList from '../components/CategoryList';
 import FormModal, { FormField } from '../components/FormModal';
 import Icon from '../components/Icon';
 import ItemCard from '../components/ItemCard';
-import { showAlert, showConfirm, showPrompt } from '../components/Modal';
+import { showAlert, showConfirm, showConfirmTyped, showPrompt } from '../components/Modal';
 import { generateId } from '../helpers';
 
 export default function DatabaseClient(props) {
@@ -119,7 +119,7 @@ export default function DatabaseClient(props) {
 
   async function deleteConnection(e, id, name) {
     e.stopPropagation();
-    if (await showConfirm(`Delete "${name}"?`, 'This cannot be undone.')) {
+    if (await showConfirmTyped(`Delete "${name}"?`, name, 'This cannot be undone.')) {
       await window.api.dbConnDelete(id);
       loadList();
     }
@@ -152,7 +152,7 @@ export default function DatabaseClient(props) {
 
   async function removeCategory(e, id, name) {
     e.stopPropagation();
-    if (await showConfirm(`Delete category "${name}"?`, 'Connections will be uncategorized.')) {
+    if (await showConfirmTyped(`Delete category "${name}"?`, name, 'Connections will be uncategorized.')) {
       await window.api.dbCatDelete(id);
       loadList();
     }

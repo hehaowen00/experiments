@@ -4,7 +4,7 @@ import CategoryList from '../components/CategoryList';
 import FormModal, { FormField } from '../components/FormModal';
 import Icon from '../components/Icon';
 import ItemCard from '../components/ItemCard';
-import { showAlert, showConfirm, showConfirmTyped, showPrompt } from '../components/Modal';
+import { showAlert, showConfirm, showConfirmTyped, showPrompt, showSettings } from '../components/Modal';
 
 export default function GitClient(props) {
   const [state, setState] = createStore({
@@ -229,11 +229,6 @@ export default function GitClient(props) {
     <div class="git-client" style={props.style}>
       <div class="landing-main" style={{ display: '' }}>
         <div class="landing-toolbar">
-          <Show when={!props.sidebarOpen}>
-            <button class="btn btn-ghost btn-sm" onClick={props.onToggleSidebar}>
-              <Icon name="fa-solid fa-bars" />
-            </button>
-          </Show>
           <input
             ref={searchRef}
             type="text"
@@ -246,6 +241,9 @@ export default function GitClient(props) {
           </button>
           <button class="btn btn-ghost btn-sm" onClick={addCategory}>
             <Icon name="fa-solid fa-folder-plus" /> Category
+          </button>
+          <button class="btn btn-ghost btn-sm" onClick={showSettings} title="Settings">
+            <Icon name="fa-solid fa-gear" />
           </button>
         </div>
 
