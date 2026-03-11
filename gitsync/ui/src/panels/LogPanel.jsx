@@ -118,7 +118,7 @@ export default function LogPanel() {
                       {c.subject}
                     </td>
                     <td class="git-log-author">{c.author}</td>
-                    <td class="git-log-date">{new Date(c.date).toLocaleDateString()}</td>
+                    <td class="git-log-date">{new Date(c.date).toLocaleString()}</td>
                   </tr>
                 );
               }}</For>

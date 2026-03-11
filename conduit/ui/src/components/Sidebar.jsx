@@ -30,6 +30,7 @@ function TreeItems(props) {
               }
               onClick={() => props.onSelect(item.id)}
               onDragStart={(e) => actions.onDragStart(e, item.id)}
+              onDragEnd={(e) => actions.onDragEnd(e)}
               onDragOver={(e) => actions.onDragOver(e, item.id, false)}
               onDragLeave={(e) => actions.onDragLeave(e)}
               onDrop={(e) => actions.onDrop(e, item.id)}
@@ -70,6 +71,7 @@ function TreeItems(props) {
               draggable="true"
               onClick={() => actions.toggleFolder(item.id)}
               onDragStart={(e) => actions.onDragStart(e, item.id)}
+              onDragEnd={(e) => actions.onDragEnd(e)}
               onDragOver={(e) => actions.onDragOver(e, item.id, true)}
               onDragLeave={(e) => actions.onDragLeave(e)}
               onDrop={(e) => actions.onDrop(e, item.id)}

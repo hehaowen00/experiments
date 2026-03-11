@@ -79,8 +79,15 @@ export function WorkspaceProvider(props) {
     if (result.error) {
       setStatus({ loading: false, error: result.error });
     } else {
-      setStatus('files', reconcile(result.files));
-      setStatus({ branch: result.branch, upstream: result.upstream, ahead: result.ahead, behind: result.behind, loading: false, error: null });
+      setStatus(reconcile({
+        branch: result.branch,
+        upstream: result.upstream,
+        ahead: result.ahead,
+        behind: result.behind,
+        files: result.files,
+        loading: false,
+        error: null,
+      }));
     }
     if (subResult.submodules) setSubmodules(subResult.submodules);
     setOpState(opResult.state);

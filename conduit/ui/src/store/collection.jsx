@@ -635,6 +635,11 @@ export function CollectionProvider(props) {
     e.dataTransfer.setData('text/plain', id);
   }
 
+  function onDragEnd(e) {
+    e.target.classList.remove('dragging');
+    dragItemId = null;
+  }
+
   function onDragOver(e, targetId, isFolder) {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
@@ -1285,6 +1290,7 @@ export function CollectionProvider(props) {
     importRequests,
     renameCollection,
     onDragStart,
+    onDragEnd,
     onDragOver,
     onDragLeave,
     onDrop,

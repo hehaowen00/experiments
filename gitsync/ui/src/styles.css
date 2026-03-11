@@ -4507,9 +4507,10 @@ th.git-log-graph {
 }
 
 .git-log-date {
-  width: 100px;
   color: var(--text-dim);
   font-size: var(--ui-font-size-xs);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 .git-log-loading-more,
