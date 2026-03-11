@@ -425,14 +425,6 @@ export default function DatabaseClient(props) {
             </FormField>
           </Show>
 
-          <Show when={state.categories.length > 0}>
-            <FormField label="Category">
-              <select value={state.form.categoryId || ''} onChange={(e) => setState('form', 'categoryId', e.target.value || null)} class="body-type-select">
-                <option value="">None</option>
-                <For each={state.categories}>{(cat) => <option value={cat.id}>{cat.name}</option>}</For>
-              </select>
-            </FormField>
-          </Show>
         </FormModal>
       </Show>
     </div>

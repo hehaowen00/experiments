@@ -333,7 +333,6 @@ export default function Landing(props) {
       {sidebarOpen() && (
         <div class="landing-sidebar">
           <div class="landing-sidebar-header">
-            <span class="landing-sidebar-title">{t.app.name}</span>
             <button
               class="btn btn-ghost btn-sm landing-sidebar-close"
               onClick={() => setSidebarOpen(false)}

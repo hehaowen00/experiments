@@ -1,20 +1,26 @@
 import { Show, For, createSignal } from 'solid-js';
 import Icon from '../components/Icon';
 import FileTree from '../components/FileTree';
+import ResizeHandle from '../components/ResizeHandle';
 import { useWorkspace } from '../context/WorkspaceContext';
 import { stagedFiles, unstagedFiles, untrackedFiles } from '../utils/status';
 import { parseDiffLines, DiffLine } from '../utils/diff';
 
 export default function ChangesPanel() {
   const ws = useWorkspace();
+  const [filesWidth, setFilesWidth] = createSignal(320);
 
   const staged = () => stagedFiles(ws.status.files);
   const unstaged = () => unstagedFiles(ws.status.files);
   const untracked = () => untrackedFiles(ws.status.files);
 
+  function onResizeFiles(delta) {
+    setFilesWidth((w) => Math.max(200, Math.min(w + delta, 600)));
+  }
+
   return (
     <div class="git-changes-panel">
-      <div class="git-files-panel">
+      <div class="git-files-panel" style={{ width: `${filesWidth()}px` }}>
         <Show when={staged().length > 0}>
           <div class="git-section">
             <div class="git-section-header" onClick={() => ws.toggleSection('staged')}>
@@ -136,6 +142,8 @@ export default function ChangesPanel() {
           </Show>
         </div>
       </div>
+
+      <ResizeHandle direction="col" onResize={onResizeFiles} />
 
       <div class="git-right-panel">
         <div class="git-diff-panel">

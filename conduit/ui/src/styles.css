@@ -3499,6 +3499,16 @@ tr:hover .db-row-actions .btn:hover {
   margin-bottom: 6px;
 }
 
+.drop-qr {
+  margin-top: 10px;
+  text-align: center;
+}
+
+.drop-qr img {
+  width: 160px;
+  height: 160px;
+}
+
 .drop-url {
   font-family: var(--font-mono);
   font-size: var(--ui-font-size);

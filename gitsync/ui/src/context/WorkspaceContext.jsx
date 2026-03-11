@@ -1,5 +1,5 @@
 import { createContext, useContext, createSignal, onMount, onCleanup } from 'solid-js';
-import { createStore } from 'solid-js/store';
+import { createStore, reconcile } from 'solid-js/store';
 import { showAlert, showConfirm, showPrompt } from '../components/Modal';
 import { buildGraph } from '../utils/graph';
 import { initHomeDir } from '../utils/path';
@@ -79,7 +79,8 @@ export function WorkspaceProvider(props) {
     if (result.error) {
       setStatus({ loading: false, error: result.error });
     } else {
-      setStatus({ ...result, loading: false, error: null });
+      setStatus('files', reconcile(result.files));
+      setStatus({ branch: result.branch, upstream: result.upstream, ahead: result.ahead, behind: result.behind, loading: false, error: null });
     }
     if (subResult.submodules) setSubmodules(subResult.submodules);
     setOpState(opResult.state);

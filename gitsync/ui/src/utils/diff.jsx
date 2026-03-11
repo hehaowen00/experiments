@@ -34,10 +34,9 @@ export function parseDiffLines(raw) {
     } else if (line.startsWith('-') && !line.startsWith('---')) {
       result.push({ cls: 'git-diff-line git-diff-del', text: line, oldN: oldNum, newN: '' });
       oldNum++;
-    } else if (line.startsWith('diff ')) {
-      result.push({ cls: 'git-diff-line git-diff-header', text: line, oldN: '', newN: '' });
-    } else if (line.startsWith('---') || line.startsWith('+++') || line.startsWith('index ') || line.startsWith('new file') || line.startsWith('deleted file') || line.startsWith('similarity') || line.startsWith('rename') || line.startsWith('old mode') || line.startsWith('new mode')) {
-      result.push({ cls: 'git-diff-line git-diff-header', text: line, oldN: '', newN: '' });
+    } else if (line.startsWith('diff ') || line.startsWith('---') || line.startsWith('+++') || line.startsWith('index ') || line.startsWith('new file') || line.startsWith('deleted file') || line.startsWith('similarity') || line.startsWith('rename') || line.startsWith('old mode') || line.startsWith('new mode')) {
+      // Skip diff header metadata — filename already shown in the UI
+      continue;
     } else {
       result.push({ cls: 'git-diff-line', text: line, oldN: oldNum, newN: newNum });
       oldNum++;

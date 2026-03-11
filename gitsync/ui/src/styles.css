@@ -3836,14 +3836,37 @@ tr:hover .db-row-actions .btn:hover {
   overflow: hidden;
 }
 
+/* Resize handles for split panes */
+.git-resize-handle {
+  flex-shrink: 0;
+  background: transparent;
+  position: relative;
+  z-index: 10;
+  transition: background 0.15s;
+}
+
+.git-resize-handle:hover,
+.git-resize-handle.active {
+  background: var(--accent);
+}
+
+.git-resize-handle-col {
+  width: 4px;
+  cursor: col-resize;
+}
+
+.git-resize-handle-row {
+  height: 4px;
+  cursor: row-resize;
+}
+
 .git-changes-panel {
   display: flex;
   height: 100%;
 }
 
 .git-files-panel {
-  width: 320px;
-  min-width: 240px;
+  min-width: 200px;
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
@@ -4385,7 +4408,7 @@ tr:hover .db-row-actions .btn:hover {
 .git-log-table thead {
   position: sticky;
   top: 0;
-  z-index: 1;
+  z-index: 2;
 }
 
 .git-log-table th {
@@ -4413,10 +4436,17 @@ tr:hover .db-row-actions .btn:hover {
 
 .git-log-graph,
 .git-log-graph-cell {
-  padding: 0 !important;
   overflow: visible;
   border-bottom: none !important;
   position: relative;
+}
+
+.git-log-graph-cell {
+  padding: 0 !important;
+}
+
+th.git-log-graph {
+  padding: 6px 10px 6px 10px;
 }
 
 .git-graph-svg {
@@ -4511,8 +4541,6 @@ tr:hover .db-row-actions .btn:hover {
 }
 
 .git-commit-detail {
-  border-left: 1px solid var(--border);
-  flex: 1;
   min-width: 0;
   overflow: auto;
   display: flex;
@@ -4527,8 +4555,6 @@ tr:hover .db-row-actions .btn:hover {
     min-height: 0;
   }
   .git-commit-detail {
-    border-left: none;
-    border-top: 1px solid var(--border);
     min-height: 0;
   }
 }

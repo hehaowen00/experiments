@@ -1,5 +1,6 @@
 import { Show, For, createSignal } from 'solid-js';
 import Icon from '../components/Icon';
+import ResizeHandle from '../components/ResizeHandle';
 import { useWorkspace } from '../context/WorkspaceContext';
 import { GraphCell, parseRefs } from '../utils/graph';
 import { parseDiffFiles, parseDiffLines, DiffLine } from '../utils/diff';
@@ -7,7 +8,10 @@ import { parseDiffFiles, parseDiffLines, DiffLine } from '../utils/diff';
 export default function LogPanel() {
   const ws = useWorkspace();
   let logPanelRef;
+  let splitRef;
   let searchTimer;
+  const [logFlex, setLogFlex] = createSignal(1);
+  const [detailFlex, setDetailFlex] = createSignal(1);
 
   function onLogScroll(e) {
     const el = e.target;
@@ -25,6 +29,20 @@ export default function LogPanel() {
   function clearSearch() {
     ws.setLogSearch('');
     ws.loadLog();
+  }
+
+  function onResizeLog(delta) {
+    if (!splitRef) return;
+    const total = splitRef.offsetWidth;
+    if (total <= 0) return;
+    const logRatio = logFlex();
+    const detailRatio = detailFlex();
+    const sum = logRatio + detailRatio;
+    const pxPerUnit = total / sum;
+    const newLog = Math.max(0.2, logRatio + delta / pxPerUnit);
+    const newDetail = Math.max(0.2, detailRatio - delta / pxPerUnit);
+    setLogFlex(newLog);
+    setDetailFlex(newDetail);
   }
 
   return (
@@ -61,8 +79,8 @@ export default function LogPanel() {
           <Icon name="fa-solid fa-rotate" />
         </button>
       </div>
-      <div class="git-log-split">
-        <div class="git-log-panel" ref={logPanelRef} onScroll={onLogScroll}>
+      <div class="git-log-split" ref={splitRef}>
+        <div class="git-log-panel" ref={logPanelRef} onScroll={onLogScroll} style={{ flex: logFlex() }}>
           <Show when={ws.log.loading}>
             <div class="git-empty">Loading...</div>
           </Show>
@@ -115,7 +133,8 @@ export default function LogPanel() {
         </div>
 
         <Show when={ws.commitDetail.hash}>
-          <div class="git-commit-detail">
+          <ResizeHandle direction="col" onResize={onResizeLog} />
+          <div class="git-commit-detail" style={{ flex: detailFlex() }}>
             <div class="git-commit-detail-header">
               <div class="git-commit-detail-meta">
                 <code class="git-commit-detail-hash">{ws.commitDetail.hash?.substring(0, 12)}</code>

@@ -1,5 +1,6 @@
 import { createSignal, For, onCleanup, onMount, Show } from 'solid-js';
 import { createStore } from 'solid-js/store';
+import QRCode from 'qrcode';
 import Icon from '../components/Icon';
 
 export default function Drop(props) {
@@ -14,18 +15,26 @@ export default function Drop(props) {
   });
 
   const serverId = 'drop-main';
+  const [qrDataUrl, setQrDataUrl] = createSignal('');
 
   onMount(async () => {
     const home = await window.api.homeDir();
     setState('savePath', home + '/Downloads');
 
-    window.api.onDropStarted((d) => {
+    window.api.onDropStarted(async (d) => {
       if (d.id !== serverId) return;
       setState({ running: true, ips: d.ips, port: d.port, error: '' });
+      const ip = d.ips.length > 0 ? d.ips[0] : 'localhost';
+      const url = `http://${ip}:${d.port}`;
+      try {
+        const dataUrl = await QRCode.toDataURL(url, { width: 200, margin: 2, color: { dark: '#ffffffee', light: '#00000000' } });
+        setQrDataUrl(dataUrl);
+      } catch (_) {}
     });
     window.api.onDropStopped((d) => {
       if (d.id !== serverId) return;
       setState({ running: false, ips: [], pending: [], error: '' });
+      setQrDataUrl('');
     });
     window.api.onDropPending((d) => {
       if (d.id !== serverId) return;
@@ -150,6 +159,11 @@ export default function Drop(props) {
             </For>
             <Show when={state.ips.length === 0}>
               <div class="drop-url">http://localhost:{state.port}</div>
+            </Show>
+            <Show when={qrDataUrl()}>
+              <div class="drop-qr">
+                <img src={qrDataUrl()} alt="QR Code" />
+              </div>
             </Show>
           </div>
         </Show>
