@@ -619,36 +619,50 @@ function handleCloneNotify(data, res) {
   const remoteName = (peer.name || peerId).replace(/[^a-zA-Z0-9._-]/g, '_').toLowerCase();
   const sshUrl = `ssh://${myPeerId}@${host}:${peerSshPort}/${exportName}`;
 
-  execFile(
-    'git',
-    ['remote', 'add', remoteName, sshUrl],
-    { cwd: repoPath },
-    (err) => {
-      if (err && err.message.includes('already exists')) {
-        // Update the URL if remote already exists
-        execFile(
-          'git',
-          ['remote', 'set-url', remoteName, sshUrl],
-          { cwd: repoPath },
-          () => {},
+  console.log(`[clone-notify] Adding remote "${remoteName}" -> ${sshUrl} on ${repoPath}`);
+
+  // Add or update the remote
+  try {
+    require('child_process').execFileSync(
+      'git', ['remote', 'add', remoteName, sshUrl],
+      { cwd: repoPath, encoding: 'utf8', timeout: 5000 },
+    );
+  } catch (addErr) {
+    if (addErr.message && addErr.message.includes('already exists')) {
+      try {
+        require('child_process').execFileSync(
+          'git', ['remote', 'set-url', remoteName, sshUrl],
+          { cwd: repoPath, encoding: 'utf8', timeout: 5000 },
         );
+      } catch (setErr) {
+        console.error('[clone-notify] Failed to set-url:', setErr.message);
       }
-    },
-  );
+    } else {
+      console.error('[clone-notify] Failed to add remote:', addErr.message);
+    }
+  }
 
   // Configure SSH for this repo
-  execFile(
-    'git',
-    ['config', '--local', 'core.sshCommand', `"${gitSshBin}" connect`],
-    { cwd: repoPath },
-    () => {},
-  );
-  execFile(
-    'git',
-    ['config', '--local', 'ssh.variant', 'ssh'],
-    { cwd: repoPath },
-    () => {},
-  );
+  try {
+    require('child_process').execFileSync(
+      'git', ['config', '--local', 'core.sshCommand', `"${gitSshBin}" connect`],
+      { cwd: repoPath, encoding: 'utf8', timeout: 5000 },
+    );
+    require('child_process').execFileSync(
+      'git', ['config', '--local', 'ssh.variant', 'ssh'],
+      { cwd: repoPath, encoding: 'utf8', timeout: 5000 },
+    );
+  } catch (cfgErr) {
+    console.error('[clone-notify] Failed to configure SSH:', cfgErr.message);
+  }
+
+  // Also set receive.denyCurrentBranch so the peer can push to us
+  try {
+    require('child_process').execFileSync(
+      'git', ['config', '--local', 'receive.denyCurrentBranch', 'updateInstead'],
+      { cwd: repoPath, encoding: 'utf8', timeout: 5000 },
+    );
+  } catch {}
 
   // Link in p2p_peer_repos for dynamic URL updates
   const localRepo = db
@@ -669,8 +683,11 @@ function handleCloneNotify(data, res) {
         'INSERT INTO p2p_peer_repos (id, peer_id, name, remote_path, local_repo_id, remote_name) VALUES (?, ?, ?, ?, ?, ?)',
       ).run(generateKSUID(), peer.id, exportName, exportName, localRepo.id, remoteName);
     }
+  } else {
+    console.error(`[clone-notify] Repo not found in git_repos for path: ${repoPath}`);
   }
 
+  console.log(`[clone-notify] Done. Remote "${remoteName}" added to ${repoPath}`);
   notifyPeersChanged();
   res.end(JSON.stringify({ status: 'ok' }));
 }

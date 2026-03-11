@@ -649,7 +649,7 @@ export function WorkspaceProvider(props) {
 
   // --- Cherry-pick & Drop ---
   async function doCherryPick(hash) {
-    if (!await showConfirm(`Cherry-pick commit ${hash.substring(0, 8)}?`, '')) return;
+    if (!await showConfirm(`Cherry-pick commit ${hash.substring(0, 8)}?`, '', { confirmLabel: 'Cherry-pick', confirmStyle: 'primary' })) return;
     setOperating('Cherry-picking...');
     const result = await window.api.gitCherryPick(repoPath, hash);
     setOperating('');
@@ -661,7 +661,7 @@ export function WorkspaceProvider(props) {
   }
 
   async function doRevert(hash) {
-    if (!await showConfirm(`Revert commit ${hash.substring(0, 8)}?`, 'This creates a new commit that undoes the changes.')) return;
+    if (!await showConfirm(`Revert commit ${hash.substring(0, 8)}?`, 'This creates a new commit that undoes the changes.', { confirmLabel: 'Revert', confirmStyle: 'primary' })) return;
     setOperating('Reverting...');
     const result = await window.api.gitRevert(repoPath, hash);
     setOperating('');
