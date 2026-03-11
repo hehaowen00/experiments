@@ -427,15 +427,39 @@ export function WorkspaceProvider(props) {
     loadLog();
   }
 
+  let lastPushRemote = null;
+
+  async function pickPushRemote() {
+    const remoteResult = await window.api.gitRemoteList(repoPath);
+    const remoteList = remoteResult.remotes || [];
+    if (remoteList.length === 0) return null;
+    if (remoteList.length === 1) return remoteList[0].name;
+
+    // Sort so last-used remote is first
+    const choices = remoteList.map((r) => ({
+      label: r.name + (r.name === lastPushRemote ? ' (last used)' : ''),
+      value: r.name,
+      description: r.fetch,
+    }));
+    if (lastPushRemote) {
+      const idx = choices.findIndex((c) => c.value === lastPushRemote);
+      if (idx > 0) choices.unshift(choices.splice(idx, 1)[0]);
+    }
+
+    return await showChoice('Push to Remote', 'Select which remote to push to.', choices);
+  }
+
   async function doPush() {
+    const remote = await pickPushRemote();
+    if (!remote) return;
+    lastPushRemote = remote;
+
     setOperating('Pushing...');
     let result;
     if (!status.upstream && status.branch) {
-      const remoteResult = await window.api.gitRemoteList(repoPath);
-      const defaultRemote = remoteResult.remotes?.[0]?.name || 'origin';
-      result = await window.api.gitPushSetUpstream(repoPath, defaultRemote, status.branch);
+      result = await window.api.gitPushSetUpstream(repoPath, remote, status.branch);
     } else {
-      result = await window.api.gitPush(repoPath);
+      result = await window.api.gitPush(repoPath, remote);
     }
     setOperating('');
     if (result.error) {
@@ -451,19 +475,19 @@ export function WorkspaceProvider(props) {
         );
         if (choice === 'pull-rebase') {
           await doPull('rebase');
-          const retry = await window.api.gitPush(repoPath);
+          const retry = await window.api.gitPush(repoPath, remote);
           if (retry.error) showAlert('Push Failed', retry.error);
           else setOutput(retry.output || 'Push complete');
           await refresh();
         } else if (choice === 'pull-merge') {
           await doPull('merge');
-          const retry = await window.api.gitPush(repoPath);
+          const retry = await window.api.gitPush(repoPath, remote);
           if (retry.error) showAlert('Push Failed', retry.error);
           else setOutput(retry.output || 'Push complete');
           await refresh();
         } else if (choice === 'force') {
           setOperating('Force pushing...');
-          const retry = await window.api.gitPushForce(repoPath);
+          const retry = await window.api.gitPushForce(repoPath, remote);
           setOperating('');
           if (retry.error) showAlert('Force Push Failed', retry.error);
           else setOutput(retry.output || 'Force push complete');
@@ -632,6 +656,18 @@ export function WorkspaceProvider(props) {
     if (result.error) showAlert('Cherry-pick Failed', result.error);
     else if (result.conflict) setOutput(result.output || 'Cherry-pick conflicts detected — resolve and commit');
     else setOutput(result.output || 'Cherry-pick complete');
+    await refresh();
+    loadLog();
+  }
+
+  async function doRevert(hash) {
+    if (!await showConfirm(`Revert commit ${hash.substring(0, 8)}?`, 'This creates a new commit that undoes the changes.')) return;
+    setOperating('Reverting...');
+    const result = await window.api.gitRevert(repoPath, hash);
+    setOperating('');
+    if (result.error) showAlert('Revert Failed', result.error);
+    else if (result.conflict) setOutput(result.output || 'Revert conflicts detected — resolve and commit');
+    else setOutput(result.output || 'Revert complete');
     await refresh();
     loadLog();
   }
@@ -893,7 +929,7 @@ export function WorkspaceProvider(props) {
     addRemote, removeRemote, editRemoteUrl,
     checkoutBranch, checkoutRemoteBranch, createBranch,
     doMerge, doMergeAbort, doRebase, doRebaseContinue, doRebaseAbort,
-    doCherryPick, doDropCommit, doDeleteBranch, doRenameBranch,
+    doCherryPick, doRevert, doDropCommit, doDeleteBranch, doRenameBranch,
     doStashPush, doStashPop, doStashApply, doStashDrop, viewStashDiff,
     initSubmodule, openSubmodule, selectCommit,
     onFileContextMenu, onFolderContextMenu, dismissCtxMenu,

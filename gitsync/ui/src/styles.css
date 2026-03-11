@@ -2197,6 +2197,21 @@ select {
   font-size: var(--ui-font-size);
 }
 
+.modal-settings {
+  width: 720px;
+  height: 560px;
+  max-width: 90vw;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.modal-settings .settings-tab-content {
+  flex: 1;
+  overflow-y: auto;
+}
+
 /* Structured modal (header / body / footer) */
 .modal-lg {
   width: 600px;

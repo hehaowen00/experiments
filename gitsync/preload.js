@@ -54,8 +54,8 @@ contextBridge.exposeInMainWorld('api', {
   gitResetSoftTo: (repoPath, hash) => ipcRenderer.invoke('git:resetSoftTo', repoPath, hash),
   gitLog: (repoPath, count, allBranches, branchName, skip, search) => ipcRenderer.invoke('git:log', repoPath, count, allBranches, branchName, skip, search),
   gitPull: (repoPath, strategy) => ipcRenderer.invoke('git:pull', repoPath, strategy),
-  gitPush: (repoPath) => ipcRenderer.invoke('git:push', repoPath),
-  gitPushForce: (repoPath) => ipcRenderer.invoke('git:pushForce', repoPath),
+  gitPush: (repoPath, remote) => ipcRenderer.invoke('git:push', repoPath, remote),
+  gitPushForce: (repoPath, remote) => ipcRenderer.invoke('git:pushForce', repoPath, remote),
   gitPushSetUpstream: (repoPath, remote, branch) => ipcRenderer.invoke('git:pushSetUpstream', repoPath, remote, branch),
   gitFetch: (repoPath) => ipcRenderer.invoke('git:fetch', repoPath),
   gitRemoteList: (repoPath) => ipcRenderer.invoke('git:remoteList', repoPath),
@@ -90,6 +90,7 @@ contextBridge.exposeInMainWorld('api', {
   gitRebaseAbort: (repoPath) => ipcRenderer.invoke('git:rebaseAbort', repoPath),
   gitCherryPick: (repoPath, hash) => ipcRenderer.invoke('git:cherryPick', repoPath, hash),
   gitDropCommit: (repoPath, hash) => ipcRenderer.invoke('git:dropCommit', repoPath, hash),
+  gitRevert: (repoPath, hash) => ipcRenderer.invoke('git:revert', repoPath, hash),
   gitBranchDelete: (repoPath, branch, force) => ipcRenderer.invoke('git:branchDelete', repoPath, branch, force),
   gitBranchRename: (repoPath, oldName, newName) => ipcRenderer.invoke('git:branchRename', repoPath, oldName, newName),
   gitOperationState: (repoPath) => ipcRenderer.invoke('git:operationState', repoPath),
@@ -134,7 +135,7 @@ contextBridge.exposeInMainWorld('api', {
   p2pGetSharedRepos: () => ipcRenderer.invoke('p2p:getSharedRepos'),
   p2pSetRepoShared: (repoId, shared) => ipcRenderer.invoke('p2p:setRepoShared', repoId, shared),
   p2pFetchPeerRepos: (peerId) => ipcRenderer.invoke('p2p:fetchPeerRepos', peerId),
-  p2pCloneFromPeer: (peerId, remotePath, repoName) => ipcRenderer.invoke('p2p:cloneFromPeer', peerId, remotePath, repoName),
+  p2pCloneFromPeer: (peerId, remotePath, repoName, originUrl) => ipcRenderer.invoke('p2p:cloneFromPeer', peerId, remotePath, repoName, originUrl),
   p2pAddPeerRemote: (repoPath, peerId, remotePath, remoteName) => ipcRenderer.invoke('p2p:addPeerRemote', repoPath, peerId, remotePath, remoteName),
   onP2pPeersChanged: (cb) => {
     const handler = () => cb();

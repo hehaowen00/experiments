@@ -278,7 +278,7 @@ export default function Modal() {
   return (
     <Show when={modalVisible()}>
       <div class="modal-overlay visible">
-        <div class="modal">
+        <div class={`modal${modalType() === 'settings' ? ' modal-settings' : ''}`}>
           <div class="modal-title-row">
             <div class="modal-title">{modalTitle()}</div>
             <Show when={modalType() === 'settings'}>

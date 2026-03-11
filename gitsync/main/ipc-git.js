@@ -264,7 +264,11 @@ function register(mainWindow) {
       const fs = require('fs');
       const files = out.split('\n').filter(Boolean).map(line => {
         const xy = line.substring(0, 2);
-        const filepath = line.substring(3);
+        let filepath = line.substring(3);
+        // Git quotes paths with spaces or special characters
+        if (filepath.startsWith('"') && filepath.endsWith('"')) {
+          filepath = filepath.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+        }
         const fullPath = path.join(repoPath, filepath);
         const isGitRepo = fs.existsSync(path.join(fullPath, '.git'));
         return { index: xy[0], working: xy[1], path: filepath, isGitRepo };
@@ -478,9 +482,11 @@ function register(mainWindow) {
     }
   });
 
-  ipcMain.handle('git:push', async (_, repoPath) => {
+  ipcMain.handle('git:push', async (_, repoPath, remote) => {
     try {
-      const out = await git(repoPath, ['push']);
+      const args = ['push'];
+      if (remote) args.push(remote);
+      const out = await git(repoPath, args);
       return { ok: true, output: out };
     } catch (e) {
       const msg = e.message || '';
@@ -492,9 +498,11 @@ function register(mainWindow) {
     }
   });
 
-  ipcMain.handle('git:pushForce', async (_, repoPath) => {
+  ipcMain.handle('git:pushForce', async (_, repoPath, remote) => {
     try {
-      const out = await git(repoPath, ['push', '--force-with-lease']);
+      const args = ['push', '--force-with-lease'];
+      if (remote) args.push(remote);
+      const out = await git(repoPath, args);
       return { ok: true, output: out };
     } catch (e) {
       return { error: e.message };
@@ -718,6 +726,19 @@ function register(mainWindow) {
       return { ok: true, output: out };
     } catch (e) {
       if (e.message.includes('CONFLICT') || e.message.includes('could not apply')) {
+        return { ok: false, conflict: true, output: e.message };
+      }
+      return { error: e.message };
+    }
+  });
+
+  // --- Revert commit ---
+  ipcMain.handle('git:revert', async (_, repoPath, hash) => {
+    try {
+      const out = await git(repoPath, ['revert', '--no-edit', hash]);
+      return { ok: true, output: out };
+    } catch (e) {
+      if (e.message.includes('CONFLICT') || e.message.includes('could not revert')) {
         return { ok: false, conflict: true, output: e.message };
       }
       return { error: e.message };

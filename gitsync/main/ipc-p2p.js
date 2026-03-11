@@ -552,19 +552,29 @@ function handleGetRepos(remotePeerId, res) {
 
   const repos = db
     .prepare(
-      `SELECT r.name FROM git_repos r
+      `SELECT r.name, r.path FROM git_repos r
        INNER JOIN p2p_shared_repos s ON s.repo_id = r.id`,
     )
     .all();
 
-  res.end(
-    JSON.stringify({
-      repos: repos.map((r) => ({
-        name: r.name,
-        exportName: r.name.replace(/[^a-zA-Z0-9._-]/g, '_'),
-      })),
-    }),
-  );
+  // Include origin URL so cloners can set up the same upstream
+  const repoData = repos.map((r) => {
+    let originUrl = null;
+    try {
+      const out = require('child_process').execFileSync(
+        'git', ['remote', 'get-url', 'origin'],
+        { cwd: r.path, encoding: 'utf8', timeout: 5000 },
+      ).trim();
+      if (out) originUrl = out;
+    } catch {}
+    return {
+      name: r.name,
+      exportName: r.name.replace(/[^a-zA-Z0-9._-]/g, '_'),
+      originUrl,
+    };
+  });
+
+  res.end(JSON.stringify({ repos: repoData }));
 }
 
 // When a peer clones our repo, they notify us so we can add them as a remote.
@@ -1022,7 +1032,7 @@ function register(win) {
         }
       }
 
-      // Return repos with local clone info
+      // Return repos with local clone info and origin URLs
       const updatedRows = db
         .prepare(
           `SELECT pr.remote_path as "exportName", pr.name, pr.local_repo_id,
@@ -1032,6 +1042,12 @@ function register(win) {
            WHERE pr.peer_id = ?`,
         )
         .all(peerRow.id);
+
+      // Attach origin URLs from the peer's response
+      const originMap = new Map((result.repos || []).map(r => [r.exportName, r.originUrl]));
+      for (const row of updatedRows) {
+        row.originUrl = originMap.get(row.exportName) || null;
+      }
 
       return { repos: updatedRows };
     } catch (err) {
@@ -1050,7 +1066,7 @@ function register(win) {
   // Clone from peer over the embedded SSH server.
   ipcMain.handle(
     'p2p:cloneFromPeer',
-    async (_, peerId, exportName, repoName) => {
+    async (_, peerId, exportName, repoName, originUrl) => {
       const db = store.getDb();
       const peer = db
         .prepare('SELECT * FROM p2p_peers WHERE peer_id = ?')
@@ -1076,11 +1092,14 @@ function register(win) {
       const myPeerId = getOrCreatePeerId();
       const sshUrl = `ssh://${myPeerId}@${host}:${peerSshPort}/${exportName}`;
 
+      // Use peer's display name as remote name instead of 'origin'
+      const peerRemoteName = (peer.name || peerId).replace(/[^a-zA-Z0-9._-]/g, '_').toLowerCase();
+
       try {
         await new Promise((resolve, reject) => {
           execFile(
             'git',
-            ['clone', sshUrl, destDir],
+            ['clone', '--origin', peerRemoteName, sshUrl, destDir],
             { timeout: 120000, env: makeGitSshEnv() },
             (err, stdout, stderr) => {
               if (err) reject(new Error(stderr || err.message));
@@ -1116,8 +1135,20 @@ function register(win) {
           .prepare('SELECT id FROM p2p_peers WHERE peer_id = ?')
           .get(peerId);
         db.prepare(
-          "UPDATE p2p_peer_repos SET local_repo_id = ?, remote_name = 'origin' WHERE peer_id = ? AND remote_path = ?",
-        ).run(repoId, peerRow.id, exportName);
+          'UPDATE p2p_peer_repos SET local_repo_id = ?, remote_name = ? WHERE peer_id = ? AND remote_path = ?',
+        ).run(repoId, peerRemoteName, peerRow.id, exportName);
+
+        // Set up origin pointing to the same upstream (e.g. GitHub)
+        if (originUrl) {
+          await new Promise((resolve) => {
+            execFile(
+              'git',
+              ['remote', 'add', 'origin', originUrl],
+              { cwd: destDir },
+              () => resolve(),
+            );
+          });
+        }
 
         // Auto-share the cloned repo so the peer can pull from us too
         db.prepare(

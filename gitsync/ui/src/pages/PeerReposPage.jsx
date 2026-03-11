@@ -31,6 +31,7 @@ export default function PeerReposPage(props) {
       props.peerId,
       repo.exportName,
       repo.name,
+      repo.originUrl,
     );
     setCloning(null);
     if (result.error) {

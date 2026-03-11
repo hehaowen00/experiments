@@ -229,6 +229,12 @@ export default function LogPanel() {
               }}>
                 <Icon name="fa-solid fa-cherry" /> Cherry-pick
               </button>
+              <button class="file-context-menu-item" onClick={() => {
+                dismissCommitMenu();
+                ws.doRevert(menu.commit.hash);
+              }}>
+                <Icon name="fa-solid fa-rotate-left" /> Revert Commit
+              </button>
               <button class="file-context-menu-item danger" onClick={() => {
                 dismissCommitMenu();
                 ws.doDropCommit(menu.commit.hash);
