@@ -332,14 +332,6 @@ export default function Landing(props) {
     >
       {sidebarOpen() && (
         <div class="landing-sidebar">
-          <div class="landing-sidebar-header">
-            <button
-              class="btn btn-ghost btn-sm landing-sidebar-close"
-              onClick={() => setSidebarOpen(false)}
-            >
-              <Icon name="fa-solid fa-xmark" />
-            </button>
-          </div>
           <div class="landing-sidebar-nav">
             <button
               class={`landing-nav-item ${activeNav() === 'api' ? 'active' : ''}`}
