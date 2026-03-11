@@ -11,6 +11,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: path.resolve(__dirname, 'index-solid.html'),
+        drop: path.resolve(__dirname, 'drop.html'),
       },
     },
   },

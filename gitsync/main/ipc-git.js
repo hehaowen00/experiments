@@ -299,7 +299,7 @@ function register(mainWindow) {
 
   ipcMain.handle('git:stage', async (_, repoPath, filepaths) => {
     try {
-      await git(repoPath, ['add', '--', ...filepaths]);
+      await git(repoPath, ['add', '-f', '--', ...filepaths]);
       return { ok: true };
     } catch (e) {
       return { error: e.message };
@@ -815,6 +815,16 @@ function register(mainWindow) {
     try {
       const out = await git(repoPath, ['stash', 'drop', ref || 'stash@{0}']);
       return { ok: true, output: out };
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
+
+  ipcMain.handle('git:listFiles', async (_, repoPath) => {
+    try {
+      const out = await git(repoPath, ['ls-files', '--others', '--exclude-standard']);
+      const files = out.split('\n').filter(Boolean);
+      return { files };
     } catch (e) {
       return { error: e.message };
     }

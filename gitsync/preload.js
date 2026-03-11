@@ -78,6 +78,7 @@ contextBridge.exposeInMainWorld('api', {
   gitStashPop: (repoPath, ref) => ipcRenderer.invoke('git:stashPop', repoPath, ref),
   gitStashApply: (repoPath, ref) => ipcRenderer.invoke('git:stashApply', repoPath, ref),
   gitStashDrop: (repoPath, ref) => ipcRenderer.invoke('git:stashDrop', repoPath, ref),
+  gitListFiles: (repoPath) => ipcRenderer.invoke('git:listFiles', repoPath),
   gitStashShow: (repoPath, ref) => ipcRenderer.invoke('git:stashShow', repoPath, ref),
 
   // Merge & rebase

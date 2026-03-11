@@ -1,4 +1,4 @@
-import { For, Show } from 'solid-js';
+import { createMemo, For, Show } from 'solid-js';
 import Icon from './Icon';
 import { useWorkspace } from '../context/WorkspaceContext';
 import { statusClass } from '../utils/status';
@@ -6,56 +6,56 @@ import { allFilesInTree } from '../utils/tree';
 import { buildTree, compactTree } from '../utils/tree';
 
 function TreeDir(props) {
-  const { child, dirPath, section, depth, isStaged } = props;
   const ws = useWorkspace();
-  const isUnstaged = section === 'unstaged';
-  const isUntracked = section === 'untracked';
-  const fileCount = allFilesInTree(child).length;
+  const isUnstaged = () => props.section === 'unstaged';
+  const isUntracked = () => props.section === 'untracked';
+  const fileCount = () => allFilesInTree(props.child).length;
+  const hasChangedFiles = () => allFilesInTree(props.child).some(f => !f.clean);
 
   return (
     <div class="git-tree-dir">
       <div
         class="git-tree-dir-header"
-        style={{ 'padding-left': `${depth * 16 + 4}px` }}
-        onClick={() => ws.toggleDir(dirPath)}
-        onContextMenu={(e) => ws.onFolderContextMenu(e, dirPath, child, section)}
+        style={{ 'padding-left': `${props.depth * 16 + 4}px` }}
+        onClick={() => ws.toggleDir(props.dirPath)}
+        onContextMenu={(e) => ws.onFolderContextMenu(e, props.dirPath, props.child, props.section)}
       >
-        <Icon name={ws.expandedDirs().has(dirPath) ? 'fa-solid fa-chevron-down' : 'fa-solid fa-chevron-right'} class="git-tree-chevron" />
+        <Icon name={ws.expandedDirs().has(props.dirPath) ? 'fa-solid fa-chevron-down' : 'fa-solid fa-chevron-right'} class="git-tree-chevron" />
         <Icon name="fa-solid fa-folder" class="git-tree-folder-icon" />
-        <span class="git-tree-dir-name">{child.name}</span>
-        <span class="git-tree-dir-count">{fileCount}</span>
+        <span class="git-tree-dir-name">{props.child.name}</span>
+        <span class="git-tree-dir-count">{fileCount()}</span>
         <span class="git-file-actions">
-          {isStaged && (
+          {props.isStaged && (
             <button class="btn btn-ghost btn-xs" onClick={(e) => {
               e.stopPropagation();
-              const paths = allFilesInTree(child).map(f => f.path);
+              const paths = allFilesInTree(props.child).filter(f => !f.clean).map(f => f.path);
               paths.forEach(p => ws.unstageFile(p));
             }} title="Unstage all in folder">
               <Icon name="fa-solid fa-minus" />
             </button>
           )}
-          {!isStaged && (
+          {!props.isStaged && hasChangedFiles() && (
             <button class="btn btn-ghost btn-xs" onClick={(e) => {
               e.stopPropagation();
-              const paths = allFilesInTree(child).map(f => f.path);
+              const paths = allFilesInTree(props.child).filter(f => !f.clean).map(f => f.path);
               window.api.gitStage(ws.repoPath, paths).then(ws.refresh);
             }} title="Stage all in folder">
               <Icon name="fa-solid fa-plus" />
             </button>
           )}
-          {isUnstaged && (
+          {isUnstaged() && (
             <button class="btn btn-ghost btn-xs btn-danger-hover" onClick={(e) => {
               e.stopPropagation();
-              const paths = allFilesInTree(child).map(f => f.path);
+              const paths = allFilesInTree(props.child).filter(f => !f.clean).map(f => f.path);
               ws.discardFiles(paths);
             }} title="Discard all in folder">
               <Icon name="fa-solid fa-xmark" />
             </button>
           )}
-          {isUntracked && (
+          {isUntracked() && hasChangedFiles() && (
             <button class="btn btn-ghost btn-xs btn-danger-hover" onClick={(e) => {
               e.stopPropagation();
-              const paths = allFilesInTree(child).map(f => f.path);
+              const paths = allFilesInTree(props.child).filter(f => !f.clean).map(f => f.path);
               ws.deleteUntrackedFiles(paths);
             }} title="Delete all in folder">
               <Icon name="fa-solid fa-xmark" />
@@ -63,72 +63,74 @@ function TreeDir(props) {
           )}
         </span>
       </div>
-      <Show when={ws.expandedDirs().has(dirPath)}>
-        <FileTreeNode node={child} section={section} depth={depth + 1} parentPath={dirPath} />
+      <Show when={ws.expandedDirs().has(props.dirPath)}>
+        <FileTreeNode node={props.child} section={props.section} depth={props.depth + 1} parentPath={props.dirPath} />
       </Show>
     </div>
   );
 }
 
 function FileTreeNode(props) {
-  const { node, section, depth, parentPath } = props;
   const ws = useWorkspace();
-  const dirs = Object.keys(node.children).sort();
-  const files = node.files.sort((a, b) => a.path.localeCompare(b.path));
-  const isStaged = section === 'staged';
-  const isUntracked = section === 'untracked';
+  const dirs = () => Object.keys(props.node.children).sort();
+  const files = () => [...props.node.files].sort((a, b) => a.path.localeCompare(b.path));
+  const isStaged = () => props.section === 'staged';
+  const isUntracked = () => props.section === 'untracked';
 
   return (
     <>
-      <For each={dirs}>{(dirName) => {
-        const child = node.children[dirName];
-        const dirPath = parentPath ? parentPath + '/' + child.name : child.name;
-        return <TreeDir child={child} dirPath={dirPath} section={section} depth={depth} isStaged={isStaged} />;
+      <For each={dirs()}>{(dirName) => {
+        const child = () => props.node.children[dirName];
+        const dirPath = () => props.parentPath ? props.parentPath + '/' + child().name : child().name;
+        return <TreeDir child={child()} dirPath={dirPath()} section={props.section} depth={props.depth} isStaged={isStaged()} />;
       }}</For>
-      <For each={files}>{(file) => {
-        const code = isStaged ? file.index : file.working === '?' ? '?' : file.working;
+      <For each={files()}>{(file) => {
+        const code = () => isStaged() ? file.index : file.working === '?' ? '?' : file.working;
         const filepath = file.path;
         const filename = filepath.split('/').pop();
+        const isClean = file.clean;
 
         return (
           <div
-            class={`git-file-item ${ws.diff.filepath === filepath ? 'active' : ''} ${file.isGitRepo ? 'git-nested-repo' : ''}`}
-            style={{ 'padding-left': `${depth * 16 + 4}px` }}
-            onClick={() => !file.isGitRepo && ws.viewDiff(filepath, isStaged)}
-            onContextMenu={(e) => ws.onFileContextMenu(e, filepath, section)}
+            class={`git-file-item ${ws.diff.filepath === filepath ? 'active' : ''} ${file.isGitRepo ? 'git-nested-repo' : ''} ${isClean ? 'git-file-clean' : ''}`}
+            style={{ 'padding-left': `${props.depth * 16 + 4}px` }}
+            onClick={() => !file.isGitRepo && !isClean && ws.viewDiff(filepath, isStaged())}
+            onContextMenu={(e) => !isClean && ws.onFileContextMenu(e, filepath, props.section)}
           >
-            <span class={`git-file-status ${statusClass(code)}`}>{code}</span>
+            <span class={`git-file-status ${isClean ? '' : statusClass(code())}`}>{isClean ? ' ' : code()}</span>
             {file.isGitRepo
               ? <><Icon name="fa-solid fa-code-branch" class="git-nested-repo-icon" /><span class="git-file-path git-nested-repo-label" title={filepath}>{filename}</span><span class="git-nested-repo-badge">repo</span></>
               : <span class="git-file-path" title={filepath}>{filename}</span>
             }
-            <span class="git-file-actions">
-              {isStaged && (
-                <button class="btn btn-ghost btn-xs" onClick={(e) => { e.stopPropagation(); ws.unstageFile(filepath); }} title="Unstage">
-                  <Icon name="fa-solid fa-minus" />
-                </button>
-              )}
-              {!isStaged && !isUntracked && (
-                <>
-                  <button class="btn btn-ghost btn-xs" onClick={(e) => { e.stopPropagation(); ws.stageFile(filepath); }} title="Stage">
-                    <Icon name="fa-solid fa-plus" />
+            <Show when={!isClean}>
+              <span class="git-file-actions">
+                {isStaged() && (
+                  <button class="btn btn-ghost btn-xs" onClick={(e) => { e.stopPropagation(); ws.unstageFile(filepath); }} title="Unstage">
+                    <Icon name="fa-solid fa-minus" />
                   </button>
-                  <button class="btn btn-ghost btn-xs btn-danger-hover" onClick={(e) => { e.stopPropagation(); ws.discardFile(filepath); }} title="Discard">
-                    <Icon name="fa-solid fa-xmark" />
-                  </button>
-                </>
-              )}
-              {isUntracked && (
-                <>
-                  <button class="btn btn-ghost btn-xs" onClick={(e) => { e.stopPropagation(); ws.stageFile(filepath); }} title="Stage">
-                    <Icon name="fa-solid fa-plus" />
-                  </button>
-                  <button class="btn btn-ghost btn-xs btn-danger-hover" onClick={(e) => { e.stopPropagation(); ws.deleteUntrackedFiles([filepath]); }} title="Delete">
-                    <Icon name="fa-solid fa-xmark" />
-                  </button>
-                </>
-              )}
-            </span>
+                )}
+                {!isStaged() && !isUntracked() && (
+                  <>
+                    <button class="btn btn-ghost btn-xs" onClick={(e) => { e.stopPropagation(); ws.stageFile(filepath); }} title="Stage">
+                      <Icon name="fa-solid fa-plus" />
+                    </button>
+                    <button class="btn btn-ghost btn-xs btn-danger-hover" onClick={(e) => { e.stopPropagation(); ws.discardFile(filepath); }} title="Discard">
+                      <Icon name="fa-solid fa-xmark" />
+                    </button>
+                  </>
+                )}
+                {isUntracked() && (
+                  <>
+                    <button class="btn btn-ghost btn-xs" onClick={(e) => { e.stopPropagation(); ws.stageFile(filepath); }} title="Stage">
+                      <Icon name="fa-solid fa-plus" />
+                    </button>
+                    <button class="btn btn-ghost btn-xs btn-danger-hover" onClick={(e) => { e.stopPropagation(); ws.deleteUntrackedFiles([filepath]); }} title="Delete">
+                      <Icon name="fa-solid fa-xmark" />
+                    </button>
+                  </>
+                )}
+              </span>
+            </Show>
           </div>
         );
       }}</For>
@@ -137,6 +139,10 @@ function FileTreeNode(props) {
 }
 
 export default function FileTree(props) {
-  const tree = () => compactTree(buildTree(props.files));
-  return <FileTreeNode node={tree()} section={props.section} depth={0} parentPath="" />;
+  const tree = createMemo(() => compactTree(buildTree(props.getFiles())));
+  return (
+    <Show when={tree()}>
+      {(t) => <FileTreeNode node={t()} section={props.section} depth={0} parentPath="" />}
+    </Show>
+  );
 }

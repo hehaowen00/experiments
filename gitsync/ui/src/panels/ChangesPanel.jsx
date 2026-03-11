@@ -12,7 +12,7 @@ export default function ChangesPanel() {
 
   const staged = () => stagedFiles(ws.status.files);
   const unstaged = () => unstagedFiles(ws.status.files);
-  const untracked = () => untrackedFiles(ws.status.files);
+  const untracked = () => [...untrackedFiles(ws.status.files), ...ws.allFiles()];
 
   function onResizeFiles(delta) {
     setFilesWidth((w) => Math.max(200, Math.min(w + delta, 600)));
@@ -31,7 +31,7 @@ export default function ChangesPanel() {
               </button>
             </div>
             <Show when={!ws.collapsedSections().has('staged')}>
-              <FileTree files={staged()} section="staged" />
+              <FileTree getFiles={staged} section="staged" />
             </Show>
           </div>
         </Show>
@@ -46,7 +46,7 @@ export default function ChangesPanel() {
               </button>
             </div>
             <Show when={!ws.collapsedSections().has('unstaged')}>
-              <FileTree files={unstaged()} section="unstaged" />
+              <FileTree getFiles={unstaged} section="unstaged" />
             </Show>
           </div>
         </Show>
@@ -61,7 +61,7 @@ export default function ChangesPanel() {
               </button>
             </div>
             <Show when={!ws.collapsedSections().has('untracked')}>
-              <FileTree files={untracked()} section="untracked" />
+              <FileTree getFiles={untracked} section="untracked" />
             </Show>
           </div>
         </Show>

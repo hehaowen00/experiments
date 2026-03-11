@@ -57,6 +57,7 @@ export function WorkspaceProvider(props) {
   const [logBranches, setLogBranches] = createSignal([]);
   const [logSearch, setLogSearch] = createSignal('');
   const [selectedFiles, setSelectedFiles] = createSignal(new Set());
+  const [allFiles, setAllFiles] = createSignal([]);
 
   // --- Identity ---
   const [identities, setIdentities] = createSignal([]);
@@ -71,10 +72,11 @@ export function WorkspaceProvider(props) {
   // --- Core operations ---
   async function refresh() {
     setStatus('loading', true);
-    const [result, opResult, subResult] = await Promise.all([
+    const [result, opResult, subResult, filesResult] = await Promise.all([
       window.api.gitStatus(repoPath),
       window.api.gitOperationState(repoPath),
       window.api.gitSubmodules(repoPath),
+      window.api.gitListFiles(repoPath),
     ]);
     if (result.error) {
       setStatus({ loading: false, error: result.error });
@@ -88,6 +90,13 @@ export function WorkspaceProvider(props) {
         loading: false,
         error: null,
       }));
+    }
+    if (filesResult.files) {
+      const statusPaths = new Set((result.files || []).map(f => f.path));
+      const extra = filesResult.files
+        .filter(p => !statusPaths.has(p))
+        .map(p => ({ path: p, index: '?', working: '?', isGitRepo: false, clean: false }));
+      setAllFiles(extra);
     }
     if (subResult.submodules) setSubmodules(subResult.submodules);
     setOpState(opResult.state);
@@ -679,7 +688,7 @@ export function WorkspaceProvider(props) {
     tab, setTab, operating, output, setOutput,
     expandedDirs, collapsedSections, ctxMenu, setCtxMenu, opState, submodules,
     expandedDetailFiles, setExpandedDetailFiles,
-    logBranch, setLogBranch, logBranches, logSearch, setLogSearch, selectedFiles,
+    logBranch, setLogBranch, logBranches, logSearch, setLogSearch, selectedFiles, allFiles,
     switcherOpen, switcherQuery, setSwitcherQuery, switcherRepos, switcherIndex, setSwitcherIndex,
     // Operations
     refresh, loadLog, loadMoreLog, loadLogBranches, loadRemotes, loadBranches, loadStashes,

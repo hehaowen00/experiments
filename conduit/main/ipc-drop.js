@@ -77,8 +77,20 @@ function register(mainWindow) {
 
       if (req.method === 'GET' && req.url === '/') {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(getUploadPage());
+        res.end(getDropPage());
         return;
+      }
+
+      // Serve built assets (JS, CSS)
+      if (req.method === 'GET' && req.url.startsWith('/assets/')) {
+        const assetPath = path.join(__dirname, '..', 'ui', 'dist', req.url);
+        if (fs.existsSync(assetPath)) {
+          const ext = path.extname(assetPath);
+          const types = { '.js': 'application/javascript', '.css': 'text/css', '.woff2': 'font/woff2' };
+          res.writeHead(200, { 'Content-Type': types[ext] || 'application/octet-stream' });
+          res.end(fs.readFileSync(assetPath));
+          return;
+        }
       }
 
       if (req.method === 'POST' && req.url === '/upload') {
@@ -322,105 +334,16 @@ function indexOf(buf, search, fromIndex) {
   return idx;
 }
 
-function getUploadPage() {
-  return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Conduit Drop</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: #1a1a2e; color: #e0e0e0;
-      min-height: 100vh; display: flex; align-items: center; justify-content: center;
-    }
-    .container { max-width: 480px; width: 100%; padding: 2rem; }
-    h1 { font-size: 1.5rem; margin-bottom: 1.5rem; text-align: center; color: #fff; }
-    .drop-zone {
-      border: 2px dashed #444; border-radius: 12px; padding: 3rem 2rem;
-      text-align: center; cursor: pointer; transition: all 0.2s;
-      background: #16213e;
-    }
-    .drop-zone.dragover { border-color: #6c63ff; background: #1a1a40; }
-    .drop-zone p { margin-bottom: 1rem; color: #aaa; }
-    .drop-zone .icon { font-size: 2.5rem; margin-bottom: 1rem; }
-    input[type="file"] { display: none; }
-    .btn {
-      display: inline-block; padding: 0.6rem 1.5rem; background: #6c63ff;
-      color: #fff; border: none; border-radius: 6px; cursor: pointer;
-      font-size: 0.9rem; transition: background 0.2s;
-    }
-    .btn:hover { background: #5a52d5; }
-    .status { margin-top: 1.5rem; }
-    .file-item {
-      display: flex; justify-content: space-between; align-items: center;
-      padding: 0.5rem 0.75rem; background: #16213e; border-radius: 6px;
-      margin-bottom: 0.5rem; font-size: 0.85rem;
-    }
-    .file-item .name { color: #fff; }
-    .file-item .size { color: #888; }
-    .file-item .ok { color: #4caf50; }
-    .file-item .err { color: #f44; }
-    .file-item .pending { color: #ffa726; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h1>Conduit Drop</h1>
-    <div class="drop-zone" id="dropZone">
-      <div class="icon">&#128449;</div>
-      <p>Drag & drop files here</p>
-      <button class="btn" onclick="document.getElementById('fileInput').click()">Choose Files</button>
-      <input type="file" id="fileInput" multiple>
-    </div>
-    <div class="status" id="status"></div>
-  </div>
-  <script>
-    const dz = document.getElementById('dropZone');
-    const fi = document.getElementById('fileInput');
-    const st = document.getElementById('status');
+let dropPageCache = null;
 
-    dz.addEventListener('dragover', (e) => { e.preventDefault(); dz.classList.add('dragover'); });
-    dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
-    dz.addEventListener('drop', (e) => { e.preventDefault(); dz.classList.remove('dragover'); upload(e.dataTransfer.files); });
-    fi.addEventListener('change', () => { upload(fi.files); fi.value = ''; });
-
-    function formatSize(b) {
-      if (b < 1024) return b + ' B';
-      if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
-      return (b / 1048576).toFixed(1) + ' MB';
-    }
-
-    async function upload(files) {
-      for (const f of files) {
-        const el = document.createElement('div');
-        el.className = 'file-item';
-        el.innerHTML = '<span class="name">' + f.name + '</span><span class="size">' + formatSize(f.size) + '</span><span class="pending">Waiting...</span>';
-        st.prepend(el);
-
-        const fd = new FormData();
-        fd.append('file', f);
-        try {
-          const r = await fetch('/upload', { method: 'POST', body: fd });
-          const j = await r.json();
-          if (j.ok) {
-            el.lastChild.className = 'ok';
-            el.lastChild.textContent = '\\u2713 Accepted';
-          } else {
-            el.lastChild.className = 'err';
-            el.lastChild.textContent = j.error === 'Rejected' ? 'Rejected' : (j.error || 'Failed');
-          }
-        } catch (e) {
-          el.lastChild.className = 'err';
-          el.lastChild.textContent = 'Error';
-        }
-      }
-    }
-  </script>
-</body>
-</html>`;
+function getDropPage() {
+  if (dropPageCache) return dropPageCache;
+  const htmlPath = path.join(__dirname, '..', 'ui', 'dist', 'drop.html');
+  if (fs.existsSync(htmlPath)) {
+    dropPageCache = fs.readFileSync(htmlPath, 'utf-8');
+    return dropPageCache;
+  }
+  return '<html><body><p>Drop page not built. Run npm run build first.</p></body></html>';
 }
 
 module.exports = { register };

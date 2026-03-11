@@ -3942,6 +3942,11 @@ tr:hover .db-row-actions .btn:hover {
 .git-untracked { color: var(--text-dim); }
 .git-conflict { color: var(--danger); }
 
+.git-file-clean {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .git-file-path {
   flex: 1;
   overflow: hidden;
