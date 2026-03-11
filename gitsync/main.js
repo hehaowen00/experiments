@@ -1,4 +1,5 @@
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron');
+const { execFile } = require('child_process');
 const path = require('path');
 const store = require('./main/store');
 const ipcGit = require('./main/ipc-git');
@@ -19,7 +20,33 @@ function createWindow() {
   mainWindow.loadFile('ui/dist/index-solid.html');
 }
 
-app.whenReady().then(() => {
+function checkGit() {
+  return new Promise((resolve) => {
+    execFile('git', ['--version'], (err) => {
+      resolve(!err);
+    });
+  });
+}
+
+app.whenReady().then(async () => {
+  const gitFound = await checkGit();
+  if (!gitFound) {
+    const { response } = await dialog.showMessageBox({
+      type: 'error',
+      title: 'Git Not Found',
+      message: 'Git is not installed or not in your PATH.',
+      detail: 'GitSync requires Git to function. Please install Git and restart the application.',
+      buttons: ['Open git-scm.com', 'Quit'],
+      defaultId: 0,
+      cancelId: 1,
+    });
+    if (response === 0) {
+      shell.openExternal('https://git-scm.com/downloads');
+    }
+    app.quit();
+    return;
+  }
+
   store.initDb();
   createWindow();
 

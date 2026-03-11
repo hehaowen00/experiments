@@ -97,11 +97,6 @@ export default function Drop(props) {
 
   return (
     <div class="landing-main" style={props.style}>
-      <div class="landing-toolbar">
-        <button class="btn btn-ghost btn-sm" onClick={props.onToggleSidebar}>
-          <Icon name="fa-solid fa-bars" />
-        </button>
-      </div>
       <div class="drop-tool">
         <div class="drop-config">
           <div class="drop-config-row">

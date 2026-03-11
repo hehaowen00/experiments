@@ -2,11 +2,10 @@ import { createSignal, For, onCleanup, onMount, Show } from 'solid-js';
 import CategoryList from '../components/CategoryList';
 import Icon from '../components/Icon';
 import ItemCard from '../components/ItemCard';
-import Modal, {
+import {
   showConfirm,
   showConfirmTyped,
   showPrompt,
-  showSettings,
 } from '../components/Modal';
 import { formatLastUsed } from '../helpers';
 import t from '../locale';
@@ -15,43 +14,22 @@ import DateTimeTool from '../pages/DateTimeTool';
 import Drop from '../pages/Drop';
 
 export default function Landing(props) {
-  const [activeNav, setActiveNavRaw] = createSignal('api');
-
-  function setActiveNav(val) {
-    setActiveNavRaw(val);
-    window.api.setSetting('lastActiveNav', val);
-  }
-  const [sidebarOpen, setSidebarOpen] = createSignal(true);
-
-  const mql = window.matchMedia('(max-aspect-ratio: 1/1)');
-
-  function onLayoutChange(e) {
-    if (e.matches) setSidebarOpen(false);
-  }
+  const activeNav = props.activeNav;
 
   let searchRef;
 
   function onKeyDown(e) {
-    if ((e.metaKey || e.ctrlKey) && e.key === 'b') {
-      e.preventDefault();
-      setSidebarOpen(!sidebarOpen());
-    }
     if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
       e.preventDefault();
       searchRef?.focus();
     }
   }
 
-  onMount(async () => {
-    mql.addEventListener('change', onLayoutChange);
+  onMount(() => {
     document.addEventListener('keydown', onKeyDown);
-    if (mql.matches) setSidebarOpen(false);
-    const saved = await window.api.getSetting('lastActiveNav');
-    if (saved) setActiveNavRaw(saved);
   });
 
   onCleanup(() => {
-    mql.removeEventListener('change', onLayoutChange);
     document.removeEventListener('keydown', onKeyDown);
   });
 
@@ -327,62 +305,12 @@ export default function Landing(props) {
   }
 
   return (
-    <div
-      class={`landing ${sidebarOpen() ? 'landing-sidebar-open' : 'landing-sidebar-closed'}`}
-    >
-      {sidebarOpen() && (
-        <div class="landing-sidebar">
-          <div class="landing-sidebar-nav">
-            <button
-              class={`landing-nav-item ${activeNav() === 'api' ? 'active' : ''}`}
-              onClick={() => setActiveNav('api')}
-            >
-              <Icon name="fa-solid fa-paper-plane" />
-              <span>{t.landing.nav.apiClient}</span>
-            </button>
-            <button
-              class={`landing-nav-item ${activeNav() === 'database' ? 'active' : ''}`}
-              onClick={() => setActiveNav('database')}
-            >
-              <Icon name="fa-solid fa-database" />
-              <span>{t.landing.nav.database}</span>
-            </button>
-            <button
-              class={`landing-nav-item ${activeNav() === 'datetime' ? 'active' : ''}`}
-              onClick={() => setActiveNav('datetime')}
-            >
-              <Icon name="fa-solid fa-clock" />
-              <span>{t.landing.nav.dateTime}</span>
-            </button>
-            <button
-              class={`landing-nav-item ${activeNav() === 'drop' ? 'active' : ''}`}
-              onClick={() => setActiveNav('drop')}
-            >
-              <Icon name="fa-solid fa-cloud-arrow-up" />
-              <span>{t.landing.nav.drop}</span>
-            </button>
-          </div>
-          <div class="landing-sidebar-footer">
-            <button class="btn btn-ghost btn-sm" onClick={() => showSettings()}>
-              <Icon name="fa-solid fa-gear" /> {t.landing.settingsButton}
-            </button>
-          </div>
-        </div>
-      )}
-
+    <div class="landing" style={props.style}>
       <div
         class="landing-main"
         style={{ display: activeNav() === 'api' ? '' : 'none' }}
       >
         <div class="landing-toolbar">
-          <Show when={!sidebarOpen()}>
-            <button
-              class="btn btn-ghost btn-sm"
-              onClick={() => setSidebarOpen(true)}
-            >
-              <Icon name="fa-solid fa-bars" />
-            </button>
-          </Show>
           <input
             ref={searchRef}
             type="text"
@@ -465,21 +393,14 @@ export default function Landing(props) {
       </div>
       <DateTimeTool
         style={{ display: activeNav() === 'datetime' ? '' : 'none' }}
-        sidebarOpen={sidebarOpen()}
-        onToggleSidebar={() => setSidebarOpen(!sidebarOpen())}
       />
       <DatabaseClient
         style={{ display: activeNav() === 'database' ? '' : 'none' }}
-        sidebarOpen={sidebarOpen()}
-        onToggleSidebar={() => setSidebarOpen(!sidebarOpen())}
         onOpenDb={props.onOpenDb}
       />
       <Drop
         style={{ display: activeNav() === 'drop' ? '' : 'none' }}
-        sidebarOpen={sidebarOpen()}
-        onToggleSidebar={() => setSidebarOpen(!sidebarOpen())}
       />
-      <Modal />
     </div>
   );
 }

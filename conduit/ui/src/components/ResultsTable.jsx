@@ -9,38 +9,53 @@ export default function ResultsTable(props) {
   const [colWidths, setColWidths] = createSignal({});
   const [expandedArrays, setExpandedArrays] = createSignal({});
   let tableRef;
-  const [sortCols, setSortCols] = createSignal([]);
+  const [localSortCols, setLocalSortCols] = createSignal([]);
+
+  const effectiveSortCols = () => props.onSort ? (props.sortCols || []) : localSortCols();
+
+  function computeNextSort(prev, col) {
+    const idx = prev.findIndex((s) => s.col === col);
+    if (idx >= 0) {
+      if (prev[idx].dir === 'asc') {
+        const next = [...prev];
+        next[idx] = { col, dir: 'desc' };
+        return next;
+      }
+      return prev.filter((_, i) => i !== idx);
+    }
+    return [...prev, { col, dir: 'asc' }];
+  }
 
   function onHeaderClick(col) {
-    setSortCols((prev) => {
-      const idx = prev.findIndex((s) => s.col === col);
-      if (idx >= 0) {
-        if (prev[idx].dir === 'asc') {
-          const next = [...prev];
-          next[idx] = { col, dir: 'desc' };
-          return next;
-        }
-        return prev.filter((_, i) => i !== idx);
-      }
-      return [...prev, { col, dir: 'asc' }];
-    });
+    if (props.onSort) {
+      const next = computeNextSort(props.sortCols || [], col);
+      props.onSort(next);
+    } else {
+      setLocalSortCols((prev) => computeNextSort(prev, col));
+    }
     setExpandedArrays({});
   }
 
   function clearSort() {
-    setSortCols([]);
+    if (props.onSort) {
+      props.onSort([]);
+    } else {
+      setLocalSortCols([]);
+    }
     setExpandedArrays({});
   }
 
   function getSortInfo(col) {
-    const cols = sortCols();
+    const cols = effectiveSortCols();
     const idx = cols.findIndex((s) => s.col === col);
     if (idx < 0) return null;
     return { dir: cols[idx].dir, order: cols.length > 1 ? idx + 1 : null };
   }
 
   function sortedRows() {
-    const cols = sortCols();
+    // When onSort is provided, sorting is done server-side
+    if (props.onSort) return props.rows;
+    const cols = localSortCols();
     if (cols.length === 0) return props.rows;
     return [...props.rows].sort((a, b) => {
       for (const { col, dir } of cols) {
@@ -201,14 +216,14 @@ export default function ResultsTable(props) {
       >
         <thead>
           <tr>
-            <th class={`db-row-num ${sortCols().length ? 'db-row-num-clear' : ''}`}
+            <th class={`db-row-num ${effectiveSortCols().length ? 'db-row-num-clear' : ''}`}
               onClick={clearSort}
-              title={sortCols().length ? 'Clear sort' : ''}
+              title={effectiveSortCols().length ? 'Clear sort' : ''}
             >
-              <Show when={sortCols().length}>
+              <Show when={effectiveSortCols().length}>
                 <Icon name="fa-solid fa-xmark" />
               </Show>
-              <Show when={!sortCols().length}>#</Show>
+              <Show when={!effectiveSortCols().length}>#</Show>
             </th>
             <For each={props.columns}>{(col) => {
               const isPk = () => props.pkColumns?.has(col);
@@ -274,15 +289,20 @@ export default function ResultsTable(props) {
                     <For each={props.columns}>
                       {(col) => {
                         const val = row[col];
-                        const isLarge = typeof val === 'string' && val.startsWith('[Large data:');
+                        const isLarge = typeof val === 'string' && val.startsWith('[Payload:');
                         const isNull = val === null || val === undefined;
                         const isActive = () => {
                           const p = props.cellPanel;
                           return p && p.column === col && p.rowIndex === i();
                         };
                         const isEdited = () => !!props.editedCells?.[`${i()}:${col}`];
+                        const CELL_MAX = 200;
                         const fmt = () => props.columnFormats?.[col];
                         const formatted = () => isNull ? null : formatCellValue(val, fmt());
+                        const display = () => {
+                          const text = formatted() ?? String(val);
+                          return text.length > CELL_MAX ? text.slice(0, CELL_MAX) + '\u2026' : text;
+                        };
                         const isUrl = () => fmt() === 'url' && !isNull;
                         const isArray = () => fmt() === 'array' && !isNull;
                         const arrayKey = () => `${i()}:${col}`;
@@ -311,7 +331,7 @@ export default function ResultsTable(props) {
                                 </span>
                                 : isUrl()
                                   ? <a class="db-cell-url" href={String(val)} onClick={(e) => { e.preventDefault(); e.stopPropagation(); window.api.openExternal(String(val)); }}>{String(val)}</a>
-                                  : (formatted() ?? String(val))}
+                                  : display()}
                           </td>
                         );
                       }}

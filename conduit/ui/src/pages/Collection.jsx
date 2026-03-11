@@ -7,7 +7,7 @@ import Sidebar from '../components/Sidebar';
 import t from '../locale';
 import { CollectionProvider, useCollection } from '../store/collection';
 
-function CollectionView() {
+function CollectionView(props) {
   const [state, actions] = useCollection();
 
   function onKeyDown(e) {
@@ -96,6 +96,7 @@ function CollectionView() {
   return (
     <div
       class={`collection-view ${state.sidebarOpen ? 'sidebar-open' : 'sidebar-closed'}`}
+      style={props.style}
     >
       {state.collection && (
         <>
@@ -203,7 +204,7 @@ function CollectionView() {
 export default function Collection(props) {
   return (
     <CollectionProvider id={props.id} onBack={props.onBack}>
-      <CollectionView />
+      <CollectionView style={props.style} />
     </CollectionProvider>
   );
 }

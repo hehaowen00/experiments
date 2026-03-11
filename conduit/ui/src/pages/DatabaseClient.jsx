@@ -312,11 +312,6 @@ export default function DatabaseClient(props) {
     <div class="db-client" style={props.style}>
       <div class="landing-main" style={{ display: '' }}>
         <div class="landing-toolbar">
-          <Show when={!props.sidebarOpen}>
-            <button class="btn btn-ghost btn-sm" onClick={props.onToggleSidebar}>
-              <Icon name="fa-solid fa-bars" />
-            </button>
-          </Show>
           <input
             type="text"
             placeholder="Search"

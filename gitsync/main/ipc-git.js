@@ -1,8 +1,11 @@
 const { ipcMain, dialog } = require('electron');
 const { execFile } = require('child_process');
+const fs = require('fs');
 const path = require('path');
 const store = require('./store');
 const { generateKSUID } = require('./ksuid');
+
+const watchers = new Map();
 
 function git(repoPath, args, opts = {}) {
   return new Promise((resolve, reject) => {
@@ -421,10 +424,10 @@ function register(mainWindow) {
         } catch {}
       }
 
-      const args = ['log', `--max-count=${count || 50}`, fmt];
+      const args = ['log', `--max-count=${count || 50}`, '--topo-order', fmt];
       if (skip) args.push(`--skip=${skip}`);
       if (allBranches) {
-        args.push('--all');
+        args.push('--all', '--exclude=refs/stash');
       } else if (branchName) {
         args.push(branchName);
       }
@@ -456,18 +459,42 @@ function register(mainWindow) {
     }
   });
 
-  ipcMain.handle('git:pull', async (_, repoPath) => {
+  ipcMain.handle('git:pull', async (_, repoPath, strategy) => {
     try {
-      const out = await git(repoPath, ['pull']);
+      const args = ['pull'];
+      if (strategy === 'ff-only') args.push('--ff-only');
+      else if (strategy === 'rebase') args.push('--rebase', '--autostash');
+      else if (strategy === 'merge') args.push('--no-rebase');
+      const out = await git(repoPath, args);
       return { ok: true, output: out };
     } catch (e) {
-      return { error: e.message };
+      const msg = e.message || '';
+      const divergent =
+        msg.includes('divergent') ||
+        msg.includes('Need to specify') ||
+        msg.includes('not possible to fast-forward') ||
+        (msg.includes('rejected') && msg.includes('non-fast-forward'));
+      return { error: msg, divergent };
     }
   });
 
   ipcMain.handle('git:push', async (_, repoPath) => {
     try {
       const out = await git(repoPath, ['push']);
+      return { ok: true, output: out };
+    } catch (e) {
+      const msg = e.message || '';
+      const divergent =
+        msg.includes('non-fast-forward') ||
+        msg.includes('rejected') ||
+        msg.includes('fetch first');
+      return { error: msg, divergent };
+    }
+  });
+
+  ipcMain.handle('git:pushForce', async (_, repoPath) => {
+    try {
+      const out = await git(repoPath, ['push', '--force-with-lease']);
       return { ok: true, output: out };
     } catch (e) {
       return { error: e.message };
@@ -638,7 +665,7 @@ function register(mainWindow) {
   // --- Rebase ---
   ipcMain.handle('git:rebase', async (_, repoPath, branch) => {
     try {
-      const out = await git(repoPath, ['rebase', branch]);
+      const out = await git(repoPath, ['rebase', '--autostash', branch]);
       return { ok: true, output: out };
     } catch (e) {
       if (e.message.includes('CONFLICT') || e.message.includes('could not apply')) {
@@ -836,6 +863,161 @@ function register(mainWindow) {
       return { diff: out };
     } catch (e) {
       return { error: e.message };
+    }
+  });
+
+  // --- Patch export ---
+  ipcMain.handle('git:exportStagedPatch', async (_, repoPath) => {
+    try {
+      const diff = await git(repoPath, ['diff', '--cached', '--no-color']);
+      if (!diff.trim()) return { error: 'No staged changes to export' };
+      const branch = (await git(repoPath, ['branch', '--show-current'])).trim();
+      const defaultName = `${branch || 'patch'}.patch`;
+      const result = await dialog.showSaveDialog(mainWindow, {
+        title: 'Save Patch File',
+        defaultPath: defaultName,
+        filters: [{ name: 'Patch Files', extensions: ['patch', 'diff'] }],
+      });
+      if (result.canceled || !result.filePath) return { canceled: true };
+      fs.writeFileSync(result.filePath, diff, 'utf8');
+      return { ok: true, path: result.filePath };
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
+
+  // --- Patch import ---
+  ipcMain.handle('git:applyPatch', async (_, repoPath) => {
+    try {
+      const result = await dialog.showOpenDialog(mainWindow, {
+        title: 'Select Patch File',
+        filters: [
+          { name: 'Patch Files', extensions: ['patch', 'diff'] },
+          { name: 'All Files', extensions: ['*'] },
+        ],
+        properties: ['openFile'],
+      });
+      if (result.canceled || !result.filePaths.length) return { canceled: true };
+      const patchPath = result.filePaths[0];
+      const out = await git(repoPath, ['apply', patchPath]);
+      return { ok: true, output: out || 'Patch applied successfully' };
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
+
+  // --- Actions (pre-commit scripts) ---
+  ipcMain.handle('actions:list', () => {
+    return store.getDb()
+      .prepare('SELECT id, name, script, enabled, sort_order FROM git_actions ORDER BY sort_order ASC, rowid ASC')
+      .all();
+  });
+
+  ipcMain.handle('actions:create', (_, data) => {
+    const id = generateKSUID();
+    const maxOrder = store.getDb().prepare('SELECT MAX(sort_order) as m FROM git_actions').get();
+    store.getDb().prepare(
+      'INSERT INTO git_actions (id, name, script, enabled, sort_order) VALUES (?, ?, ?, ?, ?)',
+    ).run(id, data.name, data.script, data.enabled ? 1 : 0, (maxOrder?.m || 0) + 1);
+    return { id, name: data.name, script: data.script, enabled: data.enabled ? 1 : 0 };
+  });
+
+  ipcMain.handle('actions:update', (_, id, data) => {
+    store.getDb().prepare(
+      'UPDATE git_actions SET name = ?, script = ?, enabled = ? WHERE id = ?',
+    ).run(data.name, data.script, data.enabled ? 1 : 0, id);
+    return true;
+  });
+
+  ipcMain.handle('actions:delete', (_, id) => {
+    store.getDb().prepare('DELETE FROM git_actions WHERE id = ?').run(id);
+    return true;
+  });
+
+  ipcMain.handle('actions:reorder', (_, orderedIds) => {
+    const stmt = store.getDb().prepare('UPDATE git_actions SET sort_order = ? WHERE id = ?');
+    const tx = store.getDb().transaction(() => {
+      orderedIds.forEach((id, i) => stmt.run(i, id));
+    });
+    tx();
+    return true;
+  });
+
+  ipcMain.handle('actions:run', async (_, repoPath, actionId) => {
+    const action = store.getDb()
+      .prepare('SELECT id, name, script FROM git_actions WHERE id = ?')
+      .get(actionId);
+    if (!action) return { ok: false, error: 'Action not found' };
+    try {
+      const stdout = await new Promise((resolve, reject) => {
+        require('child_process').exec(action.script, {
+          cwd: repoPath,
+          maxBuffer: 10 * 1024 * 1024,
+          timeout: 60000,
+        }, (err, stdout, stderr) => {
+          if (err) reject(new Error(stderr || err.message));
+          else resolve(stdout);
+        });
+      });
+      return { ok: true, name: action.name, output: stdout };
+    } catch (e) {
+      return { ok: false, name: action.name, error: e.message };
+    }
+  });
+
+  ipcMain.handle('actions:runPreCommit', async (_, repoPath) => {
+    const actions = store.getDb()
+      .prepare('SELECT id, name, script FROM git_actions WHERE enabled = 1 ORDER BY sort_order ASC, rowid ASC')
+      .all();
+    if (actions.length === 0) return { ok: true, results: [] };
+    const results = [];
+    for (const action of actions) {
+      try {
+        const stdout = await new Promise((resolve, reject) => {
+          require('child_process').exec(action.script, {
+            cwd: repoPath,
+            maxBuffer: 10 * 1024 * 1024,
+            timeout: 60000,
+          }, (err, stdout, stderr) => {
+            if (err) reject(new Error(stderr || err.message));
+            else resolve(stdout);
+          });
+        });
+        results.push({ id: action.id, name: action.name, ok: true, output: stdout });
+      } catch (e) {
+        results.push({ id: action.id, name: action.name, ok: false, error: e.message });
+        return { ok: false, failedAction: action.name, error: e.message, results };
+      }
+    }
+    return { ok: true, results };
+  });
+
+  // --- Filesystem watching ---
+  ipcMain.handle('git:watchRepo', (_, repoPath) => {
+    if (watchers.has(repoPath)) return;
+    let timeout;
+    try {
+      const watcher = fs.watch(repoPath, { recursive: true }, (_, filename) => {
+        if (filename && filename.startsWith('.git' + path.sep)) return;
+        if (filename === '.git') return;
+        clearTimeout(timeout);
+        timeout = setTimeout(() => {
+          if (!mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('git:fs-changed', repoPath);
+          }
+        }, 300);
+      });
+      watchers.set(repoPath, watcher);
+    } catch (e) {
+      // ignore watch errors (e.g. path no longer exists)
+    }
+  });
+
+  ipcMain.handle('git:unwatchRepo', (_, repoPath) => {
+    const watcher = watchers.get(repoPath);
+    if (watcher) {
+      watcher.close();
+      watchers.delete(repoPath);
     }
   });
 }

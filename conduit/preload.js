@@ -82,8 +82,8 @@ contextBridge.exposeInMainWorld('api', {
   dbListTables: (id) => ipcRenderer.invoke('db:listTables', id),
   dbGetColumns: (id, schema, table) => ipcRenderer.invoke('db:getColumns', id, schema, table),
   dbGetIndexes: (id, schema, table) => ipcRenderer.invoke('db:getIndexes', id, schema, table),
-  dbGetTableData: (id, schema, table, limit, offset) =>
-    ipcRenderer.invoke('db:getTableData', id, schema, table, limit, offset),
+  dbGetTableData: (id, schema, table, limit, offset, orderBy) =>
+    ipcRenderer.invoke('db:getTableData', id, schema, table, limit, offset, orderBy),
   dbGetCellValue: (id, schema, table, column, rowOffset) =>
     ipcRenderer.invoke('db:getCellValue', id, schema, table, column, rowOffset),
   dbQuery: (id, sql) => ipcRenderer.invoke('db:query', id, sql),

@@ -45,7 +45,11 @@
     "electron-builder": "^26.8.1"
   },
   "dependencies": {
+    "@codemirror/language": "^6.12.2",
+    "@codemirror/state": "^6.5.4",
+    "@codemirror/view": "^6.39.17",
     "@fortawesome/fontawesome-free": "^7.2.0",
+    "@lezer/highlight": "^1.2.3",
     "better-sqlite3": "^12.6.2",
     "vite": "^7.3.1",
     "vite-plugin-solid": "^2.11.10"

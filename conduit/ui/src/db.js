@@ -130,19 +130,19 @@ export function autoDetectColumnFormats(columns, rows, dbType) {
   const formats = {};
   if (!rows || rows.length === 0) return formats;
   for (const col of columns) {
-    const values = rows.map((r) => r[col]).filter((v) => v !== null && v !== undefined && !(typeof v === 'string' && v.startsWith('[Large data:')));
+    const values = rows.map((r) => r[col]).filter((v) => v !== null && v !== undefined && !(typeof v === 'string' && v.startsWith('[Payload:')));
     if (values.length === 0) continue;
     const sample = values.slice(0, 20);
-    if (dbType === 'postgres' && sample.every((v) => parsePgArray(v) !== null)) {
-      formats[col] = 'array';
-      continue;
-    }
     if (sample.every((v) => /^https?:\/\/.+/i.test(String(v)))) {
       formats[col] = 'url';
       continue;
     }
     if (sample.every((v) => { const s = String(v).trimStart(); return (s[0] === '{' || s[0] === '[') && (() => { try { JSON.parse(s); return true; } catch { return false; } })(); })) {
       formats[col] = 'json';
+      continue;
+    }
+    if (dbType === 'postgres' && sample.every((v) => { const s = String(v).trim(); return s[0] === '{' && s[s.length - 1] === '}' && (() => { try { JSON.parse(s); return false; } catch { return parsePgArray(v) !== null; } })(); })) {
+      formats[col] = 'array';
       continue;
     }
     const boolVals = new Set(['0', '1', 'true', 'false', 't', 'f', 'yes', 'no']);

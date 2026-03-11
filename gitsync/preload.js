@@ -53,8 +53,9 @@ contextBridge.exposeInMainWorld('api', {
   gitResetSoftHead: (repoPath) => ipcRenderer.invoke('git:resetSoftHead', repoPath),
   gitResetSoftTo: (repoPath, hash) => ipcRenderer.invoke('git:resetSoftTo', repoPath, hash),
   gitLog: (repoPath, count, allBranches, branchName, skip, search) => ipcRenderer.invoke('git:log', repoPath, count, allBranches, branchName, skip, search),
-  gitPull: (repoPath) => ipcRenderer.invoke('git:pull', repoPath),
+  gitPull: (repoPath, strategy) => ipcRenderer.invoke('git:pull', repoPath, strategy),
   gitPush: (repoPath) => ipcRenderer.invoke('git:push', repoPath),
+  gitPushForce: (repoPath) => ipcRenderer.invoke('git:pushForce', repoPath),
   gitPushSetUpstream: (repoPath, remote, branch) => ipcRenderer.invoke('git:pushSetUpstream', repoPath, remote, branch),
   gitFetch: (repoPath) => ipcRenderer.invoke('git:fetch', repoPath),
   gitRemoteList: (repoPath) => ipcRenderer.invoke('git:remoteList', repoPath),
@@ -88,4 +89,26 @@ contextBridge.exposeInMainWorld('api', {
   gitRebaseContinue: (repoPath) => ipcRenderer.invoke('git:rebaseContinue', repoPath),
   gitRebaseAbort: (repoPath) => ipcRenderer.invoke('git:rebaseAbort', repoPath),
   gitOperationState: (repoPath) => ipcRenderer.invoke('git:operationState', repoPath),
+
+  // Patches
+  gitExportStagedPatch: (repoPath) => ipcRenderer.invoke('git:exportStagedPatch', repoPath),
+  gitApplyPatch: (repoPath) => ipcRenderer.invoke('git:applyPatch', repoPath),
+
+  // Actions (pre-commit scripts)
+  actionsList: () => ipcRenderer.invoke('actions:list'),
+  actionsCreate: (data) => ipcRenderer.invoke('actions:create', data),
+  actionsUpdate: (id, data) => ipcRenderer.invoke('actions:update', id, data),
+  actionsDelete: (id) => ipcRenderer.invoke('actions:delete', id),
+  actionsReorder: (orderedIds) => ipcRenderer.invoke('actions:reorder', orderedIds),
+  actionsRun: (repoPath, actionId) => ipcRenderer.invoke('actions:run', repoPath, actionId),
+  actionsRunPreCommit: (repoPath) => ipcRenderer.invoke('actions:runPreCommit', repoPath),
+
+  // Filesystem watching
+  gitWatchRepo: (repoPath) => ipcRenderer.invoke('git:watchRepo', repoPath),
+  gitUnwatchRepo: (repoPath) => ipcRenderer.invoke('git:unwatchRepo', repoPath),
+  onFsChanged: (cb) => {
+    const handler = (_, repoPath) => cb(repoPath);
+    ipcRenderer.on('git:fs-changed', handler);
+    return () => ipcRenderer.removeListener('git:fs-changed', handler);
+  },
 });

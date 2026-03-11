@@ -254,12 +254,24 @@ function register(mainWindow) {
     }
   });
 
-  ipcMain.handle('db:getTableData', async (_, id, schema, table, limit, offset) => {
+  ipcMain.handle('db:getTableData', async (_, id, schema, table, limit, offset, orderBy) => {
     const conn = activeDbConnections.get(id);
     if (!conn) return { error: 'Not connected' };
     try {
       const safeLimit = Math.min(limit || 100, 1000);
       const safeOffset = offset || 0;
+
+      // Build ORDER BY clause from [{col, dir}] array
+      let orderClause = '';
+      if (Array.isArray(orderBy) && orderBy.length > 0) {
+        const parts = orderBy.map((s) => {
+          const q = `"${s.col.replace(/"/g, '""')}"`;
+          const dir = s.dir === 'desc' ? 'DESC' : 'ASC';
+          return `${q} ${dir}`;
+        });
+        orderClause = ' ORDER BY ' + parts.join(', ');
+      }
+
       if (conn.type === 'postgres') {
         const quotedTable = `"${schema.replace(/"/g, '""')}"."${table.replace(/"/g, '""')}"`;
         // Get columns first to check for large values
@@ -270,12 +282,12 @@ function register(mainWindow) {
         );
         const selectCols = colResult.rows.map((c) => {
           const q = `"${c.column_name.replace(/"/g, '""')}"`;
-          return `CASE WHEN octet_length(${q}::text) > ${LARGE_VALUE_THRESHOLD} THEN '[Large data: ' || octet_length(${q}::text) || ' bytes]' ELSE ${q}::text END AS ${q}`;
+          return `CASE WHEN octet_length(${q}::text) > ${LARGE_VALUE_THRESHOLD} THEN '[Payload: ' || ROUND(octet_length(${q}::text) / 1024.0, 1) || ' KB]' ELSE ${q}::text END AS ${q}`;
         });
         const countResult = await conn.client.query(`SELECT COUNT(*) as total FROM ${quotedTable}`);
         const total = parseInt(countResult.rows[0].total);
         const result = await conn.client.query(
-          `SELECT ${selectCols.join(', ')} FROM ${quotedTable} LIMIT ${safeLimit} OFFSET ${safeOffset}`,
+          `SELECT ${selectCols.join(', ')} FROM ${quotedTable}${orderClause} LIMIT ${safeLimit} OFFSET ${safeOffset}`,
         );
         return { rows: result.rows, columns: result.fields.map((f) => f.name), total };
       } else if (conn.type === 'sqlite') {
@@ -283,11 +295,11 @@ function register(mainWindow) {
         const colInfo = conn.client.prepare(`PRAGMA table_info(${quotedTable})`).all();
         const selectCols = colInfo.map((c) => {
           const q = `"${c.name.replace(/"/g, '""')}"`;
-          return `CASE WHEN length(CAST(${q} AS TEXT)) > ${LARGE_VALUE_THRESHOLD} THEN '[Large data: ' || length(CAST(${q} AS TEXT)) || ' bytes]' ELSE CAST(${q} AS TEXT) END AS ${q}`;
+          return `CASE WHEN length(CAST(${q} AS TEXT)) > ${LARGE_VALUE_THRESHOLD} THEN '[Payload: ' || ROUND(length(CAST(${q} AS TEXT)) / 1024.0, 1) || ' KB]' ELSE CAST(${q} AS TEXT) END AS ${q}`;
         });
         const countRow = conn.client.prepare(`SELECT COUNT(*) as total FROM ${quotedTable}`).get();
         const rows = conn.client.prepare(
-          `SELECT ${selectCols.join(', ')} FROM ${quotedTable} LIMIT ? OFFSET ?`,
+          `SELECT ${selectCols.join(', ')} FROM ${quotedTable}${orderClause} LIMIT ? OFFSET ?`,
         ).all(safeLimit, safeOffset);
         return { rows, columns: colInfo.map((c) => c.name), total: countRow.total };
       }
@@ -366,9 +378,12 @@ function register(mainWindow) {
           const rows = result.rows.map((row) => {
             const processed = {};
             for (const key of Object.keys(row)) {
-              const val = row[key];
+              let val = row[key];
+              if (val !== null && typeof val === 'object') {
+                val = JSON.stringify(val);
+              }
               if (val !== null && typeof val === 'string' && Buffer.byteLength(val) > LARGE_VALUE_THRESHOLD) {
-                processed[key] = `[Large data: ${Buffer.byteLength(val)} bytes]`;
+                processed[key] = `[Payload: ${(Buffer.byteLength(val) / 1024).toFixed(1)} KB]`;
               } else {
                 processed[key] = val;
               }
@@ -395,7 +410,7 @@ function register(mainWindow) {
             for (const key of columns) {
               const val = row[key];
               if (val !== null && typeof val === 'string' && Buffer.byteLength(val) > LARGE_VALUE_THRESHOLD) {
-                r[key] = `[Large data: ${Buffer.byteLength(val)} bytes]`;
+                r[key] = `[Payload: ${(Buffer.byteLength(val) / 1024).toFixed(1)} KB]`;
               } else {
                 r[key] = val;
               }

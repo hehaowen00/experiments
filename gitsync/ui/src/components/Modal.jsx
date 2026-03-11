@@ -4,6 +4,7 @@ import { applyEditorFontSize, applyUiFontSize } from '../index';
 import t from '../locale';
 import { applyTheme, getStoredThemeId, getThemeList } from '../themes';
 import Icon from './Icon';
+import ScriptEditor from './ScriptEditor';
 
 let modalResolve = null;
 const [modalVisible, setModalVisible] = createSignal(false);
@@ -69,6 +70,19 @@ export function showTextarea(title, placeholder = '', description = '') {
   });
 }
 
+const [modalChoices, setModalChoices] = createSignal([]);
+
+export function showChoice(title, description = '', choices = []) {
+  return new Promise((resolve) => {
+    modalResolve = resolve;
+    setModalTitle(title);
+    setModalDescription(description);
+    setModalChoices(choices);
+    setModalType('choice');
+    setModalVisible(true);
+  });
+}
+
 export function showAlert(title, description = '') {
   return new Promise((resolve) => {
     modalResolve = resolve;
@@ -100,6 +114,7 @@ function close(result) {
 export default function Modal() {
   let inputRef;
 
+  const [settingsTab, setSettingsTab] = createSignal('general');
   const [selectedTheme, setSelectedTheme] = createSignal(getStoredThemeId());
   const [uiFontSize, setUiFontSize] = createSignal(14);
   const [editorFontSize, setEditorFontSize] = createSignal(12);
@@ -110,14 +125,22 @@ export default function Modal() {
   const [identityName, setIdentityName] = createSignal('');
   const [identityEmail, setIdentityEmail] = createSignal('');
 
+  // Actions management
+  const [actions, setActions] = createStore([]);
+  const [editingAction, setEditingAction] = createSignal(null);
+  const [actionName, setActionName] = createSignal('');
+  const [actionScript, setActionScript] = createSignal('');
+
   // Load settings and identities when settings modal opens
   createEffect(() => {
     if (modalVisible() && modalType() === 'settings') {
+      setSettingsTab('general');
       window.api.getAllSettings().then((s) => {
         if (s.uiFontSize) setUiFontSize(parseInt(s.uiFontSize));
         if (s.editorFontSize) setEditorFontSize(parseInt(s.editorFontSize));
       });
       window.api.identityList().then((list) => setIdentities(list));
+      window.api.actionsList().then((list) => setActions(list));
     }
   });
 
@@ -174,13 +197,55 @@ export default function Modal() {
     setIdentities(await window.api.identityList());
   }
 
+  // Actions CRUD
+  function resetActionForm() {
+    setEditingAction(null);
+    setActionName('');
+    setActionScript('');
+  }
+
+  async function saveAction() {
+    const name = actionName().trim();
+    const script = actionScript().trim();
+    if (!name || !script) return;
+    if (editingAction()) {
+      const existing = actions.find((a) => a.id === editingAction());
+      await window.api.actionsUpdate(editingAction(), { name, script, enabled: existing?.enabled ?? 1 });
+    } else {
+      await window.api.actionsCreate({ name, script, enabled: true });
+    }
+    setActions(await window.api.actionsList());
+    resetActionForm();
+  }
+
+  function startEditAction(id) {
+    const item = actions.find((a) => a.id === id);
+    if (!item) return;
+    setEditingAction(id);
+    setActionName(item.name);
+    setActionScript(item.script);
+  }
+
+  async function deleteAction(id) {
+    await window.api.actionsDelete(id);
+    setActions(await window.api.actionsList());
+    if (editingAction() === id) resetActionForm();
+  }
+
+  async function toggleActionEnabled(id) {
+    const item = actions.find((a) => a.id === id);
+    if (!item) return;
+    await window.api.actionsUpdate(id, { name: item.name, script: item.script, enabled: !item.enabled });
+    setActions(await window.api.actionsList());
+  }
+
   function onKeyDown(e) {
     if (!modalVisible()) return;
     if (e.key === 'Enter') {
       if (modalType() === 'alert') close(null);
       else if (modalType() === 'confirm-type') {
         if (modalValue() === modalExpectedName()) close(true);
-      } else if (modalType() !== 'textarea' && modalType() !== 'settings')
+      } else if (modalType() !== 'textarea' && modalType() !== 'settings' && modalType() !== 'choice')
         close(modalType() === 'prompt' ? modalValue() : true);
     }
     if (e.key === 'Escape') {
@@ -244,108 +309,167 @@ export default function Modal() {
             />
           </Show>
           <Show when={modalType() === 'settings'}>
-            <div class="settings-section">
-              <div class="settings-label">{t.modal.themeLabel}</div>
-              <select
-                class="settings-select"
-                value={selectedTheme()}
-                onChange={(e) => {
-                  applyTheme(e.target.value);
-                  setSelectedTheme(e.target.value);
-                }}
-              >
-                <For each={getThemeList()}>
-                  {(theme) => <option value={theme.id}>{theme.name}</option>}
-                </For>
-              </select>
+            <div class="settings-tabs">
+              <button class={`settings-tab ${settingsTab() === 'general' ? 'active' : ''}`} onClick={() => setSettingsTab('general')}>General</button>
+              <button class={`settings-tab ${settingsTab() === 'identities' ? 'active' : ''}`} onClick={() => setSettingsTab('identities')}>Identities</button>
+              <button class={`settings-tab ${settingsTab() === 'actions' ? 'active' : ''}`} onClick={() => setSettingsTab('actions')}>Actions</button>
             </div>
-            <div class="settings-row">
-              <div class="settings-section">
-                <div class="settings-label">{t.modal.uiFontSizeLabel}</div>
-                <select
-                  class="settings-select"
-                  value={uiFontSize()}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setUiFontSize(parseInt(v));
-                    window.api.setSetting('uiFontSize', v);
-                    applyUiFontSize(v);
-                  }}
-                >
-                  <For each={[10, 11, 12, 13, 14, 15, 16]}>
-                    {(s) => <option value={s}>{s}px</option>}
-                  </For>
-                </select>
-              </div>
-              <div class="settings-section">
-                <div class="settings-label">{t.modal.editorFontSizeLabel}</div>
-                <select
-                  class="settings-select"
-                  value={editorFontSize()}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setEditorFontSize(parseInt(v));
-                    window.api.setSetting('editorFontSize', v);
-                    applyEditorFontSize(v);
-                  }}
-                >
-                  <For each={[10, 11, 12, 13, 14, 15, 16]}>
-                    {(s) => <option value={s}>{s}px</option>}
-                  </For>
-                </select>
-              </div>
-            </div>
-            <div class="settings-section">
-              <div class="settings-label">Git Identities</div>
-              <div class="settings-identities-list">
-                <For each={identities}>{(id) => (
-                  <div class="settings-identity-row">
-                    <div class="settings-identity-info">
-                      <span class="settings-identity-name">{id.name}</span>
-                      <span class="settings-identity-email">{id.email}</span>
+            <div class="settings-tab-content">
+              <Show when={settingsTab() === 'general'}>
+                <div class="settings-section">
+                  <div class="settings-label">{t.modal.themeLabel}</div>
+                  <select
+                    class="settings-select"
+                    value={selectedTheme()}
+                    onChange={(e) => {
+                      applyTheme(e.target.value);
+                      setSelectedTheme(e.target.value);
+                    }}
+                  >
+                    <For each={getThemeList()}>
+                      {(theme) => <option value={theme.id}>{theme.name}</option>}
+                    </For>
+                  </select>
+                </div>
+                <div class="settings-row">
+                  <div class="settings-section">
+                    <div class="settings-label">{t.modal.uiFontSizeLabel}</div>
+                    <select
+                      class="settings-select"
+                      value={uiFontSize()}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setUiFontSize(parseInt(v));
+                        window.api.setSetting('uiFontSize', v);
+                        applyUiFontSize(v);
+                      }}
+                    >
+                      <For each={[10, 11, 12, 13, 14, 15, 16]}>
+                        {(s) => <option value={s}>{s}px</option>}
+                      </For>
+                    </select>
+                  </div>
+                  <div class="settings-section">
+                    <div class="settings-label">{t.modal.editorFontSizeLabel}</div>
+                    <select
+                      class="settings-select"
+                      value={editorFontSize()}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setEditorFontSize(parseInt(v));
+                        window.api.setSetting('editorFontSize', v);
+                        applyEditorFontSize(v);
+                      }}
+                    >
+                      <For each={[10, 11, 12, 13, 14, 15, 16]}>
+                        {(s) => <option value={s}>{s}px</option>}
+                      </For>
+                    </select>
+                  </div>
+                </div>
+              </Show>
+              <Show when={settingsTab() === 'identities'}>
+                <div class="settings-section">
+                  <div class="settings-identities-list">
+                    <For each={identities}>{(id) => (
+                      <div class="settings-identity-row">
+                        <div class="settings-identity-info">
+                          <span class="settings-identity-name">{id.name}</span>
+                          <span class="settings-identity-email">{id.email}</span>
+                        </div>
+                        <div class="settings-identity-actions">
+                          <button class="btn btn-ghost btn-xs" onClick={() => startEditIdentity(id.id)} title="Edit">
+                            <Icon name="fa-solid fa-pen" />
+                          </button>
+                          <button class="btn btn-ghost btn-xs" onClick={() => deleteIdentity(id.id)} title="Delete">
+                            <Icon name="fa-solid fa-trash" />
+                          </button>
+                        </div>
+                      </div>
+                    )}</For>
+                  </div>
+                  <div class="settings-identity-form">
+                    <input
+                      type="text"
+                      class="settings-identity-input"
+                      placeholder="Name"
+                      value={identityName()}
+                      onInput={(e) => setIdentityName(e.target.value)}
+                    />
+                    <input
+                      type="text"
+                      class="settings-identity-input"
+                      placeholder="Email"
+                      value={identityEmail()}
+                      onInput={(e) => setIdentityEmail(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') saveIdentity(); }}
+                    />
+                    <button class="btn btn-primary btn-xs" onClick={saveIdentity} disabled={!identityName().trim() || !identityEmail().trim()}>
+                      {editingIdentity() ? 'Update' : 'Add'}
+                    </button>
+                    <Show when={editingIdentity()}>
+                      <button class="btn btn-ghost btn-xs" onClick={resetIdentityForm}>Cancel</button>
+                    </Show>
+                  </div>
+                  <div class="settings-identity-import">
+                    <button class="btn btn-ghost btn-xs" onClick={importGlobalIdentity} title="Import from git global config">
+                      <Icon name="fa-solid fa-globe" /> Import Global
+                    </button>
+                    <button class="btn btn-ghost btn-xs" onClick={importRepoIdentities} title="Import from all saved repos' local git config">
+                      <Icon name="fa-solid fa-folder-open" /> Import from Repos
+                    </button>
+                  </div>
+                </div>
+              </Show>
+              <Show when={settingsTab() === 'actions'}>
+                <div class="settings-section">
+                  <div class="settings-actions-list">
+                    <For each={actions}>{(action) => (
+                      <div class="settings-action-row">
+                        <label class="settings-action-toggle" title={action.enabled ? 'Enabled' : 'Disabled'}>
+                          <input type="checkbox" checked={action.enabled} onChange={() => toggleActionEnabled(action.id)} />
+                        </label>
+                        <div class="settings-action-info">
+                          <span class="settings-action-name">{action.name}</span>
+                          <span class="settings-action-script">{action.script}</span>
+                        </div>
+                        <div class="settings-action-actions">
+                          <button class="btn btn-ghost btn-xs" onClick={() => startEditAction(action.id)} title="Edit">
+                            <Icon name="fa-solid fa-pen" />
+                          </button>
+                          <button class="btn btn-ghost btn-xs" onClick={() => deleteAction(action.id)} title="Delete">
+                            <Icon name="fa-solid fa-trash" />
+                          </button>
+                        </div>
+                      </div>
+                    )}</For>
+                  </div>
+                  <div class="settings-action-form">
+                    <div class="settings-action-form-top">
+                      <input
+                        type="text"
+                        class="settings-action-input"
+                        placeholder="Action name"
+                        value={actionName()}
+                        onInput={(e) => setActionName(e.target.value)}
+                      />
+                      <button class="btn btn-primary btn-xs" onClick={saveAction} disabled={!actionName().trim() || !actionScript().trim()}>
+                        {editingAction() ? 'Update' : 'Add'}
+                      </button>
+                      <Show when={editingAction()}>
+                        <button class="btn btn-ghost btn-xs" onClick={resetActionForm}>Cancel</button>
+                      </Show>
                     </div>
-                    <div class="settings-identity-actions">
-                      <button class="btn btn-ghost btn-xs" onClick={() => startEditIdentity(id.id)} title="Edit">
-                        <Icon name="fa-solid fa-pen" />
-                      </button>
-                      <button class="btn btn-ghost btn-xs" onClick={() => deleteIdentity(id.id)} title="Delete">
-                        <Icon name="fa-solid fa-trash" />
-                      </button>
+                    <div class="settings-action-editor">
+                      <ScriptEditor
+                        value={actionScript()}
+                        onInput={setActionScript}
+                        placeholder="#!/bin/bash&#10;npm test"
+                      />
                     </div>
                   </div>
-                )}</For>
-              </div>
-              <div class="settings-identity-form">
-                <input
-                  type="text"
-                  class="settings-identity-input"
-                  placeholder="Name"
-                  value={identityName()}
-                  onInput={(e) => setIdentityName(e.target.value)}
-                />
-                <input
-                  type="text"
-                  class="settings-identity-input"
-                  placeholder="Email"
-                  value={identityEmail()}
-                  onInput={(e) => setIdentityEmail(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter') saveIdentity(); }}
-                />
-                <button class="btn btn-primary btn-xs" onClick={saveIdentity} disabled={!identityName().trim() || !identityEmail().trim()}>
-                  {editingIdentity() ? 'Update' : 'Add'}
-                </button>
-                <Show when={editingIdentity()}>
-                  <button class="btn btn-ghost btn-xs" onClick={resetIdentityForm}>Cancel</button>
-                </Show>
-              </div>
-              <div class="settings-identity-import">
-                <button class="btn btn-ghost btn-xs" onClick={importGlobalIdentity} title="Import from git global config">
-                  <Icon name="fa-solid fa-globe" /> Import Global
-                </button>
-                <button class="btn btn-ghost btn-xs" onClick={importRepoIdentities} title="Import from all saved repos' local git config">
-                  <Icon name="fa-solid fa-folder-open" /> Import from Repos
-                </button>
-              </div>
+                </div>
+              </Show>
             </div>
           </Show>
           <Show when={modalType() === 'alert'}>
@@ -355,7 +479,7 @@ export default function Modal() {
               </button>
             </div>
           </Show>
-          <Show when={modalType() !== 'settings' && modalType() !== 'alert' && modalType() !== 'confirm-type'}>
+          <Show when={modalType() !== 'settings' && modalType() !== 'alert' && modalType() !== 'confirm-type' && modalType() !== 'choice'}>
             <div class="modal-buttons">
               <button
                 class="btn btn-ghost"
@@ -403,6 +527,24 @@ export default function Modal() {
                 {t.modal.deleteButton}
               </button>
             </div>
+          </Show>
+          <Show when={modalType() === 'choice'}>
+            <div class="modal-choices">
+              <For each={modalChoices()}>{(choice) => (
+                <button
+                  class={`btn ${choice.style === 'danger' ? 'btn-danger' : 'btn-ghost'} modal-choice-btn`}
+                  onClick={() => close(choice.value)}
+                >
+                  <span class="modal-choice-label">{choice.label}</span>
+                  <Show when={choice.description}>
+                    <span class="modal-choice-desc">{choice.description}</span>
+                  </Show>
+                </button>
+              )}</For>
+            </div>
+            <button class="btn btn-ghost modal-choice-cancel" onClick={() => close(null)}>
+              {t.modal.cancelButton}
+            </button>
           </Show>
         </div>
       </div>

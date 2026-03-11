@@ -26,6 +26,9 @@ export default function ChangesPanel() {
             <div class="git-section-header" onClick={() => ws.toggleSection('staged')}>
               <Icon name={ws.collapsedSections().has('staged') ? 'fa-solid fa-chevron-right' : 'fa-solid fa-chevron-down'} class="git-section-chevron" />
               <span>Staged ({staged().length})</span>
+              <button class="btn btn-ghost btn-xs" onClick={(e) => { e.stopPropagation(); ws.exportStagedPatch(); }} title="Export staged as patch">
+                <Icon name="fa-solid fa-file-export" />
+              </button>
               <button class="btn btn-ghost btn-xs" onClick={(e) => { e.stopPropagation(); ws.unstageAll(); }} title="Unstage all">
                 <Icon name="fa-solid fa-minus" /> All
               </button>
@@ -41,6 +44,9 @@ export default function ChangesPanel() {
             <div class="git-section-header" onClick={() => ws.toggleSection('unstaged')}>
               <Icon name={ws.collapsedSections().has('unstaged') ? 'fa-solid fa-chevron-right' : 'fa-solid fa-chevron-down'} class="git-section-chevron" />
               <span>Changes ({unstaged().length})</span>
+              <button class="btn btn-ghost btn-xs" onClick={(e) => { e.stopPropagation(); ws.applyPatch(); }} title="Apply patch file">
+                <Icon name="fa-solid fa-file-import" />
+              </button>
               <button class="btn btn-ghost btn-xs" onClick={(e) => { e.stopPropagation(); ws.stageAll(unstaged()); }} title="Stage all changes">
                 <Icon name="fa-solid fa-plus" /> All
               </button>
@@ -171,6 +177,55 @@ export default function ChangesPanel() {
             </pre>
           </Show>
         </div>
+
+        <Show when={ws.actions().length > 0}>
+          <div class="git-actions-bar">
+            <select
+              class="git-actions-select"
+              value={ws.selectedAction() || ''}
+              onChange={(e) => ws.setSelectedAction(e.target.value || null)}
+            >
+              <For each={ws.actions()}>{(action) => (
+                <option value={action.id}>{action.name}</option>
+              )}</For>
+            </select>
+            <button
+              class="btn btn-ghost btn-xs"
+              disabled={!ws.selectedAction() || ws.actionRunning()}
+              onClick={() => {
+                const action = ws.actions().find(a => a.id === ws.selectedAction());
+                if (action) ws.runAction(action);
+              }}
+              title="Run action"
+            >
+              <Icon name={ws.actionRunning() ? 'fa-solid fa-spinner' : 'fa-solid fa-play'} />
+            </button>
+          </div>
+          <Show when={ws.actionOutput()}>
+            <div class={`git-action-result ${ws.actionOutput().ok ? 'git-action-success' : 'git-action-error'}`}>
+              <div class="git-action-result-header">
+                <span>{ws.actionOutput().name}: {ws.actionOutput().ok ? 'Passed' : 'Failed'}</span>
+                <div class="git-action-result-buttons">
+                  <button
+                    class="btn btn-ghost btn-xs"
+                    onClick={() => {
+                      const out = ws.actionOutput();
+                      const content = out.ok ? out.output : out.error;
+                      navigator.clipboard.writeText(content || '');
+                    }}
+                    title="Copy to clipboard"
+                  >
+                    <Icon name="fa-solid fa-copy" />
+                  </button>
+                  <button class="btn btn-ghost btn-xs" onClick={() => ws.setActionOutput(null)} title="Dismiss">
+                    <Icon name="fa-solid fa-xmark" />
+                  </button>
+                </div>
+              </div>
+              <pre class="git-action-result-output">{ws.actionOutput().ok ? ws.actionOutput().output : ws.actionOutput().error}</pre>
+            </div>
+          </Show>
+        </Show>
 
         <div class="git-commit-box">
           <Show when={ws.identities().length > 0}>

@@ -1,12 +1,9 @@
-import { EditorState, Compartment } from '@codemirror/state';
+import { EditorState } from '@codemirror/state';
 import {
   EditorView,
   lineNumbers,
   placeholder as cmPlaceholder,
-  keymap,
 } from '@codemirror/view';
-import { toggleComment } from '@codemirror/commands';
-import { sql, PostgreSQL, SQLite } from '@codemirror/lang-sql';
 import { syntaxHighlighting, HighlightStyle } from '@codemirror/language';
 import { tags } from '@lezer/highlight';
 import { createEffect, onCleanup, onMount } from 'solid-js';
@@ -27,22 +24,22 @@ const theme = EditorView.theme({
     overflow: 'auto',
   },
   '.cm-content': {
-    padding: '10px 0',
+    padding: '6px 0',
     caretColor: 'var(--text)',
   },
   '.cm-line': {
-    padding: '0 10px',
+    padding: '0 8px',
   },
   '.cm-gutters': {
     backgroundColor: 'var(--surface2)',
     color: 'var(--text-dim)',
     border: 'none',
     borderRight: '1px solid var(--border)',
-    minWidth: '40px',
+    minWidth: '32px',
   },
   '.cm-gutter.cm-lineNumbers .cm-gutterElement': {
-    padding: '0 8px',
-    minWidth: '32px',
+    padding: '0 6px',
+    minWidth: '24px',
   },
   '.cm-activeLineGutter': {
     backgroundColor: 'transparent',
@@ -66,23 +63,13 @@ const theme = EditorView.theme({
 });
 
 const highlightStyle = HighlightStyle.define([
-  { tag: tags.keyword, color: '#e78284' },
-  { tag: tags.string, color: '#a6d189' },
-  { tag: tags.number, color: '#ef9f76' },
-  { tag: tags.bool, color: '#e78284' },
-  { tag: tags.null, color: '#e78284' },
-  { tag: tags.operator, color: '#ef9f76' },
-  { tag: tags.punctuation, color: 'var(--text-dim)' },
-  { tag: tags.brace, color: 'var(--text-dim)' },
-  { tag: tags.paren, color: 'var(--text-dim)' },
-  { tag: tags.squareBracket, color: 'var(--text-dim)' },
-  { tag: tags.typeName, color: '#7dc4e4' },
-  { tag: tags.propertyName, color: '#7dc4e4' },
   { tag: tags.comment, color: 'var(--text-dim)', fontStyle: 'italic' },
-  { tag: tags.content, color: 'var(--text)' },
+  { tag: tags.string, color: '#a6d189' },
+  { tag: tags.keyword, color: '#e78284' },
+  { tag: tags.number, color: '#ef9f76' },
 ]);
 
-export default function SqlEditor(props) {
+export default function ScriptEditor(props) {
   let containerRef;
   let view;
   let ignoreNextUpdate = false;
@@ -102,8 +89,6 @@ export default function SqlEditor(props) {
         syntaxHighlighting(highlightStyle),
         lineNumbers(),
         updateListener,
-        keymap.of([{ key: 'Mod-/', run: toggleComment }]),
-        sql({ dialect: props.dialect === 'sqlite' ? SQLite : PostgreSQL }),
         ...(props.placeholder ? [cmPlaceholder(props.placeholder)] : []),
       ],
     });

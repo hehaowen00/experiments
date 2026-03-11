@@ -82,12 +82,6 @@ export default function DateTimeTool(props) {
 
   return (
     <div class="landing-main" style={props.style}>
-      <div class="landing-toolbar">
-        <button class="btn btn-ghost btn-sm" onClick={props.onToggleSidebar}>
-          <Icon name="fa-solid fa-bars" />
-        </button>
-
-      </div>
       <div class="dt-tool">
         <div class="dt-section">
           <div class="dt-section-header">Current Time</div>

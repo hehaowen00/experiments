@@ -49,6 +49,14 @@ function initDb() {
       name TEXT NOT NULL,
       email TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS git_actions (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      script TEXT NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      sort_order INTEGER NOT NULL DEFAULT 0
+    );
   `);
 
   // Add identity_id column to git_repos if missing

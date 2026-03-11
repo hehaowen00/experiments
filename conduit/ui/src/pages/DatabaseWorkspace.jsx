@@ -48,6 +48,9 @@ export default function DatabaseWorkspace(props) {
     running: false,
   });
 
+  // Sort state for data tab
+  const [dataSortCols, setDataSortCols] = createSignal([]);
+
   // Cell panel state
   const [cell, setCell] = createStore({
     open: false,
@@ -259,6 +262,7 @@ export default function DatabaseWorkspace(props) {
   async function selectTable(schema, tableName) {
     setSidebar('selectedTable', { schema, table: tableName });
     setTable({ tab: 'data', dataPage: 0, columnFormats: {} });
+    setDataSortCols([]);
     setPending({ edits: {}, deletes: {} });
     const id = activeTabId();
     if (id) setTabs(prev => prev.map(t => t.id === id ? { ...t, label: tabLabel(tableName) } : t));
@@ -271,11 +275,12 @@ export default function DatabaseWorkspace(props) {
     await loadTableData(0);
   }
 
-  async function loadTableData(page) {
+  async function loadTableData(page, sortOverride) {
     const t = sidebar.selectedTable;
     if (!t) return;
     setTable('dataPage', page);
-    const result = await window.api.dbGetTableData(connData.liveId, t.schema, t.table, PAGE_SIZE, page * PAGE_SIZE);
+    const sort = sortOverride !== undefined ? sortOverride : dataSortCols();
+    const result = await window.api.dbGetTableData(connData.liveId, t.schema, t.table, PAGE_SIZE, page * PAGE_SIZE, sort.length > 0 ? sort : undefined);
     if (result.error) {
       setTable('data', { rows: [], columns: [], error: result.error });
     } else {
@@ -297,6 +302,11 @@ export default function DatabaseWorkspace(props) {
     setTable('tab', 'query');
     const result = await window.api.dbQuery(connData.liveId, sql);
     setQuery({ running: false, result });
+  }
+
+  function activeTab() {
+    if (table.tab === 'query' && !query.text.trim() && sidebar.selectedTable) return 'data';
+    return table.tab;
   }
 
   function toggleTableExpand(key) {
@@ -329,7 +339,7 @@ export default function DatabaseWorkspace(props) {
   }
 
   async function onCellDblClick(col, rowIndex, currentVal, source) {
-    const isLarge = typeof currentVal === 'string' && currentVal.startsWith('[Large data:');
+    const isLarge = typeof currentVal === 'string' && currentVal.startsWith('[Payload:');
     setCell('dirty', false);
     if (isLarge && source?.liveId && source?.schema && source?.table) {
       setCell({ panel: { column: col, rowIndex, value: null, loading: true, source }, open: true });
@@ -650,7 +660,7 @@ export default function DatabaseWorkspace(props) {
   });
 
   return (
-    <div class="db-workspace-page">
+    <div class="db-workspace-page" style={props.style}>
       <div class="db-workspace">
         {/* Left sidebar: tables */}
         <Show when={sidebarOpen()}>
@@ -827,10 +837,10 @@ export default function DatabaseWorkspace(props) {
           <div class="db-results-pane">
             <Show when={sidebar.selectedTable}>
               <div class="db-tabs">
-                <button class={`db-tab ${table.tab === 'data' ? 'active' : ''}`} onClick={() => setTable('tab', 'data')}>Data</button>
-                <button class={`db-tab ${table.tab === 'columns' ? 'active' : ''}`} onClick={() => setTable('tab', 'columns')}>Columns</button>
-                <button class={`db-tab ${table.tab === 'indexes' ? 'active' : ''}`} onClick={() => setTable('tab', 'indexes')}>Indexes</button>
-                <button class={`db-tab ${table.tab === 'query' ? 'active' : ''}`} onClick={() => setTable('tab', 'query')}>Query Results</button>
+                <button class={`db-tab ${activeTab() === 'data' ? 'active' : ''}`} onClick={() => setTable('tab', 'data')}>Data</button>
+                <button class={`db-tab ${activeTab() === 'columns' ? 'active' : ''}`} onClick={() => setTable('tab', 'columns')}>Columns</button>
+                <button class={`db-tab ${activeTab() === 'indexes' ? 'active' : ''}`} onClick={() => setTable('tab', 'indexes')}>Indexes</button>
+                <button class={`db-tab ${activeTab() === 'query' ? 'active' : ''}`} onClick={() => setTable('tab', 'query')}>Query Results</button>
                 <button
                   class={`db-tab db-tab-right ${cell.open ? 'active' : ''}`}
                   onClick={toggleCellPanel}
@@ -854,7 +864,7 @@ export default function DatabaseWorkspace(props) {
             </Show>
 
             {/* Data tab */}
-            <Show when={table.tab === 'data' && table.data}>
+            <Show when={activeTab() === 'data' && table.data}>
               <Show when={table.data.error}>
                 <div class="db-error">{table.data.error}</div>
               </Show>
@@ -890,6 +900,8 @@ export default function DatabaseWorkspace(props) {
                   onSetColumnFormat={(col, fmt) => setTable('columnFormats', col, fmt)}
                   deletedRows={pending.deletes}
                   editedCells={pending.edits}
+                  sortCols={dataSortCols()}
+                  onSort={(cols) => { setDataSortCols(cols); setPending({ edits: {}, deletes: {} }); loadTableData(0, cols); }}
                 />
                 <Show when={hasPendingChanges()}>
                   <div class="db-pending-bar">
@@ -904,7 +916,7 @@ export default function DatabaseWorkspace(props) {
             </Show>
 
             {/* Columns tab */}
-            <Show when={table.tab === 'columns'}>
+            <Show when={activeTab() === 'columns'}>
               <div class="db-table-info">
                 <span>{table.columns.length} columns</span>
                 <button class="btn btn-ghost btn-sm" onClick={openAddColumn} title="Add column">
@@ -940,7 +952,7 @@ export default function DatabaseWorkspace(props) {
             </Show>
 
             {/* Indexes tab */}
-            <Show when={table.tab === 'indexes'}>
+            <Show when={activeTab() === 'indexes'}>
               <div class="db-detail-table-wrap">
                 <Show when={table.indexes.length === 0}>
                   <div class="db-empty">No indexes</div>
@@ -964,7 +976,7 @@ export default function DatabaseWorkspace(props) {
             </Show>
 
             {/* Query results tab */}
-            <Show when={table.tab === 'query' || !sidebar.selectedTable}>
+            <Show when={activeTab() === 'query' || !sidebar.selectedTable}>
               <Show when={query.result}>
                 <Show when={query.result.error}>
                   <div class="db-error db-query-error">{query.result.error}</div>

@@ -5,10 +5,30 @@ export const GRAPH_COLORS = [
   '#c070f0', '#f06090', '#40c0c0', '#d0a050', '#8888cc',
 ];
 
+// Stable color per hash — lanes shift but colors follow the branch identity
+let hashColors = new Map();
+let nextColor = 0;
+
+export function resetGraphColors() {
+  hashColors = new Map();
+  nextColor = 0;
+}
+
+function colorFor(hash, fallbackCol) {
+  if (!hashColors.has(hash)) {
+    hashColors.set(hash, fallbackCol != null ? fallbackCol : nextColor++);
+  }
+  return hashColors.get(hash);
+}
+
 export function buildGraph(commits, initialLanes) {
   if (!commits.length) return { graph: [], maxCols: 0, lanes: initialLanes || [] };
 
+  // lanes: array where lanes[i] = hash of the commit expected in that column,
+  // or null if the lane is free.
+  // laneColors: parallel array tracking the color index for each lane.
   let lanes = initialLanes ? [...initialLanes] : [];
+  let laneColors = lanes.map((h, i) => h ? colorFor(h, i) : 0);
   const rows = [];
   let maxCols = 0;
 
@@ -17,95 +37,119 @@ export function buildGraph(commits, initialLanes) {
     const hash = c.hash;
     const parents = c.parents;
 
-    // Snapshot lanes before any modification for pass-through tracking
-    const prevLanes = [...lanes];
-
-    // Find or assign column for this commit
-    let col = lanes.indexOf(hash);
-    const isNew = col === -1;
-    if (isNew) {
-      col = lanes.indexOf(null);
-      if (col === -1) { col = lanes.length; lanes.push(hash); }
-      else lanes[col] = hash;
+    // --- Find all lanes expecting this commit ---
+    const incomingLanes = [];
+    for (let l = 0; l < lanes.length; l++) {
+      if (lanes[l] === hash) incomingLanes.push(l);
     }
 
+    // Assign column: take leftmost existing lane, else find a free slot
+    let col;
+    if (incomingLanes.length > 0) {
+      col = incomingLanes[0];
+    } else {
+      col = lanes.indexOf(null);
+      if (col === -1) {
+        col = lanes.length;
+        lanes.push(null);
+        laneColors.push(0);
+      }
+      lanes[col] = hash;
+      laneColors[col] = colorFor(hash, col);
+    }
+
+    const myColor = laneColors[col];
     const topPipes = [];
     const botPipes = [];
 
-    // --- Top half: lines coming from above into this row ---
+    // --- Top half: lines coming into this row from above ---
 
-    // The commit's own lane (only if it was expected from a previous row)
-    if (!isNew) {
-      topPipes.push({ from: col, to: col, color: col });
+    // Main lane
+    if (incomingLanes.length > 0) {
+      topPipes.push({ from: col, to: col, color: myColor });
     }
 
-    // Collect which lanes merge into this commit
-    const mergedLanes = new Set();
+    // Other lanes converging into this commit
+    for (const l of incomingLanes) {
+      if (l === col) continue;
+      topPipes.push({ from: l, to: col, color: laneColors[l] });
+      lanes[l] = null;
+      laneColors[l] = 0;
+    }
+
+    // Pass-through (top half)
     for (let l = 0; l < lanes.length; l++) {
-      if (l === col) continue;
-      if (lanes[l] === hash) {
-        topPipes.push({ from: l, to: col, color: l });
-        mergedLanes.add(l);
-        lanes[l] = null;
-      }
-    }
-
-    // Pass-through lanes (top half): lanes that were occupied before and
-    // are NOT this commit and NOT merging into it
-    for (let l = 0; l < prevLanes.length; l++) {
-      if (l === col) continue;
-      if (mergedLanes.has(l)) continue;
-      if (prevLanes[l] && prevLanes[l] !== null) {
-        topPipes.push({ from: l, to: l, color: l });
+      if (l === col || incomingLanes.includes(l)) continue;
+      if (lanes[l] !== null) {
+        topPipes.push({ from: l, to: l, color: laneColors[l] });
       }
     }
 
     // --- Bottom half: lines going from this row downward ---
 
     const nextLanes = [...lanes];
+    const nextColors = [...laneColors];
     nextLanes[col] = null;
+    nextColors[col] = 0;
 
-    // First parent
+    // First parent: ALWAYS stays in the same column as the commit.
+    // This is the key rule that keeps the main branch stable.
     if (parents.length > 0) {
       const p0 = parents[0];
       const existing = nextLanes.indexOf(p0);
       if (existing !== -1 && existing !== col) {
-        botPipes.push({ from: col, to: existing, color: col });
-      } else {
-        nextLanes[col] = p0;
-        botPipes.push({ from: col, to: col, color: col });
+        // First parent was already reserved in another lane (by a merge's
+        // second parent from an earlier row). Relocate it to this column
+        // so the first-parent chain stays visually straight.
+        nextLanes[existing] = null;
+        nextColors[existing] = 0;
       }
+      nextLanes[col] = p0;
+      nextColors[col] = myColor;
+      botPipes.push({ from: col, to: col, color: myColor });
     }
 
-    // Additional parents (merge)
+    // Additional parents (merge edges)
     for (let p = 1; p < parents.length; p++) {
       const ph = parents[p];
       const existing = nextLanes.indexOf(ph);
       if (existing !== -1) {
-        botPipes.push({ from: col, to: existing, color: existing });
+        botPipes.push({ from: col, to: existing, color: nextColors[existing] });
       } else {
-        let slot = nextLanes.indexOf(null);
-        if (slot === -1) { slot = nextLanes.length; nextLanes.push(ph); }
-        else nextLanes[slot] = ph;
-        botPipes.push({ from: col, to: slot, color: slot });
+        // Find a free slot, preferring slots to the right of col
+        let slot = -1;
+        for (let s = col + 1; s < nextLanes.length; s++) {
+          if (nextLanes[s] === null) { slot = s; break; }
+        }
+        if (slot === -1) {
+          // Try slots left of col
+          slot = nextLanes.indexOf(null);
+        }
+        if (slot === -1) {
+          slot = nextLanes.length;
+          nextLanes.push(null);
+          nextColors.push(0);
+        }
+        const branchColor = colorFor(ph, slot);
+        nextLanes[slot] = ph;
+        nextColors[slot] = branchColor;
+        botPipes.push({ from: col, to: slot, color: branchColor });
       }
     }
 
-    // Pass-through lanes (bottom half): occupied lanes that are not the
-    // commit's column and continue into nextLanes
+    // Pass-through (bottom half): lanes that were occupied before and
+    // continue into nextLanes, possibly shifting if relocated
     const botPipeSet = new Set(botPipes.map(p => `${p.from}-${p.to}`));
-    for (let l = 0; l < Math.max(lanes.length, nextLanes.length); l++) {
-      if (l === col) continue;
-      // Use the current lanes state (after merges cleared)
+    for (let l = 0; l < lanes.length; l++) {
+      if (l === col || incomingLanes.includes(l)) continue;
       const laneHash = lanes[l];
-      if (laneHash && laneHash !== hash) {
-        const dest = nextLanes.indexOf(laneHash);
-        if (dest !== -1) {
-          const key = `${l}-${dest}`;
-          if (!botPipeSet.has(key)) {
-            botPipes.push({ from: l, to: dest, color: dest });
-            botPipeSet.add(key);
-          }
+      if (laneHash === null) continue;
+      const dest = nextLanes.indexOf(laneHash);
+      if (dest !== -1) {
+        const key = `${l}-${dest}`;
+        if (!botPipeSet.has(key)) {
+          botPipes.push({ from: l, to: dest, color: laneColors[l] });
+          botPipeSet.add(key);
         }
       }
     }
@@ -113,13 +157,15 @@ export function buildGraph(commits, initialLanes) {
     // Trim trailing empty lanes
     while (nextLanes.length > 0 && nextLanes[nextLanes.length - 1] === null) {
       nextLanes.pop();
+      nextColors.pop();
     }
 
     const rowWidth = Math.max(lanes.length, nextLanes.length);
     if (rowWidth > maxCols) maxCols = rowWidth;
 
-    rows.push({ col, topPipes, botPipes, isMerge: parents.length > 1 });
+    rows.push({ col, topPipes, botPipes, isMerge: parents.length > 1, color: myColor });
     lanes = nextLanes;
+    laneColors = nextColors;
   }
 
   return { graph: rows, maxCols: Math.max(maxCols, 1), lanes };
@@ -139,7 +185,6 @@ export function parseRefs(refStr) {
 export function GraphCell(props) {
   const { row, maxCols } = props;
   const w = Math.max(maxCols, 1) * 16 + 8;
-  // Slightly taller than the row to overlap the 1px border between rows
   const h = 26;
   const mid = 13;
   const cx = row.col * 16 + 12;
@@ -155,11 +200,13 @@ export function GraphCell(props) {
     return <path d={`M ${x1} ${y0} C ${x1} ${y0 + halfH * 0.6}, ${x2} ${y1 - halfH * 0.6}, ${x2} ${y1}`} fill="none" stroke={color} stroke-width="2" />;
   }
 
+  const nodeColor = GRAPH_COLORS[row.color % GRAPH_COLORS.length];
+
   return (
     <svg width={w} height={h} class="git-graph-svg" style={{ 'margin-top': '-1px', 'margin-bottom': '-1px' }}>
       <For each={row.topPipes}>{(pipe) => pipeHalf(pipe, 0, mid)}</For>
       <For each={row.botPipes}>{(pipe) => pipeHalf(pipe, mid, h)}</For>
-      <circle cx={cx} cy={mid} r={row.isMerge ? 5 : 4} fill={GRAPH_COLORS[row.col % GRAPH_COLORS.length]}
+      <circle cx={cx} cy={mid} r={row.isMerge ? 5 : 4} fill={nodeColor}
         stroke={row.isMerge ? '#fff' : 'none'} stroke-width={row.isMerge ? 1.5 : 0} />
     </svg>
   );

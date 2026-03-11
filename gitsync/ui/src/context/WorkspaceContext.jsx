@@ -1,7 +1,7 @@
 import { createContext, useContext, createSignal, onMount, onCleanup } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
-import { showAlert, showConfirm, showPrompt } from '../components/Modal';
-import { buildGraph } from '../utils/graph';
+import { showAlert, showChoice, showConfirm, showPrompt } from '../components/Modal';
+import { buildGraph, resetGraphColors } from '../utils/graph';
 import { initHomeDir } from '../utils/path';
 import { allFilesInTree } from '../utils/tree';
 
@@ -110,6 +110,7 @@ export function WorkspaceProvider(props) {
     const branchName = (branch === '__current__' || branch === '__all__') ? null : branch;
     const result = await window.api.gitLog(repoPath, LOG_PAGE_SIZE, allBranches, branchName, 0, search);
     if (!result.error) {
+      resetGraphColors();
       const { graph, maxCols, lanes } = buildGraph(result.commits, []);
       setLog({
         commits: result.commits, graph, maxCols, lanes,
@@ -273,6 +274,50 @@ export function WorkspaceProvider(props) {
     }
   }
 
+  // --- Patch export ---
+  async function exportStagedPatch() {
+    const result = await window.api.gitExportStagedPatch(repoPath);
+    if (result.error) showAlert('Export Failed', result.error);
+    else if (result.ok) setOutput(`Patch saved to ${result.path}`);
+  }
+
+  async function applyPatch() {
+    const result = await window.api.gitApplyPatch(repoPath);
+    if (result.canceled) return;
+    if (result.error) showAlert('Apply Patch Failed', result.error);
+    else {
+      setOutput(result.output || 'Patch applied');
+      await refresh();
+    }
+  }
+
+  // --- Actions ---
+  const [actions, setActions] = createSignal([]);
+  const [selectedAction, setSelectedAction] = createSignal(null);
+  const [actionRunning, setActionRunning] = createSignal(null);
+  const [actionOutput, setActionOutput] = createSignal(null);
+
+  async function loadActions() {
+    const list = await window.api.actionsList();
+    setActions(list);
+    if (list.length > 0 && !selectedAction()) {
+      setSelectedAction(list[0].id);
+    }
+  }
+
+  async function runAction(action) {
+    setActionRunning(action.id);
+    setActionOutput(null);
+    const result = await window.api.actionsRun(repoPath, action.id);
+    if (result.ok) {
+      setActionOutput({ ok: true, name: result.name, output: result.output || 'Done' });
+    } else {
+      setActionOutput({ ok: false, name: result.name, error: result.error });
+    }
+    setActionRunning(null);
+    await refresh();
+  }
+
   // --- Commit ---
   async function doCommit() {
     const subject = commit.message.trim();
@@ -280,6 +325,18 @@ export function WorkspaceProvider(props) {
     if (!subject && !commit.amend) { showAlert('Error', 'Commit message is required'); return; }
     const fullMsg = desc ? `${subject}\n\n${desc}` : subject;
     setCommit('running', true);
+
+    // Run pre-commit actions
+    const preResult = await window.api.actionsRunPreCommit(repoPath);
+    if (!preResult.ok) {
+      setCommit('running', false);
+      showAlert(
+        `Pre-commit action "${preResult.failedAction}" failed`,
+        preResult.error,
+      );
+      return;
+    }
+
     let result;
     if (commit.amend) {
       result = await window.api.gitCommit(repoPath, fullMsg || commit.originalAmendMsg);
@@ -324,12 +381,28 @@ export function WorkspaceProvider(props) {
   }
 
   // --- Pull/Push/Fetch ---
-  async function doPull() {
+  async function doPull(strategy) {
     setOperating('Pulling...');
-    const result = await window.api.gitPull(repoPath);
+    const result = await window.api.gitPull(repoPath, strategy);
     setOperating('');
-    if (result.error) showAlert('Pull Failed', result.error);
-    else setOutput(result.output || 'Pull complete');
+    if (result.error) {
+      if (result.divergent) {
+        const choice = await showChoice(
+          'Divergent Branches',
+          'Local and remote branches have diverged.',
+          [
+            { label: 'Fast-forward only', value: 'ff-only', description: 'Fail if not possible without creating a merge commit' },
+            { label: 'Rebase', value: 'rebase', description: 'Replay local commits on top of remote changes' },
+            { label: 'Merge', value: 'merge', description: 'Create a merge commit combining both histories' },
+          ],
+        );
+        if (choice) return doPull(choice);
+      } else {
+        showAlert('Pull Failed', result.error);
+      }
+    } else {
+      setOutput(result.output || 'Pull complete');
+    }
     await refresh();
     loadLog();
   }
@@ -345,8 +418,43 @@ export function WorkspaceProvider(props) {
       result = await window.api.gitPush(repoPath);
     }
     setOperating('');
-    if (result.error) showAlert('Push Failed', result.error);
-    else setOutput(result.output || 'Push complete');
+    if (result.error) {
+      if (result.divergent) {
+        const choice = await showChoice(
+          'Push Rejected',
+          'The remote has changes you don\'t have locally.',
+          [
+            { label: 'Pull (rebase) then push', value: 'pull-rebase', description: 'Rebase local commits on top of remote, then push' },
+            { label: 'Pull (merge) then push', value: 'pull-merge', description: 'Merge remote changes locally, then push' },
+            { label: 'Force push', value: 'force', style: 'danger', description: 'Overwrite remote with local (uses --force-with-lease)' },
+          ],
+        );
+        if (choice === 'pull-rebase') {
+          await doPull('rebase');
+          const retry = await window.api.gitPush(repoPath);
+          if (retry.error) showAlert('Push Failed', retry.error);
+          else setOutput(retry.output || 'Push complete');
+          await refresh();
+        } else if (choice === 'pull-merge') {
+          await doPull('merge');
+          const retry = await window.api.gitPush(repoPath);
+          if (retry.error) showAlert('Push Failed', retry.error);
+          else setOutput(retry.output || 'Push complete');
+          await refresh();
+        } else if (choice === 'force') {
+          setOperating('Force pushing...');
+          const retry = await window.api.gitPushForce(repoPath);
+          setOperating('');
+          if (retry.error) showAlert('Force Push Failed', retry.error);
+          else setOutput(retry.output || 'Force push complete');
+          await refresh();
+        }
+      } else {
+        showAlert('Push Failed', result.error);
+      }
+    } else {
+      setOutput(result.output || 'Push complete');
+    }
     await refresh();
   }
 
@@ -665,17 +773,26 @@ export function WorkspaceProvider(props) {
   }
 
   // --- Lifecycle ---
+  let removeFsListener;
+
   onMount(() => {
     refresh();
     loadLog();
     loadStashes();
     loadIdentities();
+    loadActions();
     initHomeDir();
     document.addEventListener('click', dismissCtxMenu);
+    window.api.gitWatchRepo(repoPath);
+    removeFsListener = window.api.onFsChanged((changedPath) => {
+      if (changedPath === repoPath) refresh();
+    });
   });
 
   onCleanup(() => {
     document.removeEventListener('click', dismissCtxMenu);
+    window.api.gitUnwatchRepo(repoPath);
+    if (removeFsListener) removeFsListener();
   });
 
   const ctx = {
@@ -693,7 +810,7 @@ export function WorkspaceProvider(props) {
     // Operations
     refresh, loadLog, loadMoreLog, loadLogBranches, loadRemotes, loadBranches, loadStashes,
     onTabChange, viewDiff,
-    stageFile, unstageFile, stageAll, unstageAll, stageSelected, unstageSelected,
+    stageFile, unstageFile, stageAll, unstageAll, stageSelected, unstageSelected, exportStagedPatch, applyPatch,
     discardFile, discardFiles, deleteUntrackedFiles,
     doCommit, toggleAmend,
     doPull, doPush, doFetch,
@@ -706,6 +823,7 @@ export function WorkspaceProvider(props) {
     toggleSection, toggleDir, toggleFileSelection,
     openSwitcher, closeSwitcher, filteredSwitcherRepos, switcherSelect,
     identities, currentIdentity, setRepoIdentity, loadIdentities,
+    actions, selectedAction, setSelectedAction, actionRunning, actionOutput, setActionOutput, loadActions, runAction,
   };
 
   return (

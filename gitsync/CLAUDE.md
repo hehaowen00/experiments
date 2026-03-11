@@ -28,7 +28,7 @@ No test runner is configured.
 
 ### Backend (`main/`)
 
-- `ipc-git.js` — All git operations via `child_process.execFile`. Helper `git(repoPath, args)` wraps calls with 10MB buffer. Also handles repo/category CRUD against SQLite.
+- `ipc-git.js` — All git operations via `child_process.execFile`. Helper `git(repoPath, args)` wraps calls with 10MB buffer. Also handles repo/category CRUD against SQLite. Untracked file listing uses `git ls-files --others --exclude-standard`.
 - `store.js` — SQLite database (`~/.config/gitsync/gitsync.db`) with tables: `settings`, `git_repos`, `git_categories`. Uses better-sqlite3 with WAL mode.
 - `ksuid.js` — Timestamp-sortable unique ID generation (base62, 27 chars).
 
