@@ -35,6 +35,7 @@ app.whenReady().then(() => {
   ipcDrop.register(mainWindow);
 
   ipcMain.handle('app:homeDir', () => require('os').homedir());
+  ipcMain.handle('app:quit', () => app.quit());
   ipcMain.handle('shell:openExternal', async (_, url) => {
     if (typeof url === 'string' && (url.startsWith('http://') || url.startsWith('https://'))) {
       await shell.openExternal(url);

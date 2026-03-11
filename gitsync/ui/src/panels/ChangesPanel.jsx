@@ -3,13 +3,14 @@ import Icon from '../components/Icon';
 import FileTree from '../components/FileTree';
 import ResizeHandle from '../components/ResizeHandle';
 import { useWorkspace } from '../context/WorkspaceContext';
-import { stagedFiles, unstagedFiles, untrackedFiles } from '../utils/status';
+import { stagedFiles, unstagedFiles, untrackedFiles, conflictFiles } from '../utils/status';
 import { parseDiffLines, DiffLine } from '../utils/diff';
 
 export default function ChangesPanel() {
   const ws = useWorkspace();
   const [filesWidth, setFilesWidth] = createSignal(320);
 
+  const conflicts = () => conflictFiles(ws.status.files);
   const staged = () => stagedFiles(ws.status.files);
   const unstaged = () => unstagedFiles(ws.status.files);
   const untracked = () => [...untrackedFiles(ws.status.files), ...ws.allFiles()];
@@ -21,6 +22,43 @@ export default function ChangesPanel() {
   return (
     <div class="git-changes-panel">
       <div class="git-files-panel" style={{ width: `${filesWidth()}px` }}>
+        <Show when={conflicts().length > 0}>
+          <div class="git-section git-section-conflicts">
+            <div class="git-section-header" onClick={() => ws.toggleSection('conflicts')}>
+              <Icon name={ws.collapsedSections().has('conflicts') ? 'fa-solid fa-chevron-right' : 'fa-solid fa-chevron-down'} class="git-section-chevron" />
+              <span class="git-conflict-label">Conflicts ({conflicts().length})</span>
+              <button class="btn btn-ghost btn-xs" onClick={(e) => { e.stopPropagation(); ws.resolveOurs(conflicts().map(f => f.path)); }} title="Accept all ours">
+                Ours
+              </button>
+              <button class="btn btn-ghost btn-xs" onClick={(e) => { e.stopPropagation(); ws.resolveTheirs(conflicts().map(f => f.path)); }} title="Accept all theirs">
+                Theirs
+              </button>
+            </div>
+            <Show when={!ws.collapsedSections().has('conflicts')}>
+              <For each={conflicts()}>{(file) => {
+                const filename = file.path.split('/').pop();
+                return (
+                  <div
+                    class={`git-file-item git-conflict-file ${ws.diff.filepath === file.path ? 'active' : ''}`}
+                    onClick={() => ws.viewConflictDiff(file.path)}
+                  >
+                    <span class="git-file-status git-conflict">U</span>
+                    <span class="git-file-path" title={file.path}>{filename}</span>
+                    <span class="git-file-actions">
+                      <button class="btn btn-ghost btn-xs" onClick={(e) => { e.stopPropagation(); ws.resolveOurs([file.path]); }} title="Accept ours (local)">
+                        <Icon name="fa-solid fa-house" />
+                      </button>
+                      <button class="btn btn-ghost btn-xs" onClick={(e) => { e.stopPropagation(); ws.resolveTheirs([file.path]); }} title="Accept theirs (remote)">
+                        <Icon name="fa-solid fa-cloud" />
+                      </button>
+                    </span>
+                  </div>
+                );
+              }}</For>
+            </Show>
+          </div>
+        </Show>
+
         <Show when={staged().length > 0}>
           <div class="git-section">
             <div class="git-section-header" onClick={() => ws.toggleSection('staged')}>

@@ -1,139 +1,185 @@
-import { createSignal, For, onMount } from 'solid-js';
+import { For, Match, Switch, onMount, onCleanup } from 'solid-js';
 import Icon from './components/Icon';
 import Modal, { showSettings } from './components/Modal';
-import t from './locale';
+import NewTabPage from './components/NewTabPage';
 import Collection from './pages/Collection';
-import Landing from './pages/Landing';
+import DatabaseClient from './pages/DatabaseClient';
 import DatabaseWorkspace from './pages/DatabaseWorkspace';
-
-let nextPageId = 1;
+import DateTimeTool from './pages/DateTimeTool';
+import Drop from './pages/Drop';
+import Landing from './pages/Landing';
+import { TabProvider, useTabs, PINNED_TOOLS } from './store/tabs';
 
 export default function App() {
-  const [activePage, setActivePage] = createSignal('landing');
-  const [activeNav, setActiveNavRaw] = createSignal('api');
-  const [openPages, setOpenPages] = createSignal([]);
+  return (
+    <TabProvider>
+      <AppShell />
+      <Modal />
+    </TabProvider>
+  );
+}
 
-  function setActiveNav(val) {
-    setActiveNavRaw(val);
-    setActivePage('landing');
-    window.api.setSetting('lastActiveNav', val);
+function AppShell() {
+  const [state, actions] = useTabs();
+
+  function onKeyDown(e) {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'w') {
+      e.preventDefault();
+      if (state.pinnedTab) {
+        actions.togglePinnedTab(state.pinnedTab);
+      } else if (actions.closeTab(state.activeTabId) === 'quit') {
+        window.api.quit();
+      }
+    }
   }
 
-  onMount(async () => {
-    const saved = await window.api.getSetting('lastActiveNav');
-    if (saved) setActiveNavRaw(saved);
-  });
+  onMount(() => document.addEventListener('keydown', onKeyDown));
+  onCleanup(() => document.removeEventListener('keydown', onKeyDown));
 
-  function openCollection(id) {
-    const existing = openPages().find((p) => p.type === 'collection' && p.collectionId === id);
+  let dragFromIdx = null;
+
+  function onTabDragStart(e, idx) {
+    dragFromIdx = idx;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', idx);
+    e.currentTarget.classList.add('dragging');
+  }
+
+  function onTabDragEnd(e) {
+    e.currentTarget.classList.remove('dragging');
+    dragFromIdx = null;
+    document.querySelectorAll('.app-tab.drag-over-left, .app-tab.drag-over-right').forEach((el) => {
+      el.classList.remove('drag-over-left', 'drag-over-right');
+    });
+  }
+
+  function onTabDragOver(e, idx) {
+    if (dragFromIdx === null) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    document.querySelectorAll('.app-tab.drag-over-left, .app-tab.drag-over-right').forEach((el) => {
+      el.classList.remove('drag-over-left', 'drag-over-right');
+    });
+    if (idx !== dragFromIdx) {
+      const side = idx < dragFromIdx ? 'drag-over-left' : 'drag-over-right';
+      e.currentTarget.classList.add(side);
+    }
+  }
+
+  function onTabDrop(e, toIdx) {
+    e.preventDefault();
+    document.querySelectorAll('.app-tab.drag-over-left, .app-tab.drag-over-right').forEach((el) => {
+      el.classList.remove('drag-over-left', 'drag-over-right');
+    });
+    if (dragFromIdx !== null && dragFromIdx !== toIdx) {
+      actions.reorderTabs(dragFromIdx, toIdx);
+    }
+    dragFromIdx = null;
+  }
+
+  function openCollection(id, name) {
+    const existing = state.tabs.find((t) => t.type === 'collection' && t.collectionId === id);
     if (existing) {
-      setActivePage(existing.pageId);
+      actions.activateTab(existing.id);
       return;
     }
-    const pageId = 'page-' + nextPageId++;
-    setOpenPages((prev) => [...prev, { pageId, type: 'collection', collectionId: id }]);
-    setActivePage(pageId);
+    actions.replaceTab(state.activeTabId, 'collection', { collectionId: id, label: name });
   }
 
   function openDatabase(connData) {
-    const pageId = 'page-' + nextPageId++;
-    setOpenPages((prev) => [...prev, { pageId, type: 'database', connData }]);
-    setActivePage(pageId);
+    actions.replaceTab(state.activeTabId, 'database', { connData, label: connData.name });
   }
 
-  function closePage(pageId) {
-    setOpenPages((prev) => prev.filter((p) => p.pageId !== pageId));
-    if (activePage() === pageId) {
-      setActivePage('landing');
-      document.title = t.app.name;
-    }
-  }
-
-  function goHome() {
-    setActivePage('landing');
-    document.title = t.app.name;
-  }
-
-  const isLanding = () => activePage() === 'landing';
+  const showingPinned = () => state.pinnedTab !== null;
 
   return (
     <div class="app-shell">
       <div class="app-tabbar">
         <div class="app-tabs">
-          <button
-            class={`app-tab ${isLanding() && activeNav() === 'api' ? 'active' : ''}`}
-            onClick={() => setActiveNav('api')}
-          >
-            <Icon name="fa-solid fa-paper-plane" />
-            <span>{t.landing.nav.apiClient}</span>
-          </button>
-          <button
-            class={`app-tab ${isLanding() && activeNav() === 'database' ? 'active' : ''}`}
-            onClick={() => setActiveNav('database')}
-          >
-            <Icon name="fa-solid fa-database" />
-            <span>{t.landing.nav.database}</span>
-          </button>
-          <button
-            class={`app-tab ${isLanding() && activeNav() === 'datetime' ? 'active' : ''}`}
-            onClick={() => setActiveNav('datetime')}
-          >
-            <Icon name="fa-solid fa-clock" />
-            <span>{t.landing.nav.dateTime}</span>
-          </button>
-          <button
-            class={`app-tab ${isLanding() && activeNav() === 'drop' ? 'active' : ''}`}
-            onClick={() => setActiveNav('drop')}
-          >
-            <Icon name="fa-solid fa-cloud-arrow-up" />
-            <span>{t.landing.nav.drop}</span>
-          </button>
-          <For each={openPages()}>
-            {(pg) => (
+          <For each={state.tabs}>
+            {(tab, idx) => (
               <button
-                class={`app-tab ${activePage() === pg.pageId ? 'active' : ''}`}
-                onClick={() => setActivePage(pg.pageId)}
+                class={`app-tab ${!showingPinned() && state.activeTabId === tab.id ? 'active' : ''}`}
+                onClick={() => {
+                  actions.togglePinnedTab(null);
+                  actions.activateTab(tab.id);
+                }}
+                draggable="true"
+                onDragStart={(e) => onTabDragStart(e, idx())}
+                onDragEnd={onTabDragEnd}
+                onDragOver={(e) => onTabDragOver(e, idx())}
+                onDrop={(e) => onTabDrop(e, idx())}
               >
-                <Icon name={pg.type === 'collection' ? 'fa-solid fa-paper-plane' : 'fa-solid fa-database'} />
-                <span class="app-tab-close" onClick={(e) => { e.stopPropagation(); closePage(pg.pageId); }}>
+                <Icon name={tab.icon} />
+                <span>{tab.label}</span>
+                <span
+                  class="app-tab-close"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (actions.closeTab(tab.id) === 'quit') window.api.quit();
+                  }}
+                >
                   <Icon name="fa-solid fa-xmark" />
                 </span>
               </button>
             )}
           </For>
-        </div>
-        {!isLanding() && (
-          <button class="btn btn-ghost btn-xs app-tab-back" onClick={goHome} title="Back to home">
-            <Icon name="fa-solid fa-arrow-left" />
+          <button
+            class="app-tab app-tab-add"
+            onClick={() => {
+              actions.togglePinnedTab(null);
+              actions.createTab('new');
+            }}
+            title="New Tab"
+          >
+            <Icon name="fa-solid fa-plus" />
           </button>
-        )}
-        <button class="btn btn-ghost btn-xs app-tab-settings" onClick={() => showSettings()}>
-          <Icon name="fa-solid fa-gear" />
-        </button>
+        </div>
+        <div class="app-tab-pinned">
+          {PINNED_TOOLS.map((tool) => (
+            <button
+              class={`btn btn-ghost btn-xs app-tab-pinned-btn ${state.pinnedTab === tool.type ? 'active' : ''}`}
+              onClick={() => actions.togglePinnedTab(tool.type)}
+              title={tool.label}
+            >
+              <Icon name={tool.icon} />
+            </button>
+          ))}
+          <button
+            class="btn btn-ghost btn-xs app-tab-settings"
+            onClick={() => showSettings()}
+          >
+            <Icon name="fa-solid fa-gear" />
+          </button>
+        </div>
       </div>
 
-      <Landing
-        activeNav={activeNav}
-        onOpen={openCollection}
-        onOpenDb={openDatabase}
-        style={{ display: isLanding() ? '' : 'none' }}
-      />
-      <For each={openPages()}>
-        {(pg) => (
-          pg.type === 'collection'
-            ? <Collection
-                id={pg.collectionId}
-                onBack={() => closePage(pg.pageId)}
-                style={{ display: activePage() === pg.pageId ? '' : 'none' }}
-              />
-            : <DatabaseWorkspace
-                connData={pg.connData}
-                onBack={() => closePage(pg.pageId)}
-                style={{ display: activePage() === pg.pageId ? '' : 'none' }}
-              />
-        )}
+      <For each={state.tabs}>
+        {(tab) => {
+          const style = () => ({ display: !showingPinned() && state.activeTabId === tab.id ? '' : 'none' });
+          return (
+            <Switch fallback={<NewTabPage tabId={tab.id} style={style()} />}>
+              <Match when={tab.type === 'new'}>
+                <NewTabPage tabId={tab.id} style={style()} />
+              </Match>
+              <Match when={tab.type === 'api'}>
+                <Landing onOpen={(id, name) => openCollection(id, name)} style={style()} />
+              </Match>
+              <Match when={tab.type === 'collection'}>
+                <Collection id={tab.collectionId} onBack={() => actions.closeTab(tab.id)} style={style()} />
+              </Match>
+              <Match when={tab.type === 'db'}>
+                <DatabaseClient onOpenDb={(connData) => openDatabase(connData)} style={style()} />
+              </Match>
+              <Match when={tab.type === 'database'}>
+                <DatabaseWorkspace connData={tab.connData} onBack={() => actions.closeTab(tab.id)} style={style()} />
+              </Match>
+            </Switch>
+          );
+        }}
       </For>
-      <Modal />
+      <DateTimeTool style={{ display: state.pinnedTab === 'datetime' ? '' : 'none' }} />
+      <Drop style={{ display: state.pinnedTab === 'drop' ? '' : 'none' }} />
     </div>
   );
 }

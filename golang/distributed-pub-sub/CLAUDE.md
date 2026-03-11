@@ -70,6 +70,16 @@ Nodes form a peer-to-peer mesh via gRPC. No central broker. The library handles 
 - `producer/` — Publishes job messages at a configurable rate
 - `consumer/` — Processes jobs with configurable failure rate, DLQ subscriber, disk-backed overflow, periodic stats
 
+### cmd/mesh/ — Mesh services demo (order processing pipeline)
+
+Services connect to dedicated mesh nodes via HTTP (publish) and WebSocket (subscribe) — they do **not** embed the pubsub library. The mesh handles routing, delivery, and DLQ transparently.
+
+- `node/` — Standalone mesh node wrapping `pubsub.New()` + `pubsub.NewGateway()` with HTTP + gRPC listeners
+- `orders/` — Publishes order events via HTTP POST at a configurable rate
+- `validator/` — Subscribes to `orders.new` via WebSocket, validates orders, publishes to `orders.validated` or `orders.rejected`
+- `processor/` — Subscribes to `orders.validated` via WebSocket, simulates fulfillment, publishes to `orders.completed`
+- `monitor/` — Subscribes to all order topics via WebSocket multi-subscribe, logs pipeline activity with periodic summaries
+
 ### File layout within pubsub/
 
 - `node.go` — Node struct, Publish, Subscribe, Forward RPC, mesh management

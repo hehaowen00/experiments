@@ -9,13 +9,8 @@ import {
 } from '../components/Modal';
 import { formatLastUsed } from '../helpers';
 import t from '../locale';
-import DatabaseClient from '../pages/DatabaseClient';
-import DateTimeTool from '../pages/DateTimeTool';
-import Drop from '../pages/Drop';
 
 export default function Landing(props) {
-  const activeNav = props.activeNav;
-
   let searchRef;
 
   function onKeyDown(e) {
@@ -36,7 +31,7 @@ export default function Landing(props) {
   const [collections, setCollections] = createSignal([]);
   const [categories, setCategories] = createSignal([]);
   const [searchQuery, setSearchQuery] = createSignal('');
-  const [dropIndicator, setDropIndicator] = createSignal(null); // { catId, position: 'above' | 'below' }
+  const [dropIndicator, setDropIndicator] = createSignal(null);
 
   let dragCollectionId = null;
   let dragCategoryId = null;
@@ -95,7 +90,6 @@ export default function Landing(props) {
     load();
   }
 
-  // Category management
   async function addCategory() {
     const name = await showPrompt(
       t.landing.newCategoryModal.title,
@@ -167,7 +161,6 @@ export default function Landing(props) {
     setCategories((prev) => prev.map((c) => ({ ...c, collapsed: value })));
   }
 
-  // Drag and drop
   function onDragStart(e, collectionId) {
     dragCollectionId = collectionId;
     e.dataTransfer.effectAllowed = 'move';
@@ -200,7 +193,6 @@ export default function Landing(props) {
     load();
   }
 
-  // Category reorder drag and drop
   function onCategoryDragStart(e, catId) {
     dragCategoryId = catId;
     dragCollectionId = null;
@@ -297,7 +289,7 @@ export default function Landing(props) {
         name={c.name}
         subtitle={formatLastUsed(c.last_used)}
         actions={cardActions.map((a) => ({ ...a, label: a.labelFn ? a.labelFn(c) : a.label }))}
-        onOpen={(item) => props.onOpen(item.id)}
+        onOpen={(item) => props.onOpen(item.id, item.name)}
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}
       />
@@ -305,101 +297,86 @@ export default function Landing(props) {
   }
 
   return (
-    <div class="landing" style={props.style}>
-      <div
-        class="landing-main"
-        style={{ display: activeNav() === 'api' ? '' : 'none' }}
-      >
-        <div class="landing-toolbar">
-          <input
-            ref={searchRef}
-            type="text"
-            placeholder={t.landing.searchPlaceholder}
-            value={searchQuery()}
-            onInput={(e) => setSearchQuery(e.target.value)}
-          />
-          <button class="btn btn-primary btn-sm" onClick={create}>
-            <Icon name="fa-solid fa-plus" /> {t.landing.createButton}
-          </button>
-          <button class="btn btn-ghost btn-sm" onClick={importCollection}>
-            <Icon name="fa-solid fa-file-import" /> {t.landing.importButton}
-          </button>
-          <button class="btn btn-ghost btn-sm" onClick={importFromDb}>
-            <Icon name="fa-solid fa-database" /> {t.landing.importDbButton}
-          </button>
-          <button class="btn btn-ghost btn-sm" onClick={addCategory}>
-            <Icon name="fa-solid fa-folder-plus" />{' '}
-            {t.landing.addCategoryButton}
-          </button>
-          <Show when={categories().length > 0}>
-            <button
-              class="btn btn-ghost btn-sm btn-collapse-all"
-              onClick={collapseAll}
-            >
-              <Icon
-                name={
-                  categories().every((c) => c.collapsed)
-                    ? 'fa-solid fa-angles-down'
-                    : 'fa-solid fa-angles-up'
-                }
-              />{' '}
-              {categories().every((c) => c.collapsed)
-                ? t.landing.expandAllButton
-                : t.landing.collapseAllButton}
-            </button>
-          </Show>
-        </div>
-
-        <CategoryList
-          categories={categories()}
-          items={collections()}
-          renderItem={renderCollectionCard}
-          getItemsInCategory={collectionsInCategory}
-          getUncategorizedItems={uncategorizedCollections}
-          onToggleCollapse={toggleCategoryCollapse}
-          onRenameCategory={renameCategory}
-          onRemoveCategory={removeCategory}
-          onCategoryDragOver={(e, cat) => {
-            onCategoryDragOver(e);
-            if (cat) onCategorySectionDragOver(e);
-          }}
-          onCategoryDragLeave={(e) => onCategoryDragLeave(e)}
-          onCategoryDrop={(e, catId) => {
-            onCategoryDrop(e, catId);
-            if (catId !== null) onCategorySectionDrop(e, catId);
-          }}
-          categoryClassList={(cat) => ({
-            'cat-drop-above':
-              dropIndicator()?.catId === String(cat.id) &&
-              dropIndicator()?.position === 'above',
-            'cat-drop-below':
-              dropIndicator()?.catId === String(cat.id) &&
-              dropIndicator()?.position === 'below',
-          })}
-          categoryExtras={(cat) => (
-            <span
-              class="category-drag-handle"
-              draggable="true"
-              onDragStart={(e) => onCategoryDragStart(e, cat.id)}
-              onDragEnd={onCategoryDragEnd}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <Icon name="fa-solid fa-grip-vertical" />
-            </span>
-          )}
-          emptyMessage={t.landing.emptyState}
-          dropHint={t.landing.dropHint}
+    <div class="landing-main" style={props.style}>
+      <div class="landing-toolbar">
+        <input
+          ref={searchRef}
+          type="text"
+          placeholder={t.landing.searchPlaceholder}
+          value={searchQuery()}
+          onInput={(e) => setSearchQuery(e.target.value)}
         />
+        <button class="btn btn-primary btn-sm" onClick={create}>
+          <Icon name="fa-solid fa-plus" /> {t.landing.createButton}
+        </button>
+        <button class="btn btn-ghost btn-sm" onClick={importCollection}>
+          <Icon name="fa-solid fa-file-import" /> {t.landing.importButton}
+        </button>
+        <button class="btn btn-ghost btn-sm" onClick={importFromDb}>
+          <Icon name="fa-solid fa-database" /> {t.landing.importDbButton}
+        </button>
+        <button class="btn btn-ghost btn-sm" onClick={addCategory}>
+          <Icon name="fa-solid fa-folder-plus" />{' '}
+          {t.landing.addCategoryButton}
+        </button>
+        <Show when={categories().length > 0}>
+          <button
+            class="btn btn-ghost btn-sm btn-collapse-all"
+            onClick={collapseAll}
+          >
+            <Icon
+              name={
+                categories().every((c) => c.collapsed)
+                  ? 'fa-solid fa-angles-down'
+                  : 'fa-solid fa-angles-up'
+              }
+            />{' '}
+            {categories().every((c) => c.collapsed)
+              ? t.landing.expandAllButton
+              : t.landing.collapseAllButton}
+          </button>
+        </Show>
       </div>
-      <DateTimeTool
-        style={{ display: activeNav() === 'datetime' ? '' : 'none' }}
-      />
-      <DatabaseClient
-        style={{ display: activeNav() === 'database' ? '' : 'none' }}
-        onOpenDb={props.onOpenDb}
-      />
-      <Drop
-        style={{ display: activeNav() === 'drop' ? '' : 'none' }}
+
+      <CategoryList
+        categories={categories()}
+        items={collections()}
+        renderItem={renderCollectionCard}
+        getItemsInCategory={collectionsInCategory}
+        getUncategorizedItems={uncategorizedCollections}
+        onToggleCollapse={toggleCategoryCollapse}
+        onRenameCategory={renameCategory}
+        onRemoveCategory={removeCategory}
+        onCategoryDragOver={(e, cat) => {
+          onCategoryDragOver(e);
+          if (cat) onCategorySectionDragOver(e);
+        }}
+        onCategoryDragLeave={(e) => onCategoryDragLeave(e)}
+        onCategoryDrop={(e, catId) => {
+          onCategoryDrop(e, catId);
+          if (catId !== null) onCategorySectionDrop(e, catId);
+        }}
+        categoryClassList={(cat) => ({
+          'cat-drop-above':
+            dropIndicator()?.catId === String(cat.id) &&
+            dropIndicator()?.position === 'above',
+          'cat-drop-below':
+            dropIndicator()?.catId === String(cat.id) &&
+            dropIndicator()?.position === 'below',
+        })}
+        categoryExtras={(cat) => (
+          <span
+            class="category-drag-handle"
+            draggable="true"
+            onDragStart={(e) => onCategoryDragStart(e, cat.id)}
+            onDragEnd={onCategoryDragEnd}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Icon name="fa-solid fa-grip-vertical" />
+          </span>
+        )}
+        emptyMessage={t.landing.emptyState}
+        dropHint={t.landing.dropHint}
       />
     </div>
   );

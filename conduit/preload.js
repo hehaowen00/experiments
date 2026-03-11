@@ -108,6 +108,7 @@ contextBridge.exposeInMainWorld('api', {
   dbPickSqliteFile: () => ipcRenderer.invoke('db:pickSqliteFile'),
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
   homeDir: () => ipcRenderer.invoke('app:homeDir'),
+  quit: () => ipcRenderer.invoke('app:quit'),
 
   // Drop
   dropStart: (opts) => ipcRenderer.invoke('drop:start', opts),

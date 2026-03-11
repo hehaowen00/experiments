@@ -4089,6 +4089,19 @@ tr:hover .db-row-actions .btn:hover {
 .git-untracked { color: var(--text-dim); }
 .git-conflict { color: var(--danger); }
 
+.git-section-conflicts .git-section-header {
+  color: var(--danger);
+}
+
+.git-conflict-label {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.git-conflict-file {
+  border-left: 2px solid var(--danger);
+}
+
 .git-file-clean {
   opacity: 0.5;
   cursor: default;

@@ -90,6 +90,11 @@ contextBridge.exposeInMainWorld('api', {
   gitRebaseAbort: (repoPath) => ipcRenderer.invoke('git:rebaseAbort', repoPath),
   gitOperationState: (repoPath) => ipcRenderer.invoke('git:operationState', repoPath),
 
+  // Conflict resolution
+  gitResolveOurs: (repoPath, filepaths) => ipcRenderer.invoke('git:resolveOurs', repoPath, filepaths),
+  gitResolveTheirs: (repoPath, filepaths) => ipcRenderer.invoke('git:resolveTheirs', repoPath, filepaths),
+  gitDiffConflict: (repoPath, filepath) => ipcRenderer.invoke('git:diffConflict', repoPath, filepath),
+
   // Patches
   gitExportStagedPatch: (repoPath) => ipcRenderer.invoke('git:exportStagedPatch', repoPath),
   gitApplyPatch: (repoPath) => ipcRenderer.invoke('git:applyPatch', repoPath),

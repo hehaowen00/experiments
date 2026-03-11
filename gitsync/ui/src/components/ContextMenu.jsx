@@ -21,7 +21,7 @@ export default function ContextMenu() {
             {isStaged && (
               <button class="file-context-menu-item" onClick={() => {
                 ws.setCtxMenu(null);
-                menu.filepaths.forEach(p => ws.unstageFile(p));
+                window.api.gitUnstage(ws.repoPath, menu.filepaths).then(ws.refresh);
               }}>
                 <Icon name="fa-solid fa-minus" /> Unstage {label}
               </button>

@@ -81,15 +81,13 @@ export function WorkspaceProvider(props) {
     if (result.error) {
       setStatus({ loading: false, error: result.error });
     } else {
-      setStatus(reconcile({
-        branch: result.branch,
-        upstream: result.upstream,
-        ahead: result.ahead,
-        behind: result.behind,
-        files: result.files,
-        loading: false,
-        error: null,
-      }));
+      setStatus('files', reconcile(result.files, { key: 'path', merge: false }));
+      setStatus('branch', result.branch);
+      setStatus('upstream', result.upstream);
+      setStatus('ahead', result.ahead);
+      setStatus('behind', result.behind);
+      setStatus('loading', false);
+      setStatus('error', null);
     }
     if (filesResult.files) {
       const statusPaths = new Set((result.files || []).map(f => f.path));
@@ -271,6 +269,28 @@ export function WorkspaceProvider(props) {
       await window.api.gitDeleteUntracked(repoPath, filepaths);
       await refresh();
       if (filepaths.includes(diff.filepath)) setDiff({ content: '', filepath: null });
+    }
+  }
+
+  // --- Conflict resolution ---
+  async function resolveOurs(filepaths) {
+    const result = await window.api.gitResolveOurs(repoPath, filepaths);
+    if (result.error) showAlert('Resolve Failed', result.error);
+    else await refresh();
+  }
+
+  async function resolveTheirs(filepaths) {
+    const result = await window.api.gitResolveTheirs(repoPath, filepaths);
+    if (result.error) showAlert('Resolve Failed', result.error);
+    else await refresh();
+  }
+
+  async function viewConflictDiff(filepath) {
+    const result = await window.api.gitDiffConflict(repoPath, filepath);
+    if (result.error) {
+      setDiff({ content: `Error: ${result.error}`, filepath, staged: false });
+    } else {
+      setDiff({ content: result.diff || '(no changes)', filepath, staged: false });
     }
   }
 
@@ -811,6 +831,7 @@ export function WorkspaceProvider(props) {
     refresh, loadLog, loadMoreLog, loadLogBranches, loadRemotes, loadBranches, loadStashes,
     onTabChange, viewDiff,
     stageFile, unstageFile, stageAll, unstageAll, stageSelected, unstageSelected, exportStagedPatch, applyPatch,
+    resolveOurs, resolveTheirs, viewConflictDiff,
     discardFile, discardFiles, deleteUntrackedFiles,
     doCommit, toggleAmend,
     doPull, doPush, doFetch,

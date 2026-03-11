@@ -8,12 +8,22 @@ export function statusClass(code) {
   return map[code] || '';
 }
 
+function isConflict(f) {
+  return f.index === 'U' || f.working === 'U' ||
+    (f.index === 'A' && f.working === 'A') ||
+    (f.index === 'D' && f.working === 'D');
+}
+
+export function conflictFiles(files) {
+  return files.filter(isConflict);
+}
+
 export function stagedFiles(files) {
-  return files.filter(f => f.index !== '?' && f.index !== ' ' && f.index !== '!');
+  return files.filter(f => !isConflict(f) && f.index !== '?' && f.index !== ' ' && f.index !== '!');
 }
 
 export function unstagedFiles(files) {
-  return files.filter(f => f.working !== ' ' && f.working !== '?' && f.working !== '!');
+  return files.filter(f => !isConflict(f) && f.working !== ' ' && f.working !== '?' && f.working !== '!');
 }
 
 export function untrackedFiles(files) {

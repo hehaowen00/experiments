@@ -11,16 +11,17 @@ function TreeDir(props) {
   const isUntracked = () => props.section === 'untracked';
   const fileCount = () => allFilesInTree(props.child).length;
   const hasChangedFiles = () => allFilesInTree(props.child).some(f => !f.clean);
+  const dirKey = () => `${props.section}:${props.dirPath}`;
 
   return (
     <div class="git-tree-dir">
       <div
         class="git-tree-dir-header"
         style={{ 'padding-left': `${props.depth * 16 + 4}px` }}
-        onClick={() => ws.toggleDir(props.dirPath)}
+        onClick={() => ws.toggleDir(dirKey())}
         onContextMenu={(e) => ws.onFolderContextMenu(e, props.dirPath, props.child, props.section)}
       >
-        <Icon name={ws.expandedDirs().has(props.dirPath) ? 'fa-solid fa-chevron-down' : 'fa-solid fa-chevron-right'} class="git-tree-chevron" />
+        <Icon name={ws.expandedDirs().has(dirKey()) ? 'fa-solid fa-chevron-down' : 'fa-solid fa-chevron-right'} class="git-tree-chevron" />
         <Icon name="fa-solid fa-folder" class="git-tree-folder-icon" />
         <span class="git-tree-dir-name">{props.child.name}</span>
         <span class="git-tree-dir-count">{fileCount()}</span>
@@ -29,7 +30,7 @@ function TreeDir(props) {
             <button class="btn btn-ghost btn-xs" onClick={(e) => {
               e.stopPropagation();
               const paths = allFilesInTree(props.child).filter(f => !f.clean).map(f => f.path);
-              paths.forEach(p => ws.unstageFile(p));
+              window.api.gitUnstage(ws.repoPath, paths).then(ws.refresh);
             }} title="Unstage all in folder">
               <Icon name="fa-solid fa-minus" />
             </button>
@@ -63,7 +64,7 @@ function TreeDir(props) {
           )}
         </span>
       </div>
-      <Show when={ws.expandedDirs().has(props.dirPath)}>
+      <Show when={ws.expandedDirs().has(dirKey())}>
         <FileTreeNode node={props.child} section={props.section} depth={props.depth + 1} parentPath={props.dirPath} />
       </Show>
     </div>

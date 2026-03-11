@@ -886,6 +886,36 @@ function register(mainWindow) {
     }
   });
 
+  // --- Conflict resolution ---
+  ipcMain.handle('git:resolveOurs', async (_, repoPath, filepaths) => {
+    try {
+      await git(repoPath, ['checkout', '--ours', '--', ...filepaths]);
+      await git(repoPath, ['add', '--', ...filepaths]);
+      return { ok: true };
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
+
+  ipcMain.handle('git:resolveTheirs', async (_, repoPath, filepaths) => {
+    try {
+      await git(repoPath, ['checkout', '--theirs', '--', ...filepaths]);
+      await git(repoPath, ['add', '--', ...filepaths]);
+      return { ok: true };
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
+
+  ipcMain.handle('git:diffConflict', async (_, repoPath, filepath) => {
+    try {
+      const out = await git(repoPath, ['diff', '--no-color', '--', filepath]);
+      return { diff: out };
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
+
   // --- Patch import ---
   ipcMain.handle('git:applyPatch', async (_, repoPath) => {
     try {
