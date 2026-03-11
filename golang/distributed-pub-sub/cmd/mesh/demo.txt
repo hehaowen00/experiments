@@ -1,0 +1,82 @@
+# Mesh Services Demo — Order Processing Pipeline
+# Run each command in a separate terminal.
+#
+# Architecture:
+#   [orders] --HTTP--> [node-1] <--gRPC--> [node-2] <--WS-- [validator]
+#                        |  ^                  |  ^
+#                        WS |                  WS |
+#                        v  |                  v  |
+#                    [monitor]             [processor]
+#
+# Services don't embed the pubsub library. They connect to dedicated mesh
+# nodes via HTTP (publish) and WebSocket (subscribe). The mesh handles
+# routing, delivery, and DLQ.
+
+# --- Step 1: Start mesh nodes ---
+
+# Node 1 (services connect here)
+go run ./cmd/mesh/node -http :8080 -grpc :9000 -advertise 127.0.0.1:9000
+
+# Node 2 (second node for multi-node routing)
+go run ./cmd/mesh/node -http :8081 -grpc :9001 -advertise 127.0.0.1:9001 -seeds 127.0.0.1:9000
+
+# --- Step 2: Start the pipeline services ---
+
+# Monitor — watches all topics, logs every event (connect to node 1)
+go run ./cmd/mesh/monitor -node http://localhost:8080
+
+# Validator — reads orders.new, publishes orders.validated or orders.rejected (connect to node 1)
+go run ./cmd/mesh/validator -node http://localhost:8080
+
+# Processor — reads orders.validated, publishes orders.completed (connect to node 2)
+go run ./cmd/mesh/processor -node http://localhost:8081
+
+# --- Step 3: Start the order service ---
+
+# Publishes an order every 2 seconds via HTTP POST (connect to node 1)
+go run ./cmd/mesh/orders -node http://localhost:8080 -rate 2s
+
+# --- What to watch ---
+#
+# Monitor shows the full pipeline:
+#   NEW        ORD-0001 — 3x widget
+#   VALIDATED  ORD-0001 — $45.30
+#   COMPLETED  ORD-0001
+#   REJECTED   ORD-0004 — order exceeds $500 limit
+#
+# Orders flow: orders.new → validator → orders.validated → processor → orders.completed
+# Invalid orders: orders.new → validator → orders.rejected
+#
+# The validator and processor connect to DIFFERENT nodes but messages route
+# through the mesh transparently.
+
+# --- Step 4: Test cross-node routing ---
+
+# Start a second order service publishing to node 2
+go run ./cmd/mesh/orders -node http://localhost:8081 -source order-service-2 -rate 3s
+
+# Both order services publish to different nodes, but the validator on node 1
+# sees all orders because the mesh forwards them.
+
+# --- Step 5: Test node failure ---
+# 1. Stop node 2 (Ctrl-C)
+# 2. The processor (connected to node 2) disconnects
+# 3. The validator (connected to node 1) keeps working — orders still get validated
+# 4. Restart node 2 — the processor can reconnect and resume processing
+
+# --- Step 6: Scale the pipeline ---
+
+# Second processor on node 1 (both processors see all validated orders)
+go run ./cmd/mesh/processor -node http://localhost:8080 -source processor-2
+
+# Second validator on node 2
+go run ./cmd/mesh/validator -node http://localhost:8081 -source validator-2
+
+# --- Optional: Test via curl ---
+
+# Submit an order directly
+curl -X POST http://localhost:8080/publish -d '{"source":"manual","topic":"orders.new","payload":{"order_id":"MANUAL-1","item":"widget","qty":2,"price":15.00}}'
+
+# Check node stats
+curl http://localhost:8080/stats
+curl http://localhost:8081/stats

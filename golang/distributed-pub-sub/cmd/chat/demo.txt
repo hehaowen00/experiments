@@ -1,0 +1,59 @@
+# Multi-Node Chat Demo
+# Run each command in a separate terminal.
+# All nodes share a single SQLite database for consistent history.
+
+# --- Step 1: Start load balancer ---
+
+go run ./cmd/chat/lb -addr :8000
+
+# --- Step 2: Start three server nodes ---
+
+# Node 1 (primary)
+go run ./cmd/chat/server -http :8080 -grpc :9000 -advertise 127.0.0.1:9000 -db shared.db -announce-http http://localhost:8080
+
+# Node 2
+go run ./cmd/chat/server -http :8081 -grpc :9001 -advertise 127.0.0.1:9001 -seeds 127.0.0.1:9000 -db shared.db -announce-http http://localhost:8081
+
+# Node 3
+go run ./cmd/chat/server -http :8082 -grpc :9002 -advertise 127.0.0.1:9002 -seeds 127.0.0.1:9000 -db shared.db -announce-http http://localhost:8082
+
+# --- Step 3: Connect clients through the load balancer ---
+
+go run ./cmd/chat/client -user alice -topic chat.general -addr ws://localhost:8000
+go run ./cmd/chat/client -user bob -topic chat.general -addr ws://localhost:8000
+go run ./cmd/chat/client -user charlie -topic chat.general -addr ws://localhost:8000
+
+# --- Step 4: Chat ---
+# Type messages in any terminal. Messages route across the mesh.
+# Read receipts appear automatically with timestamps.
+# Chat history replays on connect from the shared database.
+
+# --- Step 5: Test failover ---
+# 1. Stop any server node (Ctrl-C)
+# 2. Clients on that node auto-reconnect through the LB to a healthy node
+# 3. Send messages — they persist to shared.db and route normally
+# 4. Restart the stopped node — it rejoins the mesh and has full history
+
+# --- Step 6: File attachments ---
+
+# Upload a file (via LB — any node can serve it since storage is shared)
+curl -X POST http://localhost:8000/upload -F "file=@README.md" -F "source=alice"
+# Returns: {"id":"<file-id>","name":"README.md"}
+
+# Download it back (can use any node or the LB)
+curl -O -J "http://localhost:8000/download?id=<file-id>"
+
+# Upload via a specific node, download from a different one — works because of shared db
+curl -X POST http://localhost:8080/upload -F "file=@go.mod" -F "source=bob"
+curl "http://localhost:8082/download?id=<file-id>"
+
+# --- Optional: Test other HTTP APIs via the load balancer ---
+
+# Publish a chat message
+curl -X POST http://localhost:8000/publish -d '{"source":"curl-user","topic":"chat.general","payload":{"text":"hello from curl"}}'
+
+# View node stats
+curl http://localhost:8000/stats
+
+# Sync endpoint
+curl "http://localhost:8000/sync?topic=chat.general&since=0"
