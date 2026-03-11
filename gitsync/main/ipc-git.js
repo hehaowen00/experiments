@@ -461,9 +461,9 @@ function register(mainWindow) {
 
   ipcMain.handle('git:pull', async (_, repoPath, strategy) => {
     try {
-      const args = ['pull'];
+      const args = ['pull', '--autostash'];
       if (strategy === 'ff-only') args.push('--ff-only');
-      else if (strategy === 'rebase') args.push('--rebase', '--autostash');
+      else if (strategy === 'rebase') args.push('--rebase');
       else if (strategy === 'merge') args.push('--no-rebase');
       const out = await git(repoPath, args);
       return { ok: true, output: out };
@@ -690,6 +690,55 @@ function register(mainWindow) {
   ipcMain.handle('git:rebaseAbort', async (_, repoPath) => {
     try {
       const out = await git(repoPath, ['rebase', '--abort']);
+      return { ok: true, output: out };
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
+
+  // --- Cherry-pick ---
+  ipcMain.handle('git:cherryPick', async (_, repoPath, hash) => {
+    try {
+      const out = await git(repoPath, ['cherry-pick', hash]);
+      return { ok: true, output: out };
+    } catch (e) {
+      if (e.message.includes('CONFLICT') || e.message.includes('could not apply')) {
+        return { ok: false, conflict: true, output: e.message };
+      }
+      return { error: e.message };
+    }
+  });
+
+  // --- Drop commit (interactive rebase to remove a commit) ---
+  ipcMain.handle('git:dropCommit', async (_, repoPath, hash) => {
+    try {
+      const out = await git(repoPath, [
+        'rebase', '--autostash', '--onto', `${hash}^`, hash,
+      ]);
+      return { ok: true, output: out };
+    } catch (e) {
+      if (e.message.includes('CONFLICT') || e.message.includes('could not apply')) {
+        return { ok: false, conflict: true, output: e.message };
+      }
+      return { error: e.message };
+    }
+  });
+
+  // --- Branch delete ---
+  ipcMain.handle('git:branchDelete', async (_, repoPath, branch, force) => {
+    try {
+      const flag = force ? '-D' : '-d';
+      const out = await git(repoPath, ['branch', flag, branch]);
+      return { ok: true, output: out };
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
+
+  // --- Branch rename ---
+  ipcMain.handle('git:branchRename', async (_, repoPath, oldName, newName) => {
+    try {
+      const out = await git(repoPath, ['branch', '-m', oldName, newName]);
       return { ok: true, output: out };
     } catch (e) {
       return { error: e.message };

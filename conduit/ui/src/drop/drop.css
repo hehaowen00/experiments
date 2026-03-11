@@ -111,3 +111,20 @@ h1 {
 .file-status.error {
   color: #f44;
 }
+
+h2 {
+  font-size: 1.1rem;
+  margin-top: 2rem;
+  margin-bottom: 0.75rem;
+  color: #fff;
+}
+
+.file-download {
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.file-download:hover {
+  background: #1a1a40;
+}

@@ -1,6 +1,8 @@
 import { createSignal } from 'solid-js';
 import GitClient from './pages/GitClient';
 import GitWorkspace from './pages/GitWorkspace';
+import PeersPage from './pages/PeersPage';
+import PeerReposPage from './pages/PeerReposPage';
 import Modal, { showSettings } from './components/Modal';
 import Icon from './components/Icon';
 
@@ -17,16 +19,36 @@ export default function App() {
     document.title = 'GitSync';
   }
 
+  function openPeers() {
+    setPage({ type: 'peers' });
+  }
+
+  function openPeerRepos(peerId, peerName) {
+    setPage({ type: 'peer-repos', peerId, peerName });
+  }
+
   return (
     <>
       {page().type === 'landing' && (
         <div class="git-client" style={{ display: 'flex', 'flex-direction': 'column', height: '100vh' }}>
-          <GitClient onOpenGit={openGit} />
+          <GitClient onOpenGit={openGit} onOpenPeers={openPeers} />
           <Modal />
         </div>
       )}
       {page().type === 'git' && (
         <GitWorkspace repoData={page().repoData} onBack={goHome} onSwitchRepo={openGit} />
+      )}
+      {page().type === 'peers' && (
+        <div class="git-client" style={{ display: 'flex', 'flex-direction': 'column', height: '100vh' }}>
+          <PeersPage onBack={goHome} onBrowseRepos={openPeerRepos} />
+          <Modal />
+        </div>
+      )}
+      {page().type === 'peer-repos' && (
+        <div class="git-client" style={{ display: 'flex', 'flex-direction': 'column', height: '100vh' }}>
+          <PeerReposPage peerId={page().peerId} peerName={page().peerName} onBack={openPeers} />
+          <Modal />
+        </div>
       )}
     </>
   );

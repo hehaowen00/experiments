@@ -323,6 +323,9 @@ export default function GitClient(props) {
           <button class="btn btn-ghost btn-sm" onClick={addCategory} title="Add category">
             <Icon name="fa-solid fa-folder-plus" /> Category
           </button>
+          <button class="btn btn-ghost btn-sm" onClick={() => props.onOpenPeers?.()} title="Peers">
+            <Icon name="fa-solid fa-network-wired" />
+          </button>
           <button class="btn btn-ghost btn-sm" onClick={showSettings} title="Settings">
             <Icon name="fa-solid fa-gear" />
           </button>

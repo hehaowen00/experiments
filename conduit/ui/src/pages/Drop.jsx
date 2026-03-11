@@ -11,6 +11,7 @@ export default function Drop(props) {
     ips: [],
     pending: [],
     files: [],
+    shared: [],
     error: '',
   });
 
@@ -33,13 +34,13 @@ export default function Drop(props) {
     });
     window.api.onDropStopped((d) => {
       if (d.id !== serverId) return;
-      setState({ running: false, ips: [], pending: [], error: '' });
+      setState({ running: false, ips: [], pending: [], shared: [], error: '' });
       setQrDataUrl('');
     });
     window.api.onDropPending((d) => {
       if (d.id !== serverId) return;
       setState('pending', (prev) => [
-        { fileId: d.fileId, name: d.name, size: d.size, time: d.time },
+        { fileId: d.fileId, name: d.name, size: d.size, sha256: d.sha256, time: d.time },
         ...prev,
       ]);
     });
@@ -82,6 +83,22 @@ export default function Drop(props) {
 
   function reject(fileId) {
     window.api.dropReject(fileId);
+  }
+
+  async function shareFiles() {
+    const result = await window.api.dropShareFiles(serverId);
+    if (result && !result.error && result.length > 0) {
+      setState('shared', (prev) => [...result, ...prev]);
+    }
+  }
+
+  function unshareFile(fileId) {
+    window.api.dropUnshareFile(fileId);
+    setState('shared', (prev) => prev.filter((f) => f.id !== fileId));
+  }
+
+  function copyLink(url) {
+    navigator.clipboard.writeText(url);
   }
 
   function formatSize(bytes) {
@@ -163,6 +180,61 @@ export default function Drop(props) {
           </div>
         </Show>
 
+        <Show when={state.running}>
+          <div class="drop-files">
+            <div class="drop-files-header">
+              Shared Files ({state.shared.length})
+              <button
+                class="btn btn-primary btn-sm"
+                onClick={shareFiles}
+                style={{ 'margin-left': '10px' }}
+              >
+                <Icon name="fa-solid fa-plus" /> Share Files
+              </button>
+            </div>
+            <Show when={state.shared.length === 0}>
+              <div class="drop-empty">
+                Share files to generate download links.
+              </div>
+            </Show>
+            <For each={state.shared}>
+              {(f) => (
+                <div class="drop-file-item drop-file-shared">
+                  <div class="drop-file-info">
+                    <span class="drop-file-name">{f.name}</span>
+                    <span class="drop-file-meta">
+                      {formatSize(f.size)}
+                    </span>
+                    <span
+                      class="drop-file-link"
+                      title={f.url}
+                      onClick={() => copyLink(f.url)}
+                    >
+                      {f.url}
+                    </span>
+                  </div>
+                  <div class="drop-file-actions">
+                    <button
+                      class="btn btn-sm btn-ghost"
+                      onClick={() => copyLink(f.url)}
+                      title="Copy link"
+                    >
+                      <Icon name="fa-solid fa-copy" />
+                    </button>
+                    <button
+                      class="btn btn-sm drop-btn-reject"
+                      onClick={() => unshareFile(f.id)}
+                      title="Unshare"
+                    >
+                      <Icon name="fa-solid fa-xmark" />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </For>
+          </div>
+        </Show>
+
         <Show when={state.pending.length > 0}>
           <div class="drop-files">
             <div class="drop-files-header">
@@ -175,6 +247,9 @@ export default function Drop(props) {
                     <span class="drop-file-name">{f.name}</span>
                     <span class="drop-file-meta">
                       {formatSize(f.size)} &middot; {formatTime(f.time)}
+                    </span>
+                    <span class="drop-file-hash" title={f.sha256}>
+                      SHA256: {f.sha256}
                     </span>
                   </div>
                   <div class="drop-file-actions">
@@ -217,6 +292,9 @@ export default function Drop(props) {
                   <span class="drop-file-name">{f.name}</span>
                   <span class="drop-file-meta">
                     {formatSize(f.size)} &middot; {formatTime(f.time)}
+                  </span>
+                  <span class="drop-file-hash" title={f.sha256}>
+                    SHA256: {f.sha256}
                   </span>
                 </div>
                 <Icon name="fa-solid fa-check" />

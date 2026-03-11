@@ -3629,6 +3629,16 @@ tr:hover .db-row-actions .btn:hover {
   color: var(--text-dim);
 }
 
+.drop-file-hash {
+  font-family: var(--font-mono);
+  font-size: var(--ui-font-size-sm);
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  user-select: all;
+}
+
 .drop-file-pending {
   border-color: var(--warning, #ffa726);
   color: var(--warning, #ffa726);
@@ -3658,4 +3668,23 @@ tr:hover .db-row-actions .btn:hover {
 
 .drop-btn-reject:hover {
   opacity: 0.85;
+}
+
+.drop-file-shared {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.drop-file-link {
+  font-family: var(--font-mono);
+  font-size: var(--ui-font-size-sm);
+  color: var(--accent);
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drop-file-link:hover {
+  text-decoration: underline;
 }

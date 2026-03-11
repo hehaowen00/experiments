@@ -10,9 +10,20 @@ function formatSize(b) {
 
 export default function DropUpload() {
   const [files, setFiles] = createSignal([]);
+  const [shared, setShared] = createSignal([]);
   const [dragover, setDragover] = createSignal(false);
 
   let fileInput;
+
+  async function loadShared() {
+    try {
+      const res = await fetch('/files');
+      const list = await res.json();
+      setShared(list);
+    } catch {}
+  }
+
+  loadShared();
 
   function addFile(file) {
     const entry = {
@@ -93,6 +104,20 @@ export default function DropUpload() {
                 <span class="file-size">{formatSize(f.size)}</span>
                 <span class={`file-status ${f.status}`}>{f.message}</span>
               </div>
+            )}
+          </For>
+        </div>
+      </Show>
+      <Show when={shared().length > 0}>
+        <h2>Available Downloads</h2>
+        <div class="file-list">
+          <For each={shared()}>
+            {(f) => (
+              <a class="file-item file-download" href={f.url} download>
+                <span class="file-name">{f.name}</span>
+                <span class="file-size">{formatSize(f.size)}</span>
+                <span class="file-status ok">&#8595; Download</span>
+              </a>
             )}
           </For>
         </div>

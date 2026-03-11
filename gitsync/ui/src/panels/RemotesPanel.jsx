@@ -53,6 +53,9 @@ export default function RemotesPanel() {
           <div class={`git-branch-item ${b.current ? 'git-branch-current' : ''}`}>
             <Show when={b.current}><Icon name="fa-solid fa-circle" class="git-branch-dot" /></Show>
             <span class="git-branch-name">{b.name}</span>
+            <button class="btn btn-ghost btn-xs git-branch-action" onClick={() => ws.doRenameBranch(b.name)} title={`Rename ${b.name}`}>
+              <Icon name="fa-solid fa-pen" />
+            </button>
             <Show when={!b.current}>
               <button class="btn btn-ghost btn-xs git-branch-action" onClick={() => ws.doMerge(b.name)} title={`Merge ${b.name} into ${ws.status.branch}`}>
                 <Icon name="fa-solid fa-code-merge" />
@@ -62,6 +65,9 @@ export default function RemotesPanel() {
               </button>
               <button class="btn btn-ghost btn-xs git-branch-checkout" onClick={() => ws.checkoutBranch(b.name)} title={`Checkout ${b.name}`}>
                 <Icon name="fa-solid fa-right-to-bracket" />
+              </button>
+              <button class="btn btn-ghost btn-xs btn-danger-hover git-branch-action" onClick={() => ws.doDeleteBranch(b.name)} title={`Delete ${b.name}`}>
+                <Icon name="fa-solid fa-trash" />
               </button>
             </Show>
           </div>

@@ -117,6 +117,10 @@ contextBridge.exposeInMainWorld('api', {
   dropReject: (fileId) => ipcRenderer.invoke('drop:reject', fileId),
   dropListFiles: (id) => ipcRenderer.invoke('drop:listFiles', id),
   dropPickFolder: () => ipcRenderer.invoke('drop:pickFolder'),
+  dropShareFiles: (serverId) =>
+    ipcRenderer.invoke('drop:shareFiles', serverId),
+  dropUnshareFile: (fileId) =>
+    ipcRenderer.invoke('drop:unshareFile', fileId),
   onDropStarted: (cb) => ipcRenderer.on('drop:started', (_, d) => cb(d)),
   onDropStopped: (cb) => ipcRenderer.on('drop:stopped', (_, d) => cb(d)),
   onDropPending: (cb) => ipcRenderer.on('drop:pending', (_, d) => cb(d)),

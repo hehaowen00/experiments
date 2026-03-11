@@ -3,12 +3,14 @@ const http = require('http');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const crypto = require('crypto');
 const { generateKSUID } = require('./ksuid');
 
 const net = require('net');
 
 const activeServers = new Map(); // id -> { server, files: [], savePath }
 const pendingFiles = new Map(); // fileId -> { data, filename, serverId, savePath, resolve }
+const sharedFiles = new Map(); // fileId -> { name, path, size, serverId }
 
 function isPrivateIP(ip) {
   if (ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1') return true;
@@ -93,6 +95,44 @@ function register(mainWindow) {
         }
       }
 
+      // List shared files as JSON
+      if (req.method === 'GET' && req.url === '/files') {
+        const list = [];
+        for (const [fileId, shared] of sharedFiles) {
+          if (shared.serverId === id) {
+            list.push({
+              id: fileId,
+              name: shared.name,
+              size: shared.size,
+              url: `/files/${fileId}/${encodeURIComponent(shared.name)}`,
+            });
+          }
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(list));
+        return;
+      }
+
+      // Serve shared files: /files/<fileId>/<filename>
+      if (req.method === 'GET' && req.url.startsWith('/files/')) {
+        const parts = req.url.split('/');
+        const fileId = parts[2];
+        const shared = sharedFiles.get(fileId);
+        if (shared && shared.serverId === id && fs.existsSync(shared.path)) {
+          const stat = fs.statSync(shared.path);
+          res.writeHead(200, {
+            'Content-Type': 'application/octet-stream',
+            'Content-Disposition': `attachment; filename="${encodeURIComponent(shared.name)}"`,
+            'Content-Length': stat.size,
+          });
+          fs.createReadStream(shared.path).pipe(res);
+          return;
+        }
+        res.writeHead(404);
+        res.end('File not found');
+        return;
+      }
+
       if (req.method === 'POST' && req.url === '/upload') {
         handleUpload(req, res, id, resolvedPath, mainWindow);
         return;
@@ -138,6 +178,13 @@ function register(mainWindow) {
         }
       }
 
+      // Remove shared files for this server
+      for (const [fileId, shared] of sharedFiles) {
+        if (shared.serverId === id) {
+          sharedFiles.delete(fileId);
+        }
+      }
+
       mainWindow.webContents.send('drop:stopped', { id });
     }
   });
@@ -146,7 +193,7 @@ function register(mainWindow) {
     const pending = pendingFiles.get(fileId);
     if (!pending) return { error: 'File not found' };
 
-    const { data, filename, serverId, savePath } = pending;
+    const { data, filename, sha256, serverId, savePath } = pending;
 
     // Sanitize filename
     const safeName = filename.replace(/[/\\:*?"<>|]/g, '_');
@@ -170,6 +217,7 @@ function register(mainWindow) {
       name: path.basename(destPath),
       originalName: filename,
       size: data.length,
+      sha256,
       path: destPath,
       time: Date.now(),
     };
@@ -213,6 +261,46 @@ function register(mainWindow) {
     if (result.canceled || result.filePaths.length === 0) return null;
     return result.filePaths[0];
   });
+
+  ipcMain.handle('drop:shareFiles', async (_, serverId) => {
+    const { dialog } = require('electron');
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openFile', 'multiSelections'],
+    });
+    if (result.canceled || result.filePaths.length === 0) return [];
+
+    const entry = activeServers.get(serverId);
+    if (!entry) return { error: 'Server not running' };
+
+    const addr = entry.server.address();
+    const ips = getLocalIPs();
+    const host = ips.length > 0 ? ips[0] : 'localhost';
+
+    const shared = [];
+    for (const filePath of result.filePaths) {
+      const fileId = generateKSUID();
+      const name = path.basename(filePath);
+      const stat = fs.statSync(filePath);
+      const info = {
+        id: fileId,
+        name,
+        path: filePath,
+        size: stat.size,
+        serverId,
+        url: `http://${host}:${addr.port}/files/${fileId}/${encodeURIComponent(name)}`,
+        time: Date.now(),
+      };
+      sharedFiles.set(fileId, info);
+      shared.push(info);
+    }
+
+    return shared;
+  });
+
+  ipcMain.handle('drop:unshareFile', (_, fileId) => {
+    sharedFiles.delete(fileId);
+    return { ok: true };
+  });
 }
 
 function handleUpload(req, res, serverId, savePath, mainWindow) {
@@ -244,11 +332,16 @@ function handleUpload(req, res, serverId, savePath, mainWindow) {
         if (!file.filename) continue;
 
         const fileId = generateKSUID();
+        const sha256 = crypto
+          .createHash('sha256')
+          .update(file.data)
+          .digest('hex');
 
         const promise = new Promise((resolve) => {
           pendingFiles.set(fileId, {
             data: file.data,
             filename: file.filename,
+            sha256,
             serverId,
             savePath,
             resolve,
@@ -262,6 +355,7 @@ function handleUpload(req, res, serverId, savePath, mainWindow) {
           fileId,
           name: file.filename,
           size: file.data.length,
+          sha256,
           time: Date.now(),
         });
       }

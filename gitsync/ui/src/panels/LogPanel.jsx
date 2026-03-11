@@ -1,4 +1,4 @@
-import { Show, For, createSignal } from 'solid-js';
+import { Show, For, createSignal, onCleanup } from 'solid-js';
 import Icon from '../components/Icon';
 import ResizeHandle from '../components/ResizeHandle';
 import { useWorkspace } from '../context/WorkspaceContext';
@@ -12,6 +12,20 @@ export default function LogPanel() {
   let searchTimer;
   const [logFlex, setLogFlex] = createSignal(1);
   const [detailFlex, setDetailFlex] = createSignal(1);
+  const [commitMenu, setCommitMenu] = createSignal(null);
+
+  function onCommitContextMenu(e, commit) {
+    e.preventDefault();
+    setCommitMenu({ x: e.clientX, y: e.clientY, commit });
+  }
+
+  function dismissCommitMenu() {
+    setCommitMenu(null);
+  }
+
+  // Dismiss on click anywhere
+  document.addEventListener('click', dismissCommitMenu);
+  onCleanup(() => document.removeEventListener('click', dismissCommitMenu));
 
   function onLogScroll(e) {
     const el = e.target;
@@ -101,6 +115,7 @@ export default function LogPanel() {
                   <tr
                     class={ws.commitDetail.hash === c.hash ? 'git-log-row-selected' : ''}
                     onClick={() => ws.selectCommit(c.hash)}
+                    onContextMenu={(e) => onCommitContextMenu(e, c)}
                     style={{ cursor: 'pointer' }}
                   >
                     <td class="git-log-graph-cell" style={{ width: `${Math.max(ws.log.maxCols, 1) * 16 + 8}px` }}>
@@ -198,6 +213,32 @@ export default function LogPanel() {
           </div>
         </Show>
       </div>
+
+      <Show when={commitMenu()}>
+        {(() => {
+          const menu = commitMenu();
+          return (
+            <div
+              class="file-context-menu"
+              style={{ left: `${menu.x}px`, top: `${menu.y}px` }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button class="file-context-menu-item" onClick={() => {
+                dismissCommitMenu();
+                ws.doCherryPick(menu.commit.hash);
+              }}>
+                <Icon name="fa-solid fa-cherry" /> Cherry-pick
+              </button>
+              <button class="file-context-menu-item danger" onClick={() => {
+                dismissCommitMenu();
+                ws.doDropCommit(menu.commit.hash);
+              }}>
+                <Icon name="fa-solid fa-trash" /> Drop Commit
+              </button>
+            </div>
+          );
+        })()}
+      </Show>
     </div>
   );
 }

@@ -88,6 +88,10 @@ contextBridge.exposeInMainWorld('api', {
   gitRebase: (repoPath, branch) => ipcRenderer.invoke('git:rebase', repoPath, branch),
   gitRebaseContinue: (repoPath) => ipcRenderer.invoke('git:rebaseContinue', repoPath),
   gitRebaseAbort: (repoPath) => ipcRenderer.invoke('git:rebaseAbort', repoPath),
+  gitCherryPick: (repoPath, hash) => ipcRenderer.invoke('git:cherryPick', repoPath, hash),
+  gitDropCommit: (repoPath, hash) => ipcRenderer.invoke('git:dropCommit', repoPath, hash),
+  gitBranchDelete: (repoPath, branch, force) => ipcRenderer.invoke('git:branchDelete', repoPath, branch, force),
+  gitBranchRename: (repoPath, oldName, newName) => ipcRenderer.invoke('git:branchRename', repoPath, oldName, newName),
   gitOperationState: (repoPath) => ipcRenderer.invoke('git:operationState', repoPath),
 
   // Conflict resolution
@@ -115,5 +119,31 @@ contextBridge.exposeInMainWorld('api', {
     const handler = (_, repoPath) => cb(repoPath);
     ipcRenderer.on('git:fs-changed', handler);
     return () => ipcRenderer.removeListener('git:fs-changed', handler);
+  },
+
+  // P2P
+  p2pGetIdentity: () => ipcRenderer.invoke('p2p:getIdentity'),
+  p2pSetDisplayName: (name) => ipcRenderer.invoke('p2p:setDisplayName', name),
+  p2pSetEnabled: (enabled) => ipcRenderer.invoke('p2p:setEnabled', enabled),
+  p2pPeerList: () => ipcRenderer.invoke('p2p:peerList'),
+  p2pSendFriendRequest: (peerId) => ipcRenderer.invoke('p2p:sendFriendRequest', peerId),
+  p2pRespondFriendRequest: (peerId, accepted) => ipcRenderer.invoke('p2p:respondFriendRequest', peerId, accepted),
+  p2pBlockPeer: (peerId) => ipcRenderer.invoke('p2p:blockPeer', peerId),
+  p2pUnblockPeer: (peerId) => ipcRenderer.invoke('p2p:unblockPeer', peerId),
+  p2pRemovePeer: (peerId) => ipcRenderer.invoke('p2p:removePeer', peerId),
+  p2pGetSharedRepos: () => ipcRenderer.invoke('p2p:getSharedRepos'),
+  p2pSetRepoShared: (repoId, shared) => ipcRenderer.invoke('p2p:setRepoShared', repoId, shared),
+  p2pFetchPeerRepos: (peerId) => ipcRenderer.invoke('p2p:fetchPeerRepos', peerId),
+  p2pCloneFromPeer: (peerId, remotePath, repoName) => ipcRenderer.invoke('p2p:cloneFromPeer', peerId, remotePath, repoName),
+  p2pAddPeerRemote: (repoPath, peerId, remotePath, remoteName) => ipcRenderer.invoke('p2p:addPeerRemote', repoPath, peerId, remotePath, remoteName),
+  onP2pPeersChanged: (cb) => {
+    const handler = () => cb();
+    ipcRenderer.on('p2p:peers-changed', handler);
+    return () => ipcRenderer.removeListener('p2p:peers-changed', handler);
+  },
+  onP2pFriendRequest: (cb) => {
+    const handler = (_, data) => cb(data);
+    ipcRenderer.on('p2p:friend-request', handler);
+    return () => ipcRenderer.removeListener('p2p:friend-request', handler);
   },
 });

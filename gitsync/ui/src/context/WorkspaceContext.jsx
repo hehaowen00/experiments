@@ -623,6 +623,61 @@ export function WorkspaceProvider(props) {
     loadLog();
   }
 
+  // --- Cherry-pick & Drop ---
+  async function doCherryPick(hash) {
+    if (!await showConfirm(`Cherry-pick commit ${hash.substring(0, 8)}?`, '')) return;
+    setOperating('Cherry-picking...');
+    const result = await window.api.gitCherryPick(repoPath, hash);
+    setOperating('');
+    if (result.error) showAlert('Cherry-pick Failed', result.error);
+    else if (result.conflict) setOutput(result.output || 'Cherry-pick conflicts detected — resolve and commit');
+    else setOutput(result.output || 'Cherry-pick complete');
+    await refresh();
+    loadLog();
+  }
+
+  async function doDropCommit(hash) {
+    if (!await showConfirm(`Drop commit ${hash.substring(0, 8)}?`, 'This will rebase to remove this commit. This cannot be easily undone.')) return;
+    setOperating('Dropping commit...');
+    const result = await window.api.gitDropCommit(repoPath, hash);
+    setOperating('');
+    if (result.error) showAlert('Drop Failed', result.error);
+    else if (result.conflict) setOutput(result.output || 'Conflicts while dropping — resolve and continue rebase');
+    else setOutput(result.output || 'Commit dropped');
+    await refresh();
+    loadLog();
+  }
+
+  // --- Branch delete & rename ---
+  async function doDeleteBranch(branch) {
+    if (!await showConfirm(`Delete branch "${branch}"?`, '')) return;
+    setOperating('Deleting branch...');
+    let result = await window.api.gitBranchDelete(repoPath, branch, false);
+    if (result.error && result.error.includes('not fully merged')) {
+      if (await showConfirm(`Branch "${branch}" is not fully merged. Force delete?`, 'Unmerged changes will be lost.')) {
+        result = await window.api.gitBranchDelete(repoPath, branch, true);
+      }
+    }
+    setOperating('');
+    if (result.error) showAlert('Delete Failed', result.error);
+    else setOutput(result.output || `Branch "${branch}" deleted`);
+    loadBranches();
+    loadLog();
+  }
+
+  async function doRenameBranch(oldName) {
+    const newName = await showPrompt('Rename Branch', '', oldName, 'New branch name');
+    if (!newName || newName === oldName) return;
+    setOperating('Renaming branch...');
+    const result = await window.api.gitBranchRename(repoPath, oldName, newName);
+    setOperating('');
+    if (result.error) showAlert('Rename Failed', result.error);
+    else setOutput(result.output || `Branch renamed to "${newName}"`);
+    await refresh();
+    loadBranches();
+    loadLog();
+  }
+
   // --- Stash ---
   async function doStashPush() {
     const message = await showPrompt('Stash Message', '', '', 'Optional message');
@@ -838,6 +893,7 @@ export function WorkspaceProvider(props) {
     addRemote, removeRemote, editRemoteUrl,
     checkoutBranch, checkoutRemoteBranch, createBranch,
     doMerge, doMergeAbort, doRebase, doRebaseContinue, doRebaseAbort,
+    doCherryPick, doDropCommit, doDeleteBranch, doRenameBranch,
     doStashPush, doStashPop, doStashApply, doStashDrop, viewStashDiff,
     initSubmodule, openSubmodule, selectCommit,
     onFileContextMenu, onFolderContextMenu, dismissCtxMenu,

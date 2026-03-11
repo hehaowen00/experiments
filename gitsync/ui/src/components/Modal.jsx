@@ -131,6 +131,10 @@ export default function Modal() {
   const [actionName, setActionName] = createSignal('');
   const [actionScript, setActionScript] = createSignal('');
 
+  // P2P settings
+  const [p2pIdentity, setP2pIdentity] = createSignal(null);
+  const [p2pDisplayName, setP2pDisplayName] = createSignal('');
+
   // Load settings and identities when settings modal opens
   createEffect(() => {
     if (modalVisible() && modalType() === 'settings') {
@@ -141,6 +145,10 @@ export default function Modal() {
       });
       window.api.identityList().then((list) => setIdentities(list));
       window.api.actionsList().then((list) => setActions(list));
+      window.api.p2pGetIdentity().then((id) => {
+        setP2pIdentity(id);
+        setP2pDisplayName(id.displayName);
+      });
     }
   });
 
@@ -284,7 +292,18 @@ export default function Modal() {
             </Show>
           </div>
           <Show when={modalDescription()}>
-            <div class="modal-description">{modalDescription()}</div>
+            <div
+              class="modal-description"
+              classList={{ 'modal-description-copyable': modalType() === 'alert' }}
+              title={modalType() === 'alert' ? 'Click to copy' : ''}
+              onClick={() => {
+                if (modalType() === 'alert') {
+                  navigator.clipboard.writeText(modalDescription());
+                }
+              }}
+            >
+              {modalDescription()}
+            </div>
           </Show>
           <Show when={modalType() === 'prompt'}>
             <input
@@ -313,6 +332,7 @@ export default function Modal() {
               <button class={`settings-tab ${settingsTab() === 'general' ? 'active' : ''}`} onClick={() => setSettingsTab('general')}>General</button>
               <button class={`settings-tab ${settingsTab() === 'identities' ? 'active' : ''}`} onClick={() => setSettingsTab('identities')}>Identities</button>
               <button class={`settings-tab ${settingsTab() === 'actions' ? 'active' : ''}`} onClick={() => setSettingsTab('actions')}>Actions</button>
+              <button class={`settings-tab ${settingsTab() === 'p2p' ? 'active' : ''}`} onClick={() => setSettingsTab('p2p')}>P2P</button>
             </div>
             <div class="settings-tab-content">
               <Show when={settingsTab() === 'general'}>
@@ -468,6 +488,50 @@ export default function Modal() {
                       />
                     </div>
                   </div>
+                </div>
+              </Show>
+              <Show when={settingsTab() === 'p2p'}>
+                <div class="settings-section">
+                  <Show when={p2pIdentity()}>
+                    <div class="settings-label">Display Name</div>
+                    <div style={{ display: 'flex', gap: '6px', 'margin-bottom': '12px' }}>
+                      <input
+                        type="text"
+                        class="settings-identity-input"
+                        value={p2pDisplayName()}
+                        onInput={(e) => setP2pDisplayName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            window.api.p2pSetDisplayName(p2pDisplayName().trim());
+                            window.api.p2pGetIdentity().then(setP2pIdentity);
+                          }
+                        }}
+                        placeholder="Display name"
+                      />
+                      <button
+                        class="btn btn-primary btn-xs"
+                        onClick={() => {
+                          window.api.p2pSetDisplayName(p2pDisplayName().trim());
+                          window.api.p2pGetIdentity().then(setP2pIdentity);
+                        }}
+                        disabled={!p2pDisplayName().trim()}
+                      >
+                        Save
+                      </button>
+                    </div>
+                    <div class="settings-label">P2P Networking</div>
+                    <label style={{ display: 'flex', 'align-items': 'center', gap: '8px', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={p2pIdentity()?.enabled}
+                        onChange={async () => {
+                          await window.api.p2pSetEnabled(!p2pIdentity().enabled);
+                          setP2pIdentity(await window.api.p2pGetIdentity());
+                        }}
+                      />
+                      <span>{p2pIdentity()?.enabled ? 'Enabled (discoverable on LAN)' : 'Disabled'}</span>
+                    </label>
+                  </Show>
                 </div>
               </Show>
             </div>
