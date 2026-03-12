@@ -53,7 +53,7 @@ contextBridge.exposeInMainWorld('api', {
   gitResetSoftHead: (repoPath) => ipcRenderer.invoke('git:resetSoftHead', repoPath),
   gitResetSoftTo: (repoPath, hash) => ipcRenderer.invoke('git:resetSoftTo', repoPath, hash),
   gitLog: (repoPath, count, allBranches, branchName, skip, search) => ipcRenderer.invoke('git:log', repoPath, count, allBranches, branchName, skip, search),
-  gitPull: (repoPath, strategy) => ipcRenderer.invoke('git:pull', repoPath, strategy),
+  gitPull: (repoPath, strategy, remote) => ipcRenderer.invoke('git:pull', repoPath, strategy, remote),
   gitPush: (repoPath, remote) => ipcRenderer.invoke('git:push', repoPath, remote),
   gitPushForce: (repoPath, remote) => ipcRenderer.invoke('git:pushForce', repoPath, remote),
   gitPushSetUpstream: (repoPath, remote, branch) => ipcRenderer.invoke('git:pushSetUpstream', repoPath, remote, branch),
@@ -68,6 +68,12 @@ contextBridge.exposeInMainWorld('api', {
   gitCheckoutNewBranch: (repoPath, branch) => ipcRenderer.invoke('git:checkoutNewBranch', repoPath, branch),
   gitShow: (repoPath, hash) => ipcRenderer.invoke('git:show', repoPath, hash),
   gitLastCommitMessage: (repoPath) => ipcRenderer.invoke('git:lastCommitMessage', repoPath),
+
+  // Tags
+  gitTagList: (repoPath) => ipcRenderer.invoke('git:tagList', repoPath),
+  gitTagCreate: (repoPath, name, message, target) => ipcRenderer.invoke('git:tagCreate', repoPath, name, message, target),
+  gitTagDelete: (repoPath, name) => ipcRenderer.invoke('git:tagDelete', repoPath, name),
+  gitTagPush: (repoPath, remote, tagName, isDelete) => ipcRenderer.invoke('git:tagPush', repoPath, remote, tagName, isDelete),
 
   // Submodules & nested repos
   gitSubmodules: (repoPath) => ipcRenderer.invoke('git:submodules', repoPath),
@@ -132,6 +138,7 @@ contextBridge.exposeInMainWorld('api', {
   p2pBlockPeer: (peerId) => ipcRenderer.invoke('p2p:blockPeer', peerId),
   p2pUnblockPeer: (peerId) => ipcRenderer.invoke('p2p:unblockPeer', peerId),
   p2pRemovePeer: (peerId) => ipcRenderer.invoke('p2p:removePeer', peerId),
+  p2pGetAllPeerRepos: () => ipcRenderer.invoke('p2p:getAllPeerRepos'),
   p2pGetSharedRepos: () => ipcRenderer.invoke('p2p:getSharedRepos'),
   p2pSetRepoShared: (repoId, shared) => ipcRenderer.invoke('p2p:setRepoShared', repoId, shared),
   p2pFetchPeerRepos: (peerId) => ipcRenderer.invoke('p2p:fetchPeerRepos', peerId),
@@ -141,6 +148,11 @@ contextBridge.exposeInMainWorld('api', {
     const handler = () => cb();
     ipcRenderer.on('p2p:peers-changed', handler);
     return () => ipcRenderer.removeListener('p2p:peers-changed', handler);
+  },
+  onP2pCloneProgress: (cb) => {
+    const handler = (_, data) => cb(data);
+    ipcRenderer.on('p2p:clone-progress', handler);
+    return () => ipcRenderer.removeListener('p2p:clone-progress', handler);
   },
   onP2pFriendRequest: (cb) => {
     const handler = (_, data) => cb(data);

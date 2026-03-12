@@ -41,12 +41,12 @@ const strings = {
       placeholder: 'Name',
     },
     deleteCollectionModal: {
-      title: (name) => `Delete "${name}"?`,
+      title: (name) => `Delete Collection "${name}"?`,
       description: 'This cannot be undone.',
     },
     deleteCategoryModal: {
       title: (name) => `Delete category "${name}"?`,
-      description: 'Collections will be uncategorized.',
+      description: 'Collections will be ungrouped.',
     },
   },
 

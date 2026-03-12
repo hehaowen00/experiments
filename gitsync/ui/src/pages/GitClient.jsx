@@ -18,6 +18,7 @@ export default function GitClient(props) {
   });
 
   const [repoStatus, setRepoStatus] = createStore({});
+  const [peerRepos, setPeerRepos] = createStore([]);
 
   let dragRepoId = null;
   let dragCategoryId = null;
@@ -47,6 +48,16 @@ export default function GitClient(props) {
     ]);
     setState({ repos, categories: cats });
     loadRepoStatuses(repos);
+    loadPeerRepos();
+  }
+
+  async function loadPeerRepos() {
+    try {
+      const repos = await window.api.p2pGetAllPeerRepos();
+      setPeerRepos(repos || []);
+    } catch {
+      // P2P may not be enabled
+    }
   }
 
   async function loadRepoStatuses(repos) {
@@ -367,6 +378,35 @@ export default function GitClient(props) {
           emptyMessage="No repositories yet. Add one to get started."
           dropHint="Drop repos here"
         />
+        <Show when={peerRepos.length > 0}>
+          <div class="landing-section">
+            <div class="landing-section-header">
+              <Icon name="fa-solid fa-network-wired" /> Peer Repos
+            </div>
+            <div class="collection-list">
+              <For each={peerRepos}>
+                {(repo) => {
+                  const local = () => repo.local_repo_id ? state.repos.find((r) => r.id === repo.local_repo_id) : null;
+                  return (
+                    <Show when={local()} fallback={
+                      <div class="collection-item" style={{ opacity: 0.6, cursor: 'default' }}>
+                        <span class="name">
+                          <Icon name="fa-solid fa-code-branch" /> {repo.name}
+                          <span class="git-repo-sync" style={{ 'font-size': '10px', color: 'var(--text-dim)' }}>
+                            {repo.peerName}
+                          </span>
+                        </span>
+                        <span class="last-used git-repo-subtitle">not cloned</span>
+                      </div>
+                    }>
+                      {renderRepoCard(local())}
+                    </Show>
+                  );
+                }}
+              </For>
+            </div>
+          </div>
+        </Show>
       </div>
 
       <Show when={state.formOpen}>

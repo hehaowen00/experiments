@@ -463,12 +463,13 @@ function register(mainWindow) {
     }
   });
 
-  ipcMain.handle('git:pull', async (_, repoPath, strategy) => {
+  ipcMain.handle('git:pull', async (_, repoPath, strategy, remote) => {
     try {
       const args = ['pull', '--autostash'];
       if (strategy === 'ff-only') args.push('--ff-only');
       else if (strategy === 'rebase') args.push('--rebase');
       else if (strategy === 'merge') args.push('--no-rebase');
+      if (remote) args.push(remote);
       const out = await git(repoPath, args);
       return { ok: true, output: out };
     } catch (e) {
@@ -741,6 +742,64 @@ function register(mainWindow) {
       if (e.message.includes('CONFLICT') || e.message.includes('could not revert')) {
         return { ok: false, conflict: true, output: e.message };
       }
+      return { error: e.message };
+    }
+  });
+
+  // --- Tags ---
+  ipcMain.handle('git:tagList', async (_, repoPath) => {
+    try {
+      const out = await git(repoPath, [
+        'tag', '-l', '--sort=-creatordate',
+        '--format=%(refname:short)\t%(objecttype)\t%(creatordate:iso)\t%(subject)',
+      ]);
+      if (!out.trim()) return { tags: [] };
+      const tags = out.trim().split('\n').map(line => {
+        const [name, type, date, message] = line.split('\t');
+        return { name, type: type || 'commit', date: date || '', message: message || '' };
+      });
+      return { tags };
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
+
+  ipcMain.handle('git:tagCreate', async (_, repoPath, name, message, target) => {
+    try {
+      const args = ['tag'];
+      if (message) {
+        args.push('-a', name, '-m', message);
+      } else {
+        args.push(name);
+      }
+      if (target) args.push(target);
+      await git(repoPath, args);
+      return { ok: true };
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
+
+  ipcMain.handle('git:tagDelete', async (_, repoPath, name) => {
+    try {
+      await git(repoPath, ['tag', '-d', name]);
+      return { ok: true };
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
+
+  ipcMain.handle('git:tagPush', async (_, repoPath, remote, tagName, isDelete) => {
+    try {
+      const args = ['push', remote];
+      if (isDelete) {
+        args.push('--delete', `refs/tags/${tagName}`);
+      } else {
+        args.push(`refs/tags/${tagName}`);
+      }
+      await git(repoPath, args);
+      return { ok: true };
+    } catch (e) {
       return { error: e.message };
     }
   });

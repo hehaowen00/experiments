@@ -1,4 +1,4 @@
-import { For, Show, createSignal, onMount } from 'solid-js';
+import { For, Show, createSignal, onMount, onCleanup } from 'solid-js';
 import { createStore } from 'solid-js/store';
 import Icon from '../components/Icon';
 import { showAlert } from '../components/Modal';
@@ -8,8 +8,13 @@ export default function PeerReposPage(props) {
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal(null);
   const [cloning, setCloning] = createSignal(null);
+  const [cloneProgress, setCloneProgress] = createSignal(null);
 
   onMount(async () => {
+    const unsub = window.api.onP2pCloneProgress((data) => {
+      setCloneProgress(data);
+    });
+    onCleanup(() => unsub());
     await fetchRepos();
   });
 
@@ -27,6 +32,7 @@ export default function PeerReposPage(props) {
 
   async function cloneRepo(repo) {
     setCloning(repo.exportName);
+    setCloneProgress(null);
     const result = await window.api.p2pCloneFromPeer(
       props.peerId,
       repo.exportName,
@@ -34,6 +40,7 @@ export default function PeerReposPage(props) {
       repo.originUrl,
     );
     setCloning(null);
+    setCloneProgress(null);
     if (result.error) {
       await showAlert('Clone Failed', result.error);
     } else if (!result.canceled) {
@@ -80,27 +87,46 @@ export default function PeerReposPage(props) {
 
         <For each={repos}>
           {(repo) => (
-            <div class="peer-card">
-              <div class="peer-card-info">
-                <span class="peer-name">
-                  <Icon name="fa-solid fa-code-branch" /> {repo.name}
-                </span>
-                <Show when={repo.local_path}>
-                  <span class="pr-status-badge pr-status-merged" style={{ 'font-size': '10px' }}>synced</span>
-                </Show>
+            <div class="peer-card" style={{ 'flex-direction': 'column', 'align-items': 'stretch' }}>
+              <div style={{ display: 'flex', 'align-items': 'center', 'justify-content': 'space-between' }}>
+                <div class="peer-card-info">
+                  <span class="peer-name">
+                    <Icon name="fa-solid fa-code-branch" /> {repo.name}
+                  </span>
+                  <Show when={repo.local_path}>
+                    <span class="pr-status-badge pr-status-merged" style={{ 'font-size': '10px' }}>synced</span>
+                  </Show>
+                </div>
+                <div class="peer-card-actions">
+                  <Show when={!repo.local_path}>
+                    <button
+                      class="btn btn-primary btn-xs"
+                      onClick={() => cloneRepo(repo)}
+                      disabled={cloning() === repo.exportName}
+                    >
+                      <Icon name="fa-solid fa-download" />
+                      {cloning() === repo.exportName ? 'Cloning...' : 'Clone'}
+                    </button>
+                  </Show>
+                </div>
               </div>
-              <div class="peer-card-actions">
-                <Show when={!repo.local_path}>
-                  <button
-                    class="btn btn-primary btn-xs"
-                    onClick={() => cloneRepo(repo)}
-                    disabled={cloning() === repo.exportName}
-                  >
-                    <Icon name="fa-solid fa-download" />
-                    {cloning() === repo.exportName ? 'Cloning...' : 'Clone'}
-                  </button>
-                </Show>
-              </div>
+
+              <Show when={cloning() === repo.exportName && cloneProgress()}>
+                <div class="clone-progress">
+                  <div class="clone-progress-label">
+                    {cloneProgress().phase}: {cloneProgress().percent}%
+                    <Show when={cloneProgress().total > 0}>
+                      {' '}({cloneProgress().current}/{cloneProgress().total})
+                    </Show>
+                  </div>
+                  <div class="clone-progress-bar">
+                    <div
+                      class="clone-progress-fill"
+                      style={{ width: `${cloneProgress().percent}%` }}
+                    />
+                  </div>
+                </div>
+              </Show>
             </div>
           )}
         </For>

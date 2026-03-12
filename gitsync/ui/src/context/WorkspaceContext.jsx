@@ -37,6 +37,7 @@ export function WorkspaceProvider(props) {
   const [remotes, setRemotes] = createStore({ list: [], loading: false });
   const [branches, setBranches] = createStore({ list: [], loading: false });
   const [stashes, setStashes] = createStore({ list: [], loading: false });
+  const [tags, setTags] = createStore({ list: [], loading: false });
   const [stashDetail, setStashDetail] = createStore({ ref: null, diff: '' });
 
   const [commitDetail, setCommitDetail] = createStore({
@@ -70,6 +71,15 @@ export function WorkspaceProvider(props) {
   const [switcherIndex, setSwitcherIndex] = createSignal(0);
 
   // --- Core operations ---
+
+  // Reload working tree + commit history. Use after any operation that
+  // may change files, branches, or commits so callers don't need to
+  // remember which combination of loaders to invoke.
+  async function reloadRepo() {
+    await refresh();
+    loadLog();
+  }
+
   async function refresh() {
     setStatus('loading', true);
     const [result, opResult, subResult, filesResult] = await Promise.all([
@@ -178,10 +188,43 @@ export function WorkspaceProvider(props) {
     else setStashes('loading', false);
   }
 
+  async function loadTags() {
+    setTags('loading', true);
+    const result = await window.api.gitTagList(repoPath);
+    if (!result.error) setTags({ list: result.tags, loading: false });
+    else setTags('loading', false);
+  }
+
+  async function doCreateTag(name, message, target) {
+    const result = await window.api.gitTagCreate(repoPath, name, message || '', target || '');
+    if (result.error) showAlert('Tag Failed', result.error);
+    else loadTags();
+  }
+
+  async function doDeleteTag(name) {
+    if (!await showConfirm(`Delete tag "${name}"?`, '')) return;
+    const result = await window.api.gitTagDelete(repoPath, name);
+    if (result.error) showAlert('Delete Tag Failed', result.error);
+    else loadTags();
+  }
+
+  async function doPushTag(remote, name) {
+    const result = await window.api.gitTagPush(repoPath, remote, name, false);
+    if (result.error) showAlert('Push Tag Failed', result.error);
+    else setOutput(`Tag "${name}" pushed to ${remote}`);
+  }
+
+  async function doDeleteRemoteTag(remote, name) {
+    if (!await showConfirm(`Delete tag "${name}" from remote "${remote}"?`, '')) return;
+    const result = await window.api.gitTagPush(repoPath, remote, name, true);
+    if (result.error) showAlert('Delete Remote Tag Failed', result.error);
+    else setOutput(`Tag "${name}" deleted from ${remote}`);
+  }
+
   function onTabChange(t) {
     setTab(t);
     if (t === 'log') { loadLog(); loadLogBranches(); }
-    if (t === 'remotes') { loadRemotes(); loadBranches(); }
+    if (t === 'remotes') { loadRemotes(); loadBranches(); loadTags(); }
     if (t === 'stashes') { loadStashes(); }
   }
 
@@ -369,8 +412,7 @@ export function WorkspaceProvider(props) {
     } else {
       setCommit({ message: '', description: '', amend: false, originalAmendMsg: '', amendHash: null });
       setOutput(result.output || 'Committed successfully');
-      await refresh();
-      loadLog();
+      await reloadRepo();
     }
   }
 
@@ -401,9 +443,36 @@ export function WorkspaceProvider(props) {
   }
 
   // --- Pull/Push/Fetch ---
-  async function doPull(strategy) {
+  let lastRemote = null;
+
+  async function pickRemote(title, description) {
+    const remoteResult = await window.api.gitRemoteList(repoPath);
+    const remoteList = remoteResult.remotes || [];
+    if (remoteList.length === 0) return null;
+    if (remoteList.length === 1) return remoteList[0].name;
+
+    const choices = remoteList.map((r) => ({
+      label: r.name + (r.name === lastRemote ? ' (last used)' : ''),
+      value: r.name,
+      description: r.fetch,
+    }));
+    if (lastRemote) {
+      const idx = choices.findIndex((c) => c.value === lastRemote);
+      if (idx > 0) choices.unshift(choices.splice(idx, 1)[0]);
+    }
+
+    return await showChoice(title, description, choices);
+  }
+
+  async function doPull(strategy, remote) {
+    if (!remote) {
+      remote = await pickRemote('Pull from Remote', 'Select which remote to pull from.');
+      if (!remote) return;
+    }
+    lastRemote = remote;
+
     setOperating('Pulling...');
-    const result = await window.api.gitPull(repoPath, strategy);
+    const result = await window.api.gitPull(repoPath, strategy, remote);
     setOperating('');
     if (result.error) {
       if (result.divergent) {
@@ -416,43 +485,20 @@ export function WorkspaceProvider(props) {
             { label: 'Merge', value: 'merge', description: 'Create a merge commit combining both histories' },
           ],
         );
-        if (choice) return doPull(choice);
+        if (choice) return doPull(choice, remote);
       } else {
         showAlert('Pull Failed', result.error);
       }
     } else {
       setOutput(result.output || 'Pull complete');
     }
-    await refresh();
-    loadLog();
-  }
-
-  let lastPushRemote = null;
-
-  async function pickPushRemote() {
-    const remoteResult = await window.api.gitRemoteList(repoPath);
-    const remoteList = remoteResult.remotes || [];
-    if (remoteList.length === 0) return null;
-    if (remoteList.length === 1) return remoteList[0].name;
-
-    // Sort so last-used remote is first
-    const choices = remoteList.map((r) => ({
-      label: r.name + (r.name === lastPushRemote ? ' (last used)' : ''),
-      value: r.name,
-      description: r.fetch,
-    }));
-    if (lastPushRemote) {
-      const idx = choices.findIndex((c) => c.value === lastPushRemote);
-      if (idx > 0) choices.unshift(choices.splice(idx, 1)[0]);
-    }
-
-    return await showChoice('Push to Remote', 'Select which remote to push to.', choices);
+    await reloadRepo();
   }
 
   async function doPush() {
-    const remote = await pickPushRemote();
+    const remote = await pickRemote('Push to Remote', 'Select which remote to push to.');
     if (!remote) return;
-    lastPushRemote = remote;
+    lastRemote = remote;
 
     setOperating('Pushing...');
     let result;
@@ -474,24 +520,21 @@ export function WorkspaceProvider(props) {
           ],
         );
         if (choice === 'pull-rebase') {
-          await doPull('rebase');
+          await doPull('rebase', remote);
           const retry = await window.api.gitPush(repoPath, remote);
           if (retry.error) showAlert('Push Failed', retry.error);
           else setOutput(retry.output || 'Push complete');
-          await refresh();
         } else if (choice === 'pull-merge') {
-          await doPull('merge');
+          await doPull('merge', remote);
           const retry = await window.api.gitPush(repoPath, remote);
           if (retry.error) showAlert('Push Failed', retry.error);
           else setOutput(retry.output || 'Push complete');
-          await refresh();
         } else if (choice === 'force') {
           setOperating('Force pushing...');
           const retry = await window.api.gitPushForce(repoPath, remote);
           setOperating('');
           if (retry.error) showAlert('Force Push Failed', retry.error);
           else setOutput(retry.output || 'Force push complete');
-          await refresh();
         }
       } else {
         showAlert('Push Failed', result.error);
@@ -499,7 +542,7 @@ export function WorkspaceProvider(props) {
     } else {
       setOutput(result.output || 'Push complete');
     }
-    await refresh();
+    await reloadRepo();
   }
 
   async function doFetch() {
@@ -508,7 +551,7 @@ export function WorkspaceProvider(props) {
     setOperating('');
     if (result.error) showAlert('Fetch Failed', result.error);
     else setOutput(result.output || 'Fetch complete');
-    await refresh();
+    await reloadRepo();
   }
 
   // --- Remotes ---
@@ -547,9 +590,8 @@ export function WorkspaceProvider(props) {
       showAlert('Checkout Failed', result.error);
     } else {
       setOutput(result.output || `Switched to ${name}`);
-      await refresh();
+      await reloadRepo();
       loadBranches();
-      loadLog();
     }
   }
 
@@ -567,9 +609,8 @@ export function WorkspaceProvider(props) {
       showAlert('Checkout Failed', result.error);
     } else {
       setOutput(result.output || `Checked out ${localName} tracking ${trackRef}`);
-      await refresh();
+      await reloadRepo();
       loadBranches();
-      loadLog();
     }
   }
 
@@ -583,9 +624,8 @@ export function WorkspaceProvider(props) {
       showAlert('Error', result.error);
     } else {
       setOutput(result.output || `Created and switched to ${name.trim()}`);
-      await refresh();
+      await reloadRepo();
       loadBranches();
-      loadLog();
     }
   }
 
@@ -598,8 +638,7 @@ export function WorkspaceProvider(props) {
     if (result.error) showAlert('Merge Failed', result.error);
     else if (result.conflict) setOutput(result.output || 'Merge conflicts detected');
     else setOutput(result.output || 'Merge complete');
-    await refresh();
-    loadLog();
+    await reloadRepo();
   }
 
   async function doMergeAbort() {
@@ -609,8 +648,7 @@ export function WorkspaceProvider(props) {
     setOperating('');
     if (result.error) showAlert('Error', result.error);
     else setOutput('Merge aborted');
-    await refresh();
-    loadLog();
+    await reloadRepo();
   }
 
   async function doRebase(branch) {
@@ -621,8 +659,7 @@ export function WorkspaceProvider(props) {
     if (result.error) showAlert('Rebase Failed', result.error);
     else if (result.conflict) setOutput(result.output || 'Rebase conflicts detected — resolve and continue');
     else setOutput(result.output || 'Rebase complete');
-    await refresh();
-    loadLog();
+    await reloadRepo();
   }
 
   async function doRebaseContinue() {
@@ -632,8 +669,7 @@ export function WorkspaceProvider(props) {
     if (result.error) showAlert('Rebase Continue Failed', result.error);
     else if (result.conflict) setOutput(result.output || 'More conflicts — resolve and continue');
     else setOutput(result.output || 'Rebase complete');
-    await refresh();
-    loadLog();
+    await reloadRepo();
   }
 
   async function doRebaseAbort() {
@@ -643,8 +679,7 @@ export function WorkspaceProvider(props) {
     setOperating('');
     if (result.error) showAlert('Error', result.error);
     else setOutput('Rebase aborted');
-    await refresh();
-    loadLog();
+    await reloadRepo();
   }
 
   // --- Cherry-pick & Drop ---
@@ -656,8 +691,7 @@ export function WorkspaceProvider(props) {
     if (result.error) showAlert('Cherry-pick Failed', result.error);
     else if (result.conflict) setOutput(result.output || 'Cherry-pick conflicts detected — resolve and commit');
     else setOutput(result.output || 'Cherry-pick complete');
-    await refresh();
-    loadLog();
+    await reloadRepo();
   }
 
   async function doRevert(hash) {
@@ -668,8 +702,7 @@ export function WorkspaceProvider(props) {
     if (result.error) showAlert('Revert Failed', result.error);
     else if (result.conflict) setOutput(result.output || 'Revert conflicts detected — resolve and commit');
     else setOutput(result.output || 'Revert complete');
-    await refresh();
-    loadLog();
+    await reloadRepo();
   }
 
   async function doDropCommit(hash) {
@@ -680,8 +713,7 @@ export function WorkspaceProvider(props) {
     if (result.error) showAlert('Drop Failed', result.error);
     else if (result.conflict) setOutput(result.output || 'Conflicts while dropping — resolve and continue rebase');
     else setOutput(result.output || 'Commit dropped');
-    await refresh();
-    loadLog();
+    await reloadRepo();
   }
 
   // --- Branch delete & rename ---
@@ -697,8 +729,8 @@ export function WorkspaceProvider(props) {
     setOperating('');
     if (result.error) showAlert('Delete Failed', result.error);
     else setOutput(result.output || `Branch "${branch}" deleted`);
+    await reloadRepo();
     loadBranches();
-    loadLog();
   }
 
   async function doRenameBranch(oldName) {
@@ -709,9 +741,8 @@ export function WorkspaceProvider(props) {
     setOperating('');
     if (result.error) showAlert('Rename Failed', result.error);
     else setOutput(result.output || `Branch renamed to "${newName}"`);
-    await refresh();
+    await reloadRepo();
     loadBranches();
-    loadLog();
   }
 
   // --- Stash ---
@@ -724,7 +755,7 @@ export function WorkspaceProvider(props) {
     if (result.error) showAlert('Stash Failed', result.error);
     else setOutput(result.output || 'Changes stashed');
     await refresh();
-    if (tab() === 'stashes') loadStashes();
+    loadStashes();
   }
 
   async function doStashPop(ref) {
@@ -746,6 +777,7 @@ export function WorkspaceProvider(props) {
     else if (result.conflict) setOutput(result.output || 'Stash applied with conflicts');
     else setOutput(result.output || 'Stash applied');
     await refresh();
+    loadStashes();
   }
 
   async function doStashDrop(ref) {
@@ -887,8 +919,7 @@ export function WorkspaceProvider(props) {
   let removeFsListener;
 
   onMount(() => {
-    refresh();
-    loadLog();
+    reloadRepo();
     loadStashes();
     loadIdentities();
     loadActions();
@@ -896,7 +927,7 @@ export function WorkspaceProvider(props) {
     document.addEventListener('click', dismissCtxMenu);
     window.api.gitWatchRepo(repoPath);
     removeFsListener = window.api.onFsChanged((changedPath) => {
-      if (changedPath === repoPath) refresh();
+      if (changedPath === repoPath) reloadRepo();
     });
   });
 
@@ -910,7 +941,7 @@ export function WorkspaceProvider(props) {
     repoPath, repoData, onBack, onSwitchRepo,
     // Stores
     status, setStatus, diff, setDiff, commit, setCommit,
-    log, setLog, remotes, branches, stashes, stashDetail, setStashDetail,
+    log, setLog, remotes, branches, tags, stashes, stashDetail, setStashDetail,
     commitDetail, setCommitDetail,
     // Signals
     tab, setTab, operating, output, setOutput,
@@ -919,17 +950,18 @@ export function WorkspaceProvider(props) {
     logBranch, setLogBranch, logBranches, logSearch, setLogSearch, selectedFiles, allFiles,
     switcherOpen, switcherQuery, setSwitcherQuery, switcherRepos, switcherIndex, setSwitcherIndex,
     // Operations
-    refresh, loadLog, loadMoreLog, loadLogBranches, loadRemotes, loadBranches, loadStashes,
+    reloadRepo, refresh, loadLog, loadMoreLog, loadLogBranches, loadRemotes, loadBranches, loadTags, loadStashes,
     onTabChange, viewDiff,
     stageFile, unstageFile, stageAll, unstageAll, stageSelected, unstageSelected, exportStagedPatch, applyPatch,
     resolveOurs, resolveTheirs, viewConflictDiff,
     discardFile, discardFiles, deleteUntrackedFiles,
     doCommit, toggleAmend,
-    doPull, doPush, doFetch,
+    doPull, doPush, doFetch, pickRemote,
     addRemote, removeRemote, editRemoteUrl,
     checkoutBranch, checkoutRemoteBranch, createBranch,
     doMerge, doMergeAbort, doRebase, doRebaseContinue, doRebaseAbort,
     doCherryPick, doRevert, doDropCommit, doDeleteBranch, doRenameBranch,
+    doCreateTag, doDeleteTag, doPushTag, doDeleteRemoteTag,
     doStashPush, doStashPop, doStashApply, doStashDrop, viewStashDiff,
     initSubmodule, openSubmodule, selectCommit,
     onFileContextMenu, onFolderContextMenu, dismissCtxMenu,

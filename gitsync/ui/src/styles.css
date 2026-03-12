@@ -5023,6 +5023,92 @@ th.git-log-graph {
   opacity: 1;
 }
 
+/* Tags */
+.git-tag-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.git-tag-form input[type="text"] {
+  width: 100%;
+  padding: 6px 8px;
+  font-size: var(--ui-font-size-sm);
+  font-family: var(--mono);
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.git-tag-form input[type="text"]:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.git-tag-form input[type="text"]::placeholder {
+  color: var(--text-dim);
+}
+
+.git-tag-form-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.git-tag-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  font-family: var(--mono);
+  font-size: var(--ui-font-size-sm);
+}
+
+.git-tag-item:hover {
+  background: var(--surface);
+}
+
+.git-tag-item:hover .git-branch-action {
+  opacity: 1;
+}
+
+.git-tag-icon {
+  font-size: 10px;
+  color: var(--warning);
+  flex-shrink: 0;
+}
+
+.git-tag-info {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.git-tag-name {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.git-tag-message {
+  color: var(--text-dim);
+  font-size: var(--ui-font-size-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-tag-date {
+  color: var(--text-dim);
+  font-size: var(--ui-font-size-xs);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 /* Stashes */
 .git-stashes-panel {
   padding: 12px;
@@ -5311,6 +5397,30 @@ th.git-log-graph {
   align-items: center;
   gap: 4px;
   flex-shrink: 0;
+}
+
+.clone-progress {
+  margin-top: 8px;
+}
+
+.clone-progress-label {
+  font-size: var(--ui-font-size-sm);
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+
+.clone-progress-bar {
+  height: 6px;
+  background: var(--surface2);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.clone-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+  transition: width 0.2s ease;
 }
 
 .peer-share-toggle {

@@ -1,5 +1,5 @@
 const { ipcMain, dialog, app } = require('electron');
-const { execFile, spawn } = require('child_process');
+const { execFile, execFileSync, spawn } = require('child_process');
 const http = require('http');
 const crypto = require('crypto');
 const os = require('os');
@@ -119,6 +119,38 @@ function updatePeerRemoteUrls(peerId, newHost, newSshPort) {
       () => {},
     );
   }
+}
+
+// --- Per-remote SSH config ---
+// Only peer remotes use the Go SSH binary. Normal remotes (GitHub, etc.) use
+// the system SSH so authentication (keys, agent) works as expected.
+
+function setRemoteSshCommand(repoPath, remoteName) {
+  const cmd = `"${gitSshBin}" connect`;
+  try {
+    execFileSync(
+      'git', ['config', '--local', `remote.${remoteName}.sshCommand`, cmd],
+      { cwd: repoPath, encoding: 'utf8', timeout: 5000 },
+    );
+  } catch (err) {
+    console.error(`Failed to set sshCommand for remote ${remoteName}:`, err.message);
+  }
+}
+
+function unsetGlobalSshCommand(repoPath) {
+  // Remove old repo-wide core.sshCommand if present so normal remotes work
+  try {
+    execFileSync(
+      'git', ['config', '--local', '--unset', 'core.sshCommand'],
+      { cwd: repoPath, encoding: 'utf8', timeout: 5000 },
+    );
+  } catch {}
+  try {
+    execFileSync(
+      'git', ['config', '--local', '--unset', 'ssh.variant'],
+      { cwd: repoPath, encoding: 'utf8', timeout: 5000 },
+    );
+  } catch {}
 }
 
 // --- Shared repo resolution ---
@@ -642,19 +674,9 @@ function handleCloneNotify(data, res) {
     }
   }
 
-  // Configure SSH for this repo
-  try {
-    require('child_process').execFileSync(
-      'git', ['config', '--local', 'core.sshCommand', `"${gitSshBin}" connect`],
-      { cwd: repoPath, encoding: 'utf8', timeout: 5000 },
-    );
-    require('child_process').execFileSync(
-      'git', ['config', '--local', 'ssh.variant', 'ssh'],
-      { cwd: repoPath, encoding: 'utf8', timeout: 5000 },
-    );
-  } catch (cfgErr) {
-    console.error('[clone-notify] Failed to configure SSH:', cfgErr.message);
-  }
+  // Configure SSH only for this peer remote (not repo-wide)
+  setRemoteSshCommand(repoPath, remoteName);
+  unsetGlobalSshCommand(repoPath);
 
   // Also set receive.denyCurrentBranch so the peer can push to us
   try {
@@ -773,32 +795,25 @@ function httpGet(host, port, urlPath, headers = {}) {
   });
 }
 
-// --- Migrate old core.sshCommand in repos with peer remotes ---
+// --- Migrate: move from global core.sshCommand to per-remote sshCommand ---
 
 function migrateSshCommand() {
   const db = store.getDb();
-  const repos = db
+  const rows = db
     .prepare(
-      `SELECT DISTINCT r.path FROM git_repos r
-       INNER JOIN p2p_peer_repos pr ON pr.local_repo_id = r.id`,
+      `SELECT DISTINCT r.path, pr.remote_name
+       FROM git_repos r
+       INNER JOIN p2p_peer_repos pr ON pr.local_repo_id = r.id
+       WHERE pr.remote_name IS NOT NULL`,
     )
     .all();
 
-  const newCmd = `"${gitSshBin}" connect`;
-  for (const { path: repoPath } of repos) {
+  for (const { path: repoPath, remote_name } of rows) {
     try {
-      execFile(
-        'git',
-        ['config', '--local', 'core.sshCommand', newCmd],
-        { cwd: repoPath },
-        () => {},
-      );
-      execFile(
-        'git',
-        ['config', '--local', 'ssh.variant', 'ssh'],
-        { cwd: repoPath },
-        () => {},
-      );
+      // Set per-remote SSH command
+      setRemoteSshCommand(repoPath, remote_name);
+      // Remove old global config
+      unsetGlobalSshCommand(repoPath);
     } catch {
       // repo may have been deleted from disk
     }
@@ -943,6 +958,21 @@ function register(win) {
       .run(peerId);
     notifyPeersChanged();
     return true;
+  });
+
+  ipcMain.handle('p2p:getAllPeerRepos', () => {
+    const db = store.getDb();
+    return db
+      .prepare(
+        `SELECT pr.remote_path as "exportName", pr.name, pr.local_repo_id,
+                p.peer_id as "peerId", p.name as "peerName",
+                r.path as local_path
+         FROM p2p_peer_repos pr
+         INNER JOIN p2p_peers p ON p.id = pr.peer_id AND p.status = 'accepted'
+         LEFT JOIN git_repos r ON r.id = pr.local_repo_id
+         ORDER BY p.name, pr.name`,
+      )
+      .all();
   });
 
   ipcMain.handle('p2p:getSharedRepos', () =>
@@ -1114,34 +1144,42 @@ function register(win) {
 
       try {
         await new Promise((resolve, reject) => {
-          execFile(
+          const proc = spawn(
             'git',
-            ['clone', '--origin', peerRemoteName, sshUrl, destDir],
-            { timeout: 120000, env: makeGitSshEnv() },
-            (err, stdout, stderr) => {
-              if (err) reject(new Error(stderr || err.message));
-              else resolve(stdout);
-            },
+            ['clone', '--progress', '--origin', peerRemoteName, sshUrl, destDir],
+            { env: makeGitSshEnv() },
           );
+          let stderrBuf = '';
+          let lastProgressSend = 0;
+          proc.stderr.on('data', (chunk) => {
+            stderrBuf += chunk.toString();
+            // Parse git clone progress from stderr (throttle to ~4 updates/sec)
+            const now = Date.now();
+            if (now - lastProgressSend < 250) return;
+            const lines = chunk.toString().split(/\r|\n/);
+            for (const line of lines) {
+              const match = line.match(/(\w[\w\s]+):\s+(\d+)%\s*(?:\((\d+)\/(\d+)\))?/);
+              if (match && mainWindow && !mainWindow.isDestroyed()) {
+                lastProgressSend = now;
+                mainWindow.webContents.send('p2p:clone-progress', {
+                  phase: match[1].trim(),
+                  percent: parseInt(match[2]),
+                  current: match[3] ? parseInt(match[3]) : 0,
+                  total: match[4] ? parseInt(match[4]) : 0,
+                });
+                break;
+              }
+            }
+          });
+          proc.on('close', (code) => {
+            if (code !== 0) reject(new Error(stderrBuf || `git clone exited with code ${code}`));
+            else resolve();
+          });
+          proc.on('error', (err) => reject(err));
         });
 
-        // Configure the cloned repo to use the Go SSH binary for future fetch/push
-        await new Promise((resolve) => {
-          execFile(
-            'git',
-            ['config', '--local', 'core.sshCommand', `"${gitSshBin}" connect`],
-            { cwd: destDir },
-            () => resolve(),
-          );
-        });
-        await new Promise((resolve) => {
-          execFile(
-            'git',
-            ['config', '--local', 'ssh.variant', 'ssh'],
-            { cwd: destDir },
-            () => resolve(),
-          );
-        });
+        // Configure SSH only for the peer remote (not repo-wide, so GitHub etc. work normally)
+        setRemoteSshCommand(destDir, peerRemoteName);
 
         const repoId = generateKSUID();
         db.prepare(
@@ -1198,7 +1236,21 @@ function register(win) {
 
         return { repoId, path: destDir };
       } catch (err) {
-        return { error: err.message };
+        const msg = err.message || 'Unknown error';
+        // Provide actionable context
+        let detail = msg;
+        if (msg.includes('Connection refused') || msg.includes('connect to host')) {
+          detail = `Could not connect to peer's SSH server at ${host}:${peerSshPort}.\n\n${msg}`;
+        } else if (msg.includes('Permission denied') || msg.includes('authentication')) {
+          detail = `Authentication failed. Make sure the peer has accepted your friend request.\n\n${msg}`;
+        } else if (msg.includes('not found') || msg.includes('does not appear to be a git repository')) {
+          detail = `Repository "${exportName}" was not found on the peer. It may have been unshared.\n\n${msg}`;
+        } else if (msg.includes('already exists')) {
+          detail = `Destination directory "${destDir}" already exists.\n\n${msg}`;
+        } else if (msg.includes('timeout') || msg.includes('Timeout')) {
+          detail = `Clone timed out. The repository may be very large or the connection is slow.\n\n${msg}`;
+        }
+        return { error: detail };
       }
     },
   );
@@ -1235,24 +1287,8 @@ function register(win) {
           );
         });
 
-        // Persist the GIT_SSH_COMMAND in the repo's git config so
-        // subsequent fetch/push also use the Go SSH binary
-        await new Promise((resolve) => {
-          execFile(
-            'git',
-            ['config', '--local', 'core.sshCommand', `"${gitSshBin}" connect`],
-            { cwd: repoPath },
-            () => resolve(),
-          );
-        });
-        await new Promise((resolve) => {
-          execFile(
-            'git',
-            ['config', '--local', 'ssh.variant', 'ssh'],
-            { cwd: repoPath },
-            () => resolve(),
-          );
-        });
+        // Configure SSH only for this peer remote (not repo-wide)
+        setRemoteSshCommand(repoPath, remoteName || 'peer');
 
         // Link this repo to the peer so remote URLs can be updated dynamically
         const actualRemote = remoteName || 'peer';
