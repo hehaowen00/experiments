@@ -245,6 +245,28 @@ function register(mainWindow) {
     }
   });
 
+  ipcMain.handle('git:clone', async (_, url, parentDir, dirName) => {
+    try {
+      const args = ['clone', url];
+      if (dirName) args.push(dirName);
+      await git(parentDir, args, { timeout: 5 * 60 * 1000 });
+      const clonedName = dirName || url.replace(/\.git$/, '').split('/').pop();
+      const clonedPath = path.join(parentDir, clonedName);
+      return { ok: true, path: clonedPath, name: clonedName };
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
+
+  ipcMain.handle('git:pickCloneFolder', async () => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openDirectory'],
+      title: 'Select Clone Destination',
+    });
+    if (result.canceled || !result.filePaths.length) return null;
+    return result.filePaths[0];
+  });
+
   // --- Git operations ---
   ipcMain.handle('git:status', async (_, repoPath) => {
     try {

@@ -13,8 +13,11 @@ export default function GitClient(props) {
     categories: [],
     searchQuery: '',
     formOpen: false,
+    formMode: 'local', // 'local' or 'clone'
     editingId: null,
     form: { name: '', path: '', categoryId: null, error: '' },
+    cloneForm: { url: '', parentDir: '', dirName: '', error: '' },
+    cloning: false,
   });
 
   const [repoStatus, setRepoStatus] = createStore({});
@@ -77,7 +80,10 @@ export default function GitClient(props) {
   function openNewForm() {
     setState({
       editingId: null,
+      formMode: 'local',
       form: { name: '', path: '', categoryId: null, error: '' },
+      cloneForm: { url: '', parentDir: '', dirName: '', error: '' },
+      cloning: false,
       formOpen: true,
     });
   }
@@ -129,6 +135,31 @@ export default function GitClient(props) {
       const parts = result.path.split('/');
       setState('form', 'name', parts[parts.length - 1] || '');
     }
+  }
+
+  async function pickCloneDir() {
+    const dir = await window.api.gitPickCloneFolder();
+    if (dir) setState('cloneForm', 'parentDir', dir);
+  }
+
+  async function submitClone() {
+    const { url, parentDir, dirName } = state.cloneForm;
+    if (!url.trim()) { setState('cloneForm', 'error', 'URL is required'); return; }
+    if (!parentDir) { setState('cloneForm', 'error', 'Destination folder is required'); return; }
+
+    setState('cloning', true);
+    setState('cloneForm', 'error', '');
+    const result = await window.api.gitClone(url.trim(), parentDir, dirName.trim() || undefined);
+    setState('cloning', false);
+
+    if (result.error) {
+      setState('cloneForm', 'error', result.error);
+      return;
+    }
+
+    await window.api.gitRepoCreate({ name: result.name, path: result.path, category_id: null });
+    await loadList();
+    setState('formOpen', false);
   }
 
   async function openRepo(repo) {
@@ -412,22 +443,44 @@ export default function GitClient(props) {
       <Show when={state.formOpen}>
         <FormModal
           title={state.editingId ? 'Edit Repository' : 'Add Repository'}
-          error={state.form.error}
-          submitLabel={state.editingId ? 'Save' : 'Add'}
+          error={state.formMode === 'clone' ? state.cloneForm.error : state.form.error}
+          submitLabel={state.editingId ? 'Save' : state.formMode === 'clone' ? (state.cloning ? 'Cloning...' : 'Clone') : 'Add'}
           onClose={closeForm}
-          onSubmit={saveForm}
+          onSubmit={state.formMode === 'clone' ? submitClone : saveForm}
         >
-          <FormField label="Name">
-            <input type="text" value={state.form.name} onInput={(e) => setState('form', 'name', e.target.value)} placeholder="My Project" />
-          </FormField>
-
-          <FormField label="Path">
-            <div style={{ display: 'flex', gap: '6px' }}>
-              <input type="text" value={state.form.path} onInput={(e) => setState('form', 'path', e.target.value)} placeholder="Path to git repository" style={{ flex: 1 }} />
-              <button class="btn btn-ghost btn-sm" onClick={pickFolder}>Browse</button>
+          <Show when={!state.editingId}>
+            <div class="git-form-toggle">
+              <button class={`btn btn-sm ${state.formMode === 'local' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setState('formMode', 'local')}>Local</button>
+              <button class={`btn btn-sm ${state.formMode === 'clone' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setState('formMode', 'clone')}>Clone</button>
             </div>
-          </FormField>
+          </Show>
 
+          <Show when={state.formMode === 'local'}>
+            <FormField label="Name">
+              <input type="text" value={state.form.name} onInput={(e) => setState('form', 'name', e.target.value)} placeholder="My Project" />
+            </FormField>
+            <FormField label="Path">
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <input type="text" value={state.form.path} onInput={(e) => setState('form', 'path', e.target.value)} placeholder="Path to git repository" style={{ flex: 1 }} />
+                <button class="btn btn-ghost btn-sm" onClick={pickFolder}>Browse</button>
+              </div>
+            </FormField>
+          </Show>
+
+          <Show when={state.formMode === 'clone'}>
+            <FormField label="URL">
+              <input type="text" value={state.cloneForm.url} onInput={(e) => setState('cloneForm', 'url', e.target.value)} placeholder="https://github.com/user/repo.git" />
+            </FormField>
+            <FormField label="Destination">
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <input type="text" value={state.cloneForm.parentDir} onInput={(e) => setState('cloneForm', 'parentDir', e.target.value)} placeholder="Parent folder" style={{ flex: 1 }} />
+                <button class="btn btn-ghost btn-sm" onClick={pickCloneDir}>Browse</button>
+              </div>
+            </FormField>
+            <FormField label="Directory name (optional)">
+              <input type="text" value={state.cloneForm.dirName} onInput={(e) => setState('cloneForm', 'dirName', e.target.value)} placeholder="Defaults to repo name" />
+            </FormField>
+          </Show>
         </FormModal>
       </Show>
     </div>

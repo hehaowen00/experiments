@@ -1,14 +1,12 @@
 import { For, Show, createSignal, onCleanup, onMount } from 'solid-js';
 import { createStore } from 'solid-js/store';
 import Icon from '../components/Icon';
-import { showAlert } from '../components/Modal';
+import { showAlert, showPrompt } from '../components/Modal';
 
 export default function PeersPage(props) {
   const [identity, setIdentity] = createSignal(null);
   const [peers, setPeers] = createStore([]);
   const [sharedRepos, setSharedRepos] = createStore([]);
-  const [editingName, setEditingName] = createSignal(false);
-  const [nameInput, setNameInput] = createSignal('');
   const [pendingRequests, setPendingRequests] = createSignal(0);
 
   async function refresh() {
@@ -37,13 +35,14 @@ export default function PeersPage(props) {
     refresh();
   }
 
-  async function saveName() {
-    const name = nameInput().trim();
-    if (name) {
-      await window.api.p2pSetDisplayName(name);
+  async function editName() {
+    const name = await showPrompt('Device Name', identity()?.displayName || '', '', 'Display name');
+    if (name === null) return;
+    const trimmed = name.trim();
+    if (trimmed) {
+      await window.api.p2pSetDisplayName(trimmed);
+      refresh();
     }
-    setEditingName(false);
-    refresh();
   }
 
   async function sendRequest(peerId) {
@@ -100,26 +99,12 @@ export default function PeersPage(props) {
             <div class="peer-identity-card">
               <div class="peer-identity-row">
                 <span class="peer-identity-label">Name</span>
-                <Show when={!editingName()} fallback={
-                  <div class="peer-identity-edit">
-                    <input
-                      type="text"
-                      value={nameInput()}
-                      onInput={(e) => setNameInput(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === 'Enter') saveName(); if (e.key === 'Escape') setEditingName(false); }}
-                      autofocus
-                    />
-                    <button class="btn btn-primary btn-xs" onClick={saveName}>Save</button>
-                    <button class="btn btn-ghost btn-xs" onClick={() => setEditingName(false)}>Cancel</button>
-                  </div>
-                }>
-                  <span class="peer-identity-value">
-                    {identity().displayName}
-                    <button class="btn btn-ghost btn-xs" onClick={() => { setNameInput(identity().displayName); setEditingName(true); }}>
-                      <Icon name="fa-solid fa-pen" />
-                    </button>
-                  </span>
-                </Show>
+                <span class="peer-identity-value">
+                  {identity().displayName}
+                  <button class="btn btn-ghost btn-xs" onClick={editName}>
+                    <Icon name="fa-solid fa-pen" />
+                  </button>
+                </span>
               </div>
               <div class="peer-identity-row">
                 <span class="peer-identity-label">Peer ID</span>
