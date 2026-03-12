@@ -717,6 +717,120 @@ export function WorkspaceProvider(props) {
     await reloadRepo();
   }
 
+  // --- Interactive Rebase ---
+  const [interactiveRebase, setInteractiveRebase] = createSignal(null);
+
+  function startInteractiveRebase(baseHash) {
+    // Collect commits from HEAD down to (not including) baseHash
+    const commits = [];
+    for (const c of log.commits) {
+      if (c.hash === baseHash) break;
+      commits.push({ action: 'pick', hash: c.short, fullHash: c.hash, subject: c.subject });
+    }
+    if (commits.length === 0) return;
+    // Reverse so oldest is first (matches git rebase todo order)
+    commits.reverse();
+    setInteractiveRebase({ baseHash, commits });
+  }
+
+  async function executeInteractiveRebase() {
+    const state = interactiveRebase();
+    if (!state) return;
+    setInteractiveRebase(null);
+    setOperating('Rebasing...');
+    const result = await window.api.gitInteractiveRebase(repoPath, state.baseHash, state.commits);
+    setOperating('');
+    if (result.error) showAlert('Rebase Failed', result.error);
+    else if (result.conflict) setOutput(result.output || 'Rebase conflicts — resolve and continue');
+    else setOutput(result.output || 'Interactive rebase complete');
+    await reloadRepo();
+  }
+
+  function cancelInteractiveRebase() {
+    setInteractiveRebase(null);
+  }
+
+  // --- File History ---
+  const [fileHistory, setFileHistory] = createStore({
+    open: false, filepath: null, commits: [], loading: false,
+    selectedHash: null, diff: '', diffLoading: false,
+  });
+
+  async function openFileHistory(filepath) {
+    setFileHistory({ open: true, filepath, commits: [], loading: true, selectedHash: null, diff: '' });
+    const result = await window.api.gitFileLog(repoPath, filepath, 100);
+    if (!result.error) {
+      setFileHistory({ commits: result.commits, loading: false });
+    } else {
+      setFileHistory({ loading: false });
+      showAlert('File History Error', result.error);
+    }
+  }
+
+  function closeFileHistory() {
+    setFileHistory({ open: false, filepath: null, commits: [], selectedHash: null, diff: '' });
+  }
+
+  async function selectFileHistoryCommit(hash) {
+    setFileHistory({ selectedHash: hash, diff: '', diffLoading: true });
+    const result = await window.api.gitFileShowAtCommit(repoPath, hash, fileHistory.filepath);
+    if (!result.error) {
+      setFileHistory({ diff: result.diff || '(no changes)', diffLoading: false });
+    } else {
+      setFileHistory({ diff: `Error: ${result.error}`, diffLoading: false });
+    }
+  }
+
+  // --- Bisect ---
+  const [bisect, setBisect] = createStore({ active: false, selecting: null });
+
+  function startBisectSelect(commit) {
+    // First right-click sets bad, prompt for good
+    setBisect({ active: false, selecting: { badHash: commit.hash, badShort: commit.short } });
+  }
+
+  async function finishBisectSelect(goodCommit) {
+    const bad = bisect.selecting;
+    if (!bad) return;
+    setBisect({ selecting: null });
+    setOperating('Starting bisect...');
+    const result = await window.api.gitBisectStart(repoPath, bad.badHash, goodCommit.hash);
+    setOperating('');
+    if (result.error) {
+      showAlert('Bisect Failed', result.error);
+    } else {
+      setOutput(result.output || 'Bisect started — test this commit and mark good/bad');
+    }
+    await reloadRepo();
+  }
+
+  function cancelBisectSelect() {
+    setBisect({ selecting: null });
+  }
+
+  async function doBisectMark(verdict) {
+    setOperating(`Marking ${verdict}...`);
+    const result = await window.api.gitBisectMark(repoPath, verdict);
+    setOperating('');
+    if (result.error) {
+      showAlert('Bisect Error', result.error);
+    } else if (result.done) {
+      setOutput(result.output || 'Bisect complete — found the bad commit');
+    } else {
+      setOutput(result.output || `Marked ${verdict} — test this commit`);
+    }
+    await reloadRepo();
+  }
+
+  async function doBisectReset() {
+    setOperating('Resetting bisect...');
+    const result = await window.api.gitBisectReset(repoPath);
+    setOperating('');
+    if (result.error) showAlert('Bisect Reset Failed', result.error);
+    else setOutput('Bisect reset');
+    await reloadRepo();
+  }
+
   // --- Branch delete & rename ---
   async function doDeleteBranch(branch) {
     if (!await showConfirm(`Delete branch "${branch}"?`, '')) return;
@@ -961,7 +1075,11 @@ export function WorkspaceProvider(props) {
     addRemote, removeRemote, editRemoteUrl,
     checkoutBranch, checkoutRemoteBranch, createBranch,
     doMerge, doMergeAbort, doRebase, doRebaseContinue, doRebaseAbort,
-    doCherryPick, doRevert, doDropCommit, doDeleteBranch, doRenameBranch,
+    doCherryPick, doRevert, doDropCommit,
+    interactiveRebase, setInteractiveRebase, startInteractiveRebase, executeInteractiveRebase, cancelInteractiveRebase,
+    fileHistory, openFileHistory, closeFileHistory, selectFileHistoryCommit,
+    bisect, startBisectSelect, finishBisectSelect, cancelBisectSelect, doBisectMark, doBisectReset,
+    doDeleteBranch, doRenameBranch,
     doCreateTag, doDeleteTag, doPushTag, doDeleteRemoteTag,
     doStashPush, doStashPop, doStashApply, doStashDrop, viewStashDiff,
     initSubmodule, openSubmodule, selectCommit,

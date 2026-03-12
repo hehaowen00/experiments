@@ -318,7 +318,13 @@ function register(mainWindow) {
       await git(repoPath, ['reset', 'HEAD', '--', ...filepaths]);
       return { ok: true };
     } catch (e) {
-      return { error: e.message };
+      // No commits yet — HEAD doesn't exist, use rm --cached instead
+      try {
+        await git(repoPath, ['rm', '--cached', '--', ...filepaths]);
+        return { ok: true };
+      } catch (e2) {
+        return { error: e2.message };
+      }
     }
   });
 
@@ -705,6 +711,40 @@ function register(mainWindow) {
     }
   });
 
+  // --- Interactive Rebase ---
+  ipcMain.handle('git:interactiveRebase', async (_, repoPath, baseHash, todoList) => {
+    // todoList: [{ action: 'pick'|'squash'|'fixup'|'reword'|'drop', hash, subject }]
+    const os = require('os');
+    const fs = require('fs');
+    const todoContent = todoList
+      .map(t => `${t.action} ${t.hash} ${t.subject}`)
+      .join('\n') + '\n';
+    const tmpFile = path.join(os.tmpdir(), `gitsync-rebase-${Date.now()}.txt`);
+    try {
+      fs.writeFileSync(tmpFile, todoContent);
+      const editorCmd = `cp "${tmpFile}"`;
+      const out = await new Promise((resolve, reject) => {
+        execFile('git', ['rebase', '-i', '--autostash', baseHash], {
+          cwd: repoPath,
+          env: { ...process.env, GIT_SEQUENCE_EDITOR: editorCmd },
+          maxBuffer: 10 * 1024 * 1024,
+          timeout: 60000,
+        }, (err, stdout, stderr) => {
+          if (err) reject(new Error(stderr || err.message));
+          else resolve(stdout + stderr);
+        });
+      });
+      return { ok: true, output: out };
+    } catch (e) {
+      if (e.message.includes('CONFLICT') || e.message.includes('could not apply')) {
+        return { ok: false, conflict: true, output: e.message };
+      }
+      return { error: e.message };
+    } finally {
+      try { fs.unlinkSync(tmpFile); } catch {}
+    }
+  });
+
   // --- Cherry-pick ---
   ipcMain.handle('git:cherryPick', async (_, repoPath, hash) => {
     try {
@@ -836,9 +876,89 @@ function register(mainWindow) {
       if (fs.existsSync(path.join(gitDir, 'MERGE_HEAD'))) {
         return { state: 'merge' };
       }
+      if (fs.existsSync(path.join(gitDir, 'BISECT_LOG'))) {
+        return { state: 'bisect' };
+      }
       return { state: null };
     } catch {
       return { state: null };
+    }
+  });
+
+  // --- File History ---
+  ipcMain.handle('git:fileLog', async (_, repoPath, filepath, count, skip) => {
+    const fmt = '--pretty=format:%H%x00%h%x00%P%x00%an%x00%ae%x00%at%x00%s%x00%D';
+    try {
+      const args = ['log', `--max-count=${count || 50}`, '--follow', fmt];
+      if (skip) args.push(`--skip=${skip}`);
+      args.push('--', filepath);
+      const out = await git(repoPath, args);
+      if (!out.trim()) return { commits: [] };
+      const commits = out.trim().split('\n').map(line => {
+        const [hash, short, parents, author, email, timestamp, subject, refs] = line.split('\x00');
+        return {
+          hash, short,
+          parents: parents ? parents.split(' ').filter(Boolean) : [],
+          author, email,
+          date: new Date(parseInt(timestamp) * 1000).toISOString(),
+          subject, refs,
+        };
+      });
+      return { commits };
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
+
+  ipcMain.handle('git:fileShowAtCommit', async (_, repoPath, hash, filepath) => {
+    try {
+      const diff = await git(repoPath, ['show', '--format=', '--patch', hash, '--', filepath]);
+      return { diff };
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
+
+  // --- Bisect ---
+  ipcMain.handle('git:bisectStart', async (_, repoPath, badHash, goodHash) => {
+    try {
+      await git(repoPath, ['bisect', 'start']);
+      await git(repoPath, ['bisect', 'bad', badHash]);
+      const out = await git(repoPath, ['bisect', 'good', goodHash]);
+      return { ok: true, output: out };
+    } catch (e) {
+      // If bisect fails, try to clean up
+      try { await git(repoPath, ['bisect', 'reset']); } catch {}
+      return { error: e.message };
+    }
+  });
+
+  ipcMain.handle('git:bisectMark', async (_, repoPath, verdict) => {
+    try {
+      const out = await git(repoPath, ['bisect', verdict]);
+      // Check if bisect is done
+      const done = out.includes('is the first bad commit');
+      return { ok: true, output: out, done };
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
+
+  ipcMain.handle('git:bisectReset', async (_, repoPath) => {
+    try {
+      const out = await git(repoPath, ['bisect', 'reset']);
+      return { ok: true, output: out };
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
+
+  ipcMain.handle('git:bisectLog', async (_, repoPath) => {
+    try {
+      const out = await git(repoPath, ['bisect', 'log']);
+      return { log: out };
+    } catch (e) {
+      return { error: e.message };
     }
   });
 

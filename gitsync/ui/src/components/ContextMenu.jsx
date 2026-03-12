@@ -54,6 +54,14 @@ export default function ContextMenu() {
                 <Icon name="fa-solid fa-trash" /> Delete {label}
               </button>
             )}
+            {!menu.isFolder && !isUntracked && (
+              <button class="file-context-menu-item" onClick={() => {
+                ws.setCtxMenu(null);
+                ws.openFileHistory(menu.filepath);
+              }}>
+                <Icon name="fa-solid fa-clock-rotate-left" /> File History
+              </button>
+            )}
           </div>
         );
       })()}

@@ -1,6 +1,8 @@
 import { onCleanup, onMount, Show } from 'solid-js';
 import ContextMenu from '../components/ContextMenu';
+import FileHistory from '../components/FileHistory';
 import Icon from '../components/Icon';
+import InteractiveRebase from '../components/InteractiveRebase';
 import Modal from '../components/Modal';
 import RepoSwitcher from '../components/RepoSwitcher';
 import { useWorkspace, WorkspaceProvider } from '../context/WorkspaceContext';
@@ -111,6 +113,22 @@ function WorkspaceInner() {
             <button class="btn btn-primary btn-sm" onClick={ws.doRebaseContinue}>Continue</button>
             <button class="btn btn-danger btn-sm" onClick={ws.doRebaseAbort}>Abort Rebase</button>
           </Show>
+          <Show when={ws.opState() === 'bisect'}>
+            <Icon name="fa-solid fa-magnifying-glass" />
+            <span>Bisect in progress — test this commit and mark it</span>
+            <button class="btn btn-success btn-sm" onClick={() => ws.doBisectMark('good')}>Good</button>
+            <button class="btn btn-danger btn-sm" onClick={() => ws.doBisectMark('bad')}>Bad</button>
+            <button class="btn btn-ghost btn-sm" onClick={() => ws.doBisectMark('skip')}>Skip</button>
+            <button class="btn btn-ghost btn-sm" onClick={ws.doBisectReset}>Reset</button>
+          </Show>
+        </div>
+      </Show>
+
+      <Show when={ws.bisect.selecting}>
+        <div class="git-op-banner">
+          <Icon name="fa-solid fa-magnifying-glass" />
+          <span>Bisect: bad = <code>{ws.bisect.selecting.badShort}</code> — now right-click a known good commit</span>
+          <button class="btn btn-ghost btn-sm" onClick={ws.cancelBisectSelect}>Cancel</button>
         </div>
       </Show>
 
@@ -128,6 +146,12 @@ function WorkspaceInner() {
       <Modal />
       <RepoSwitcher />
       <ContextMenu />
+      <Show when={ws.interactiveRebase()}>
+        <InteractiveRebase />
+      </Show>
+      <Show when={ws.fileHistory.open}>
+        <FileHistory />
+      </Show>
     </div>
   );
 }

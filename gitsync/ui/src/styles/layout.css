@@ -203,6 +203,15 @@
   background: color-mix(in srgb, var(--accent) 15%, transparent);
 }
 
+.btn-success {
+  background: var(--success);
+  color: white;
+}
+
+.btn-success:hover {
+  filter: brightness(1.1);
+}
+
 .btn-danger {
   background: transparent;
   color: var(--danger);

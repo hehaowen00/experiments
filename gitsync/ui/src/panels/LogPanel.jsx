@@ -242,6 +242,28 @@ export default function LogPanel() {
               }}>
                 <Icon name="fa-solid fa-rotate-left" /> Revert Commit
               </button>
+              <button class="file-context-menu-item" onClick={() => {
+                dismissCommitMenu();
+                ws.startInteractiveRebase(menu.commit.hash);
+              }}>
+                <Icon name="fa-solid fa-list-check" /> Interactive Rebase...
+              </button>
+              <Show when={!ws.bisect.selecting && ws.opState() !== 'bisect'}>
+                <button class="file-context-menu-item" onClick={() => {
+                  dismissCommitMenu();
+                  ws.startBisectSelect(menu.commit);
+                }}>
+                  <Icon name="fa-solid fa-magnifying-glass-minus" /> Bisect (bad)...
+                </button>
+              </Show>
+              <Show when={ws.bisect.selecting}>
+                <button class="file-context-menu-item" onClick={() => {
+                  dismissCommitMenu();
+                  ws.finishBisectSelect(menu.commit);
+                }}>
+                  <Icon name="fa-solid fa-magnifying-glass-plus" /> Bisect (good)
+                </button>
+              </Show>
               <button class="file-context-menu-item danger" onClick={() => {
                 dismissCommitMenu();
                 ws.doDropCommit(menu.commit.hash);

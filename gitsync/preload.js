@@ -94,12 +94,23 @@ contextBridge.exposeInMainWorld('api', {
   gitRebase: (repoPath, branch) => ipcRenderer.invoke('git:rebase', repoPath, branch),
   gitRebaseContinue: (repoPath) => ipcRenderer.invoke('git:rebaseContinue', repoPath),
   gitRebaseAbort: (repoPath) => ipcRenderer.invoke('git:rebaseAbort', repoPath),
+  gitInteractiveRebase: (repoPath, baseHash, todoList) => ipcRenderer.invoke('git:interactiveRebase', repoPath, baseHash, todoList),
   gitCherryPick: (repoPath, hash) => ipcRenderer.invoke('git:cherryPick', repoPath, hash),
   gitDropCommit: (repoPath, hash) => ipcRenderer.invoke('git:dropCommit', repoPath, hash),
   gitRevert: (repoPath, hash) => ipcRenderer.invoke('git:revert', repoPath, hash),
   gitBranchDelete: (repoPath, branch, force) => ipcRenderer.invoke('git:branchDelete', repoPath, branch, force),
   gitBranchRename: (repoPath, oldName, newName) => ipcRenderer.invoke('git:branchRename', repoPath, oldName, newName),
   gitOperationState: (repoPath) => ipcRenderer.invoke('git:operationState', repoPath),
+
+  // File history
+  gitFileLog: (repoPath, filepath, count, skip) => ipcRenderer.invoke('git:fileLog', repoPath, filepath, count, skip),
+  gitFileShowAtCommit: (repoPath, hash, filepath) => ipcRenderer.invoke('git:fileShowAtCommit', repoPath, hash, filepath),
+
+  // Bisect
+  gitBisectStart: (repoPath, badHash, goodHash) => ipcRenderer.invoke('git:bisectStart', repoPath, badHash, goodHash),
+  gitBisectMark: (repoPath, verdict) => ipcRenderer.invoke('git:bisectMark', repoPath, verdict),
+  gitBisectReset: (repoPath) => ipcRenderer.invoke('git:bisectReset', repoPath),
+  gitBisectLog: (repoPath) => ipcRenderer.invoke('git:bisectLog', repoPath),
 
   // Conflict resolution
   gitResolveOurs: (repoPath, filepaths) => ipcRenderer.invoke('git:resolveOurs', repoPath, filepaths),
