@@ -1,0 +1,120 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-dim);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.custom-tooltip {
+  position: fixed;
+  z-index: 10000;
+  padding: 4px 8px;
+  background: var(--surface2);
+  color: var(--text);
+  font-size: var(--ui-font-size-xs);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  pointer-events: none;
+  opacity: 0;
+  white-space: nowrap;
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: opacity 0.1s;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.custom-tooltip.visible {
+  opacity: 1;
+}
+
+button,
+label,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+.section-tab,
+.landing-section-header,
+.response-meta,
+.response-status,
+.response-time,
+.body-view-toggle,
+.sidebar-header,
+.tree-label,
+.kv-row label,
+.timeline-icon,
+.stream-dir,
+.resp-header-name,
+.category-header,
+.category-count,
+.modal-title,
+.modal-description {
+  user-select: none;
+}
+
+:root {
+  --bg: #1e1e2e;
+  --surface: #282840;
+  --surface2: #313150;
+  --border: #3e3e5e;
+  --text: #e0e0f0;
+  --text-dim: #8888aa;
+  --accent: #7c5cfc;
+  --accent-hover: #9b7eff;
+  --danger: #e05555;
+  --danger-hover: #f06666;
+  --success: #50c878;
+  --warning: #f0a030;
+  --method-get: #50c878;
+  --method-post: #f0a030;
+  --method-put: #5090f0;
+  --method-patch: #c070f0;
+  --method-delete: #e05555;
+  --radius: 6px;
+  --font: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --mono: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  --ui-font-size: 14px;
+  --ui-font-size-xs: 12px;
+  --ui-font-size-sm: 13px;
+  --ui-font-size-lg: 16px;
+  --ui-font-size-xl: 17px;
+  --ui-font-size-2xl: 32px;
+  --editor-font-size: 12px;
+}
+
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  height: 100vh;
+  overflow: hidden;
+  font-size: var(--ui-font-size);
+}
+
+select {
+  user-select: none;
+}

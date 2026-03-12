@@ -428,7 +428,7 @@ function register(mainWindow) {
         } catch {}
       }
 
-      const args = ['log', `--max-count=${count || 50}`, '--topo-order', fmt];
+      const args = ['log', `--max-count=${count || 50}`, '--date-order', fmt];
       if (skip) args.push(`--skip=${skip}`);
       if (allBranches) {
         args.push('--all', '--exclude=refs/stash');

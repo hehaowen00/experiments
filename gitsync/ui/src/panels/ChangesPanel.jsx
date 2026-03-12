@@ -307,7 +307,7 @@ export default function ChangesPanel() {
             <button
               class="btn btn-primary btn-sm"
               onClick={ws.doCommit}
-              disabled={ws.commit.running || (!ws.commit.message.trim() && !ws.commit.amend)}
+              disabled={ws.commit.running || (!ws.commit.message.trim() && !ws.commit.amend) || staged().length === 0}
             >
               {ws.commit.running ? 'Committing...' : ws.commit.amend ? 'Amend Commit' : 'Commit'}
             </button>

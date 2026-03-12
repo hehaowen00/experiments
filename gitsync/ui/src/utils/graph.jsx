@@ -24,9 +24,6 @@ function colorFor(hash, fallbackCol) {
 export function buildGraph(commits, initialLanes) {
   if (!commits.length) return { graph: [], maxCols: 0, lanes: initialLanes || [] };
 
-  // lanes: array where lanes[i] = hash of the commit expected in that column,
-  // or null if the lane is free.
-  // laneColors: parallel array tracking the color index for each lane.
   let lanes = initialLanes ? [...initialLanes] : [];
   let laneColors = lanes.map((h, i) => h ? colorFor(h, i) : 0);
   const rows = [];
@@ -93,14 +90,10 @@ export function buildGraph(commits, initialLanes) {
     nextColors[col] = 0;
 
     // First parent: ALWAYS stays in the same column as the commit.
-    // This is the key rule that keeps the main branch stable.
     if (parents.length > 0) {
       const p0 = parents[0];
       const existing = nextLanes.indexOf(p0);
       if (existing !== -1 && existing !== col) {
-        // First parent was already reserved in another lane (by a merge's
-        // second parent from an earlier row). Relocate it to this column
-        // so the first-parent chain stays visually straight.
         nextLanes[existing] = null;
         nextColors[existing] = 0;
       }
@@ -109,21 +102,24 @@ export function buildGraph(commits, initialLanes) {
       botPipes.push({ from: col, to: col, color: myColor });
     }
 
-    // Additional parents (merge edges)
+    // Additional parents (merge edges) — prefer closest free slot
     for (let p = 1; p < parents.length; p++) {
       const ph = parents[p];
       const existing = nextLanes.indexOf(ph);
       if (existing !== -1) {
         botPipes.push({ from: col, to: existing, color: nextColors[existing] });
       } else {
-        // Find a free slot, preferring slots to the right of col
+        // Find the closest free slot to col
         let slot = -1;
-        for (let s = col + 1; s < nextLanes.length; s++) {
-          if (nextLanes[s] === null) { slot = s; break; }
-        }
-        if (slot === -1) {
-          // Try slots left of col
-          slot = nextLanes.indexOf(null);
+        let bestDist = Infinity;
+        for (let s = 0; s < nextLanes.length; s++) {
+          if (nextLanes[s] === null) {
+            const dist = Math.abs(s - col);
+            if (dist < bestDist) {
+              bestDist = dist;
+              slot = s;
+            }
+          }
         }
         if (slot === -1) {
           slot = nextLanes.length;
@@ -137,8 +133,7 @@ export function buildGraph(commits, initialLanes) {
       }
     }
 
-    // Pass-through (bottom half): lanes that were occupied before and
-    // continue into nextLanes, possibly shifting if relocated
+    // Pass-through (bottom half)
     const botPipeSet = new Set(botPipes.map(p => `${p.from}-${p.to}`));
     for (let l = 0; l < lanes.length; l++) {
       if (l === col || incomingLanes.includes(l)) continue;
@@ -154,18 +149,17 @@ export function buildGraph(commits, initialLanes) {
       }
     }
 
-    // Trim trailing empty lanes
-    while (nextLanes.length > 0 && nextLanes[nextLanes.length - 1] === null) {
-      nextLanes.pop();
-      nextColors.pop();
-    }
-
     const rowWidth = Math.max(lanes.length, nextLanes.length);
     if (rowWidth > maxCols) maxCols = rowWidth;
 
     rows.push({ col, topPipes, botPipes, isMerge: parents.length > 1, color: myColor });
     lanes = nextLanes;
     laneColors = nextColors;
+  }
+
+  // Only trim lanes at the very end of a batch
+  while (lanes.length > 0 && lanes[lanes.length - 1] === null) {
+    lanes.pop();
   }
 
   return { graph: rows, maxCols: Math.max(maxCols, 1), lanes };
@@ -182,31 +176,44 @@ export function parseRefs(refStr) {
   });
 }
 
+const ROW_H = 24;
+const MID = ROW_H / 2;
+const OVERLAP = 2;
+
 export function GraphCell(props) {
   const { row, maxCols } = props;
   const w = Math.max(maxCols, 1) * 16 + 8;
-  const h = 26;
-  const mid = 13;
   const cx = row.col * 16 + 12;
 
   function pipeHalf(pipe, y0, y1) {
     const x1 = pipe.from * 16 + 12;
     const x2 = pipe.to * 16 + 12;
     const color = GRAPH_COLORS[pipe.color % GRAPH_COLORS.length];
-    const halfH = y1 - y0;
     if (x1 === x2) {
       return <line x1={x1} y1={y0} x2={x2} y2={y1} stroke={color} stroke-width="2" />;
     }
-    return <path d={`M ${x1} ${y0} C ${x1} ${y0 + halfH * 0.6}, ${x2} ${y1 - halfH * 0.6}, ${x2} ${y1}`} fill="none" stroke={color} stroke-width="2" />;
+    const dy = y1 - y0;
+    return (
+      <path
+        d={`M ${x1} ${y0} C ${x1} ${y0 + dy * 0.6}, ${x2} ${y1 - dy * 0.6}, ${x2} ${y1}`}
+        fill="none" stroke={color} stroke-width="2"
+      />
+    );
   }
 
   const nodeColor = GRAPH_COLORS[row.color % GRAPH_COLORS.length];
 
   return (
-    <svg width={w} height={h} class="git-graph-svg" style={{ 'margin-top': '-1px', 'margin-bottom': '-1px' }}>
-      <For each={row.topPipes}>{(pipe) => pipeHalf(pipe, 0, mid)}</For>
-      <For each={row.botPipes}>{(pipe) => pipeHalf(pipe, mid, h)}</For>
-      <circle cx={cx} cy={mid} r={row.isMerge ? 5 : 4} fill={nodeColor}
+    <svg
+      width={w}
+      height={ROW_H + OVERLAP * 2}
+      viewBox={`0 ${-OVERLAP} ${w} ${ROW_H + OVERLAP * 2}`}
+      class="git-graph-svg"
+      style={{ 'margin-top': `-${OVERLAP}px`, 'margin-bottom': `-${OVERLAP}px` }}
+    >
+      <For each={row.topPipes}>{(pipe) => pipeHalf(pipe, -OVERLAP, MID)}</For>
+      <For each={row.botPipes}>{(pipe) => pipeHalf(pipe, MID, ROW_H + OVERLAP)}</For>
+      <circle cx={cx} cy={MID} r={row.isMerge ? 5 : 4} fill={nodeColor}
         stroke={row.isMerge ? '#fff' : 'none'} stroke-width={row.isMerge ? 1.5 : 0} />
     </svg>
   );
