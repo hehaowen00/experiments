@@ -4,11 +4,17 @@ const { app } = require('electron');
 const Database = require('better-sqlite3');
 
 let db;
+let rfcDb;
 const CONFIG_DIR = path.join(require('os').homedir(), '.config', 'api-client');
 const DB_PATH = path.join(CONFIG_DIR, 'api-client.db');
+const RFC_DB_PATH = path.join(CONFIG_DIR, 'rfc.db');
 
 function getDb() {
   return db;
+}
+
+function getRfcDb() {
+  return rfcDb;
 }
 
 function initDb() {
@@ -132,6 +138,153 @@ function initDb() {
 
   `);
 
+  // Initialize separate RFC database
+  rfcDb = new Database(RFC_DB_PATH);
+  rfcDb.pragma('journal_mode = WAL');
+  rfcDb.pragma('foreign_keys = ON');
+  rfcDb.pragma('synchronous = NORMAL');
+  rfcDb.pragma('cache_size = -64000');
+  rfcDb.pragma('busy_timeout = 5000');
+  rfcDb.pragma('temp_store = MEMORY');
+  rfcDb.pragma('mmap_size = 268435456');
+
+  rfcDb.exec(`
+    CREATE TABLE IF NOT EXISTS rfcs (
+      number INTEGER PRIMARY KEY,
+      title TEXT NOT NULL DEFAULT '',
+      authors TEXT NOT NULL DEFAULT '',
+      date_month TEXT NOT NULL DEFAULT '',
+      date_year TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT '',
+      keywords TEXT NOT NULL DEFAULT '',
+      abstract TEXT NOT NULL DEFAULT '',
+      is_also TEXT NOT NULL DEFAULT '',
+      updated_by TEXT NOT NULL DEFAULT '',
+      obsoleted_by TEXT NOT NULL DEFAULT '',
+      obsoletes TEXT NOT NULL DEFAULT '',
+      updates TEXT NOT NULL DEFAULT ''
+    );
+
+    CREATE TABLE IF NOT EXISTS rfc_content (
+      number INTEGER PRIMARY KEY,
+      content TEXT NOT NULL,
+      FOREIGN KEY (number) REFERENCES rfcs(number)
+    );
+
+    CREATE TABLE IF NOT EXISTS rfc_meta (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+  `);
+
+  // Migrate old rfc.db that had 'references' column
+  const rfcCols = rfcDb
+    .prepare('PRAGMA table_info(rfcs)')
+    .all()
+    .map((c) => c.name);
+  if (rfcCols.includes('references')) {
+    rfcDb.exec('DROP TABLE IF EXISTS rfc_content');
+    rfcDb.exec('DROP TABLE IF EXISTS rfcs');
+    rfcDb.exec(`
+      CREATE TABLE rfcs (
+        number INTEGER PRIMARY KEY,
+        title TEXT NOT NULL DEFAULT '',
+        authors TEXT NOT NULL DEFAULT '',
+        date_month TEXT NOT NULL DEFAULT '',
+        date_year TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT '',
+        keywords TEXT NOT NULL DEFAULT '',
+        abstract TEXT NOT NULL DEFAULT '',
+        is_also TEXT NOT NULL DEFAULT '',
+        updated_by TEXT NOT NULL DEFAULT '',
+        obsoleted_by TEXT NOT NULL DEFAULT '',
+        obsoletes TEXT NOT NULL DEFAULT '',
+        updates TEXT NOT NULL DEFAULT ''
+      );
+      CREATE TABLE rfc_content (
+        number INTEGER PRIMARY KEY,
+        content TEXT NOT NULL,
+        FOREIGN KEY (number) REFERENCES rfcs(number)
+      );
+    `);
+  }
+
+  // Migrate RFC data from main db to rfc.db if present
+  const mainTables = db
+    .prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='rfcs'",
+    )
+    .get();
+  if (mainTables) {
+    const mainRfcCols = db
+      .prepare('PRAGMA table_info(rfcs)')
+      .all()
+      .map((c) => c.name);
+    const hasIsAlso = mainRfcCols.includes('is_also');
+
+    // Only migrate if rfc.db is empty (avoid duplicating on repeated starts)
+    const rfcCount = rfcDb
+      .prepare('SELECT COUNT(*) as c FROM rfcs')
+      .get().c;
+    if (rfcCount === 0 && hasIsAlso) {
+      const rows = db.prepare('SELECT * FROM rfcs').all();
+      if (rows.length > 0) {
+        const insert = rfcDb.prepare(`
+          INSERT OR IGNORE INTO rfcs
+            (number, title, authors, date_month, date_year, status, keywords,
+             abstract, is_also, updated_by, obsoleted_by, obsoletes, updates)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+        const tx = rfcDb.transaction(() => {
+          for (const r of rows) {
+            insert.run(
+              r.number, r.title, r.authors, r.date_month, r.date_year,
+              r.status, r.keywords, r.abstract, r.is_also,
+              r.updated_by, r.obsoleted_by, r.obsoletes, r.updates,
+            );
+          }
+        });
+        tx();
+      }
+
+      // Migrate content
+      const hasContent = db
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='rfc_content'",
+        )
+        .get();
+      if (hasContent) {
+        const contentRows = db.prepare('SELECT * FROM rfc_content').all();
+        if (contentRows.length > 0) {
+          const insertContent = rfcDb.prepare(
+            'INSERT OR IGNORE INTO rfc_content (number, content) VALUES (?, ?)',
+          );
+          const txContent = rfcDb.transaction(() => {
+            for (const r of contentRows) {
+              insertContent.run(r.number, r.content);
+            }
+          });
+          txContent();
+        }
+      }
+
+      // Migrate last_sync setting
+      const syncSetting = db
+        .prepare("SELECT value FROM settings WHERE key = 'rfc_last_sync'")
+        .get();
+      if (syncSetting) {
+        rfcDb.prepare(
+          "INSERT OR IGNORE INTO rfc_meta (key, value) VALUES ('last_sync', ?)",
+        ).run(syncSetting.value);
+        db.prepare("DELETE FROM settings WHERE key = 'rfc_last_sync'").run();
+      }
+    }
+
+    // Drop RFC tables from main db
+    db.exec('DROP TABLE IF EXISTS rfc_content');
+    db.exec('DROP TABLE IF EXISTS rfcs');
+  }
+
   migrateJsonFiles();
 }
 
@@ -159,6 +312,10 @@ function migrateJsonFiles() {
 }
 
 function closeDb() {
+  if (rfcDb) {
+    rfcDb.close();
+    rfcDb = null;
+  }
   if (db) {
     db.close();
     db = null;
@@ -347,6 +504,7 @@ function formatResponseRow(row) {
 
 module.exports = {
   getDb,
+  getRfcDb,
   initDb,
   closeDb,
   loadCollections,

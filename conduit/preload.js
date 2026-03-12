@@ -106,6 +106,17 @@ contextBridge.exposeInMainWorld('api', {
   dbDeleteRow: (id, schema, tableName, rowOffset) =>
     ipcRenderer.invoke('db:deleteRow', id, schema, tableName, rowOffset),
   dbPickSqliteFile: () => ipcRenderer.invoke('db:pickSqliteFile'),
+  // RFC Viewer
+  rfcSyncIndex: () => ipcRenderer.invoke('rfc:syncIndex'),
+  rfcSearch: (query, limit) => ipcRenderer.invoke('rfc:search', query, limit),
+  rfcGet: (number) => ipcRenderer.invoke('rfc:get', number),
+  rfcGetContent: (number) => ipcRenderer.invoke('rfc:getContent', number),
+  rfcGetSyncStatus: () => ipcRenderer.invoke('rfc:getSyncStatus'),
+  rfcBrowse: (offset, limit) => ipcRenderer.invoke('rfc:browse', offset, limit),
+  rfcGetTitles: (numbers) => ipcRenderer.invoke('rfc:getTitles', numbers),
+  onRfcSyncProgress: (cb) =>
+    ipcRenderer.on('rfc:syncProgress', (_, d) => cb(d)),
+
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
   homeDir: () => ipcRenderer.invoke('app:homeDir'),
   quit: () => ipcRenderer.invoke('app:quit'),

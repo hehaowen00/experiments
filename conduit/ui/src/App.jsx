@@ -8,6 +8,7 @@ import DatabaseWorkspace from './pages/DatabaseWorkspace';
 import DateTimeTool from './pages/DateTimeTool';
 import Drop from './pages/Drop';
 import Landing from './pages/Landing';
+import RfcViewer from './pages/RfcViewer';
 import { TabProvider, useTabs, PINNED_TOOLS } from './store/tabs';
 
 export default function App() {
@@ -173,6 +174,9 @@ function AppShell() {
               </Match>
               <Match when={tab.type === 'database'}>
                 <DatabaseWorkspace connData={tab.connData} onBack={() => actions.closeTab(tab.id)} style={style()} />
+              </Match>
+              <Match when={tab.type === 'rfc'}>
+                <RfcViewer style={style()} />
               </Match>
             </Switch>
           );

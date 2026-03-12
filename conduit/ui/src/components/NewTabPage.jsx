@@ -4,6 +4,7 @@ import { useTabs, TAB_TYPES } from '../store/tabs';
 const APPS = [
   { type: 'api', icon: TAB_TYPES.api.icon, label: TAB_TYPES.api.label },
   { type: 'db', icon: TAB_TYPES.db.icon, label: TAB_TYPES.db.label },
+  { type: 'rfc', icon: TAB_TYPES.rfc.icon, label: TAB_TYPES.rfc.label },
 ];
 
 export default function NewTabPage(props) {
