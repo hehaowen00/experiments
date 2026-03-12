@@ -16,11 +16,14 @@ import (
 
 var gitCmdRe = regexp.MustCompile(`^(git-upload-pack|git-receive-pack)\s+'?/?([^']+)'?$`)
 
+var gitPath string
+
 func cmdServe(args []string) {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
 	port := fs.Int("port", 0, "Listen port (0 = ephemeral)")
 	dbPath := fs.String("db", "", "Path to gitsync.db")
 	hostKeyPath := fs.String("host-key", "", "Path to SSH host key")
+	fs.StringVar(&gitPath, "git-path", "", "Directory containing git binaries (optional)")
 	fs.Parse(args)
 
 	if *dbPath == "" || *hostKeyPath == "" {
@@ -151,7 +154,11 @@ func handleSession(channel ssh.Channel, requests <-chan *ssh.Request, db *DB) {
 			return
 		}
 
-		proc := exec.Command(service, repoPath)
+		serviceBin := service
+		if gitPath != "" {
+			serviceBin = gitPath + "/" + service
+		}
+		proc := exec.Command(serviceBin, repoPath)
 		proc.Stdin = channel
 		procStdout, _ := proc.StdoutPipe()
 		procStderr, _ := proc.StderrPipe()

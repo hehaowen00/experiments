@@ -1365,10 +1365,8 @@ function register(win) {
     },
   );
 
-  // Auto-start if enabled
-  if (isEnabled()) {
-    startP2p().catch((err) => console.error('P2P auto-start failed:', err));
-  }
+  // Always disable P2P on startup — user must opt in each session
+  setSetting('p2p:enabled', 'false');
 }
 
 function shutdown() {

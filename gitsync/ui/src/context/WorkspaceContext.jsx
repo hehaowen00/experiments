@@ -112,7 +112,8 @@ export function WorkspaceProvider(props) {
   }
 
   async function loadLog() {
-    setLog('loading', true);
+    const isInitial = log.commits.length === 0;
+    if (isInitial) setLog('loading', true);
     const branch = logBranch();
     const search = logSearch();
     const allBranches = branch === '__all__';
@@ -412,6 +413,10 @@ export function WorkspaceProvider(props) {
       showAlert('Commit Failed', result.error);
     } else {
       setCommit({ message: '', description: '', amend: false, originalAmendMsg: '', amendHash: null });
+      // Clear diff if the displayed file was part of the commit (staged)
+      if (diff.filepath && diff.staged) {
+        setDiff({ content: '', filepath: null, staged: false });
+      }
       setOutput(result.output || 'Committed successfully');
       await reloadRepo();
     }
