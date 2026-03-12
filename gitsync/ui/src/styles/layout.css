@@ -198,6 +198,11 @@
   background: var(--surface2);
 }
 
+.btn-ghost.btn-active {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
 .btn-danger {
   background: transparent;
   color: var(--danger);

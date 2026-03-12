@@ -57,6 +57,7 @@ export function WorkspaceProvider(props) {
   const [logBranch, setLogBranch] = createSignal('__all__');
   const [logBranches, setLogBranches] = createSignal([]);
   const [logSearch, setLogSearch] = createSignal('');
+  const [logTopoOrder, setLogTopoOrder] = createSignal(false);
   const [selectedFiles, setSelectedFiles] = createSignal(new Set());
   const [allFiles, setAllFiles] = createSignal([]);
 
@@ -116,7 +117,7 @@ export function WorkspaceProvider(props) {
     const search = logSearch();
     const allBranches = branch === '__all__';
     const branchName = (branch === '__current__' || branch === '__all__') ? null : branch;
-    const result = await window.api.gitLog(repoPath, LOG_PAGE_SIZE, allBranches, branchName, 0, search);
+    const result = await window.api.gitLog(repoPath, LOG_PAGE_SIZE, allBranches, branchName, 0, search, logTopoOrder());
     if (!result.error) {
       resetGraphColors();
       const { graph, maxCols, lanes } = buildGraph(result.commits, []);
@@ -138,7 +139,7 @@ export function WorkspaceProvider(props) {
     const allBranches = branch === '__all__';
     const branchName = (branch === '__current__' || branch === '__all__') ? null : branch;
     const skip = log.commits.length;
-    const result = await window.api.gitLog(repoPath, LOG_PAGE_SIZE, allBranches, branchName, skip, search);
+    const result = await window.api.gitLog(repoPath, LOG_PAGE_SIZE, allBranches, branchName, skip, search, logTopoOrder());
     if (!result.error) {
       if (result.commits.length === 0) {
         setLog({ loadingMore: false, hasMore: false });
@@ -947,7 +948,7 @@ export function WorkspaceProvider(props) {
     tab, setTab, operating, output, setOutput,
     expandedDirs, collapsedSections, ctxMenu, setCtxMenu, opState, submodules,
     expandedDetailFiles, setExpandedDetailFiles,
-    logBranch, setLogBranch, logBranches, logSearch, setLogSearch, selectedFiles, allFiles,
+    logBranch, setLogBranch, logBranches, logSearch, setLogSearch, logTopoOrder, setLogTopoOrder, selectedFiles, allFiles,
     switcherOpen, switcherQuery, setSwitcherQuery, switcherRepos, switcherIndex, setSwitcherIndex,
     // Operations
     reloadRepo, refresh, loadLog, loadMoreLog, loadLogBranches, loadRemotes, loadBranches, loadTags, loadStashes,

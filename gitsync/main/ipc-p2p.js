@@ -90,6 +90,21 @@ function notifyFriendRequest(peerName, peerId) {
   }
 }
 
+// --- Peer remote validation ---
+
+function hasPeerSshRemote(repoPath, remoteName) {
+  try {
+    const url = execFileSync(
+      'git', ['remote', 'get-url', remoteName],
+      { cwd: repoPath, encoding: 'utf8', timeout: 5000 },
+    ).trim();
+    // Gitsync peer remotes use ssh://peerId@host:port/path
+    return url.startsWith('ssh://') && url.length > 6;
+  } catch {
+    return false;
+  }
+}
+
 // --- Dynamic remote URL updates ---
 // When a peer's IP or SSH port changes, rewrite all git remotes pointing to them.
 
@@ -965,14 +980,21 @@ function register(win) {
     return db
       .prepare(
         `SELECT pr.remote_path as "exportName", pr.name, pr.local_repo_id,
-                p.peer_id as "peerId", p.name as "peerName",
+                pr.remote_name, p.peer_id as "peerId", p.name as "peerName",
                 r.path as local_path
          FROM p2p_peer_repos pr
          INNER JOIN p2p_peers p ON p.id = pr.peer_id AND p.status = 'accepted'
          LEFT JOIN git_repos r ON r.id = pr.local_repo_id
          ORDER BY p.name, pr.name`,
       )
-      .all();
+      .all()
+      .filter(row => {
+        // Exclude repos linked locally but without a working gitsync peer remote
+        if (row.local_repo_id && row.local_path) {
+          if (!hasPeerSshRemote(row.local_path, row.remote_name)) return false;
+        }
+        return true;
+      });
   });
 
   ipcMain.handle('p2p:getSharedRepos', () =>
@@ -1083,20 +1105,34 @@ function register(win) {
       const updatedRows = db
         .prepare(
           `SELECT pr.remote_path as "exportName", pr.name, pr.local_repo_id,
-                  r.path as local_path
+                  pr.remote_name, r.path as local_path
            FROM p2p_peer_repos pr
            LEFT JOIN git_repos r ON r.id = pr.local_repo_id
            WHERE pr.peer_id = ?`,
         )
         .all(peerRow.id);
 
+      // Only include repos that are still shared by the peer
+      const peerSharedNames = new Set((result.repos || []).map(r => r.exportName));
+
       // Attach origin URLs from the peer's response
       const originMap = new Map((result.repos || []).map(r => [r.exportName, r.originUrl]));
-      for (const row of updatedRows) {
+
+      const filtered = updatedRows.filter(row => {
+        // Exclude repos no longer shared by the peer
+        if (!peerSharedNames.has(row.exportName)) return false;
+        // Exclude repos linked locally but without a working gitsync peer remote
+        if (row.local_repo_id && row.local_path) {
+          if (!hasPeerSshRemote(row.local_path, row.remote_name)) return false;
+        }
+        return true;
+      });
+
+      for (const row of filtered) {
         row.originUrl = originMap.get(row.exportName) || null;
       }
 
-      return { repos: updatedRows };
+      return { repos: filtered };
     } catch (err) {
       return { error: err.message };
     }

@@ -402,7 +402,7 @@ function register(mainWindow) {
     }
   });
 
-  ipcMain.handle('git:log', async (_, repoPath, count, allBranches, branchName, skip, search) => {
+  ipcMain.handle('git:log', async (_, repoPath, count, allBranches, branchName, skip, search, topoOrder) => {
     const fmt = '--pretty=format:%H%x00%h%x00%P%x00%an%x00%ae%x00%at%x00%s%x00%D';
     const parseCommits = (out) => {
       if (!out.trim()) return [];
@@ -428,7 +428,7 @@ function register(mainWindow) {
         } catch {}
       }
 
-      const args = ['log', `--max-count=${count || 50}`, '--date-order', fmt];
+      const args = ['log', `--max-count=${count || 50}`, topoOrder ? '--topo-order' : '--date-order', fmt];
       if (skip) args.push(`--skip=${skip}`);
       if (allBranches) {
         args.push('--all', '--exclude=refs/stash');

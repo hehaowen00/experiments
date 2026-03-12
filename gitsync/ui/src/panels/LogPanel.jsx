@@ -89,6 +89,13 @@ export default function LogPanel() {
             </button>
           </Show>
         </div>
+        <button
+          class={`btn btn-ghost btn-xs ${ws.logTopoOrder() ? 'btn-active' : ''}`}
+          onClick={() => { ws.setLogTopoOrder(!ws.logTopoOrder()); setTimeout(ws.loadLog, 0); }}
+          title={ws.logTopoOrder() ? 'Topological order (click for date order)' : 'Date order (click for topological)'}
+        >
+          <Icon name="fa-solid fa-timeline" />
+        </button>
         <button class="btn btn-ghost btn-xs" onClick={ws.loadLog} title="Refresh log">
           <Icon name="fa-solid fa-rotate" />
         </button>

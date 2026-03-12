@@ -52,7 +52,7 @@ contextBridge.exposeInMainWorld('api', {
   gitCommitAmend: (repoPath, message) => ipcRenderer.invoke('git:commitAmend', repoPath, message),
   gitResetSoftHead: (repoPath) => ipcRenderer.invoke('git:resetSoftHead', repoPath),
   gitResetSoftTo: (repoPath, hash) => ipcRenderer.invoke('git:resetSoftTo', repoPath, hash),
-  gitLog: (repoPath, count, allBranches, branchName, skip, search) => ipcRenderer.invoke('git:log', repoPath, count, allBranches, branchName, skip, search),
+  gitLog: (repoPath, count, allBranches, branchName, skip, search, topoOrder) => ipcRenderer.invoke('git:log', repoPath, count, allBranches, branchName, skip, search, topoOrder),
   gitPull: (repoPath, strategy, remote) => ipcRenderer.invoke('git:pull', repoPath, strategy, remote),
   gitPush: (repoPath, remote) => ipcRenderer.invoke('git:push', repoPath, remote),
   gitPushForce: (repoPath, remote) => ipcRenderer.invoke('git:pushForce', repoPath, remote),
