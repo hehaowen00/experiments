@@ -143,6 +143,7 @@ function register(mainWindow) {
       else if (conn.type === 'sqlite') conn.client.close();
     } catch {}
     activeDbConnections.delete(id);
+    lastQuerySql.delete(id);
   });
 
   ipcMain.handle('db:listDatabases', async (_, id) => {
@@ -366,66 +367,137 @@ function register(mainWindow) {
     }
   });
 
-  ipcMain.handle('db:query', async (_, id, sql) => {
+  function processPostgresRows(rows) {
+    return rows.map((row) => {
+      const processed = {};
+      for (const key of Object.keys(row)) {
+        let val = row[key];
+        if (val !== null && typeof val === 'object') {
+          val = JSON.stringify(val);
+        }
+        if (val !== null && typeof val === 'string' && Buffer.byteLength(val) > LARGE_VALUE_THRESHOLD) {
+          processed[key] = `[Payload: ${(Buffer.byteLength(val) / 1024).toFixed(1)} KB]`;
+        } else {
+          processed[key] = val;
+        }
+      }
+      return processed;
+    });
+  }
+
+  function processSqliteRows(rows, columns) {
+    return rows.map((row) => {
+      const r = {};
+      for (const key of columns) {
+        const val = row[key];
+        if (val !== null && typeof val === 'string' && Buffer.byteLength(val) > LARGE_VALUE_THRESHOLD) {
+          r[key] = `[Payload: ${(Buffer.byteLength(val) / 1024).toFixed(1)} KB]`;
+        } else {
+          r[key] = val;
+        }
+      }
+      return r;
+    });
+  }
+
+  // Store last query SQL per connection for pagination and export
+  const lastQuerySql = new Map();
+
+  function isSelectQuery(sql) {
+    const trimmed = sql.trim().toLowerCase();
+    return trimmed.startsWith('select') || trimmed.startsWith('pragma') || trimmed.startsWith('explain') || trimmed.startsWith('with');
+  }
+
+  async function execPagedQuery(conn, sql, limit, offset) {
+    const pagedSql = `SELECT * FROM (${sql}) AS _q LIMIT ${limit} OFFSET ${offset}`;
+    const countSql = `SELECT COUNT(*) AS total FROM (${sql}) AS _q`;
+    if (conn.type === 'postgres') {
+      const [pageResult, countResult] = await Promise.all([
+        conn.client.query(pagedSql),
+        conn.client.query(countSql),
+      ]);
+      const columns = pageResult.fields.map((f) => f.name);
+      const rows = processPostgresRows(pageResult.rows);
+      const total = parseInt(countResult.rows[0].total, 10);
+      return { rows, columns, rowCount: total };
+    } else {
+      const rows = conn.client.prepare(pagedSql).all();
+      const countRow = conn.client.prepare(countSql).get();
+      const columns = rows.length > 0 ? Object.keys(rows[0]) : [];
+      return { rows: processSqliteRows(rows, columns), columns, rowCount: countRow.total };
+    }
+  }
+
+  ipcMain.handle('db:query', async (_, id, sql, limit, offset) => {
     const conn = activeDbConnections.get(id);
     if (!conn) return { error: 'Not connected' };
     const start = Date.now();
     try {
+      // Page request for existing query
+      if (sql == null) {
+        const cached = lastQuerySql.get(id);
+        if (!cached) return { error: 'No query to page' };
+        const result = await execPagedQuery(conn, cached, limit, offset);
+        return { ...result, time: Date.now() - start };
+      }
+      // Non-select statements: execute directly
+      if (conn.type === 'sqlite' && !isSelectQuery(sql)) {
+        const result = conn.client.prepare(sql).run();
+        lastQuerySql.delete(id);
+        return { rowCount: result.changes, time: Date.now() - start, command: 'RUN' };
+      }
       if (conn.type === 'postgres') {
-        const result = await conn.client.query(sql);
-        const elapsed = Date.now() - start;
-        if (result.fields && result.fields.length > 0) {
-          const rows = result.rows.map((row) => {
-            const processed = {};
-            for (const key of Object.keys(row)) {
-              let val = row[key];
-              if (val !== null && typeof val === 'object') {
-                val = JSON.stringify(val);
-              }
-              if (val !== null && typeof val === 'string' && Buffer.byteLength(val) > LARGE_VALUE_THRESHOLD) {
-                processed[key] = `[Payload: ${(Buffer.byteLength(val) / 1024).toFixed(1)} KB]`;
-              } else {
-                processed[key] = val;
-              }
-            }
-            return processed;
-          });
-          return {
-            rows,
-            columns: result.fields.map((f) => f.name),
-            rowCount: result.rowCount,
-            time: elapsed,
-          };
-        }
-        return { rowCount: result.rowCount, time: elapsed, command: result.command };
-      } else if (conn.type === 'sqlite') {
-        const trimmed = sql.trim().toLowerCase();
-        const isSelect = trimmed.startsWith('select') || trimmed.startsWith('pragma') || trimmed.startsWith('explain') || trimmed.startsWith('with');
-        if (isSelect) {
-          const rows = conn.client.prepare(sql).all();
+        // Try paged execution; fall back to direct for non-select
+        try {
+          lastQuerySql.set(id, sql);
+          const result = await execPagedQuery(conn, sql, 100, 0);
+          return { ...result, time: Date.now() - start };
+        } catch {
+          // Non-select or unsupported for wrapping — run directly
+          lastQuerySql.delete(id);
+          const result = await conn.client.query(sql);
           const elapsed = Date.now() - start;
-          const columns = rows.length > 0 ? Object.keys(rows[0]) : [];
-          const processed = rows.map((row) => {
-            const r = {};
-            for (const key of columns) {
-              const val = row[key];
-              if (val !== null && typeof val === 'string' && Buffer.byteLength(val) > LARGE_VALUE_THRESHOLD) {
-                r[key] = `[Payload: ${(Buffer.byteLength(val) / 1024).toFixed(1)} KB]`;
-              } else {
-                r[key] = val;
-              }
-            }
-            return r;
-          });
-          return { rows: processed, columns, rowCount: rows.length, time: elapsed };
-        } else {
-          const result = conn.client.prepare(sql).run();
-          const elapsed = Date.now() - start;
-          return { rowCount: result.changes, time: elapsed, command: 'RUN' };
+          if (result.fields && result.fields.length > 0) {
+            return {
+              rows: processPostgresRows(result.rows),
+              columns: result.fields.map((f) => f.name),
+              rowCount: result.rowCount,
+              time: elapsed,
+            };
+          }
+          return { rowCount: result.rowCount, time: elapsed, command: result.command };
         }
       }
+      // SQLite select
+      lastQuerySql.set(id, sql);
+      const result = await execPagedQuery(conn, sql, 100, 0);
+      return { ...result, time: Date.now() - start };
     } catch (e) {
       return { error: e.message, time: Date.now() - start };
+    }
+  });
+
+  ipcMain.handle('db:queryExport', async (_, id) => {
+    const conn = activeDbConnections.get(id);
+    const sql = lastQuerySql.get(id);
+    if (!conn || !sql) return { error: 'No query result to export' };
+    try {
+      if (conn.type === 'postgres') {
+        const result = await conn.client.query(sql);
+        if (result.fields && result.fields.length > 0) {
+          return {
+            rows: processPostgresRows(result.rows),
+            columns: result.fields.map((f) => f.name),
+          };
+        }
+        return { rows: [], columns: [] };
+      } else {
+        const rows = conn.client.prepare(sql).all();
+        const columns = rows.length > 0 ? Object.keys(rows[0]) : [];
+        return { rows: processSqliteRows(rows, columns), columns };
+      }
+    } catch (e) {
+      return { error: e.message };
     }
   });
 

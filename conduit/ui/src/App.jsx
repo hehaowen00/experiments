@@ -167,13 +167,13 @@ function AppShell() {
                 <Landing onOpen={(id, name) => openCollection(id, name)} style={style()} />
               </Match>
               <Match when={tab.type === 'collection'}>
-                <Collection id={tab.collectionId} onBack={() => actions.closeTab(tab.id)} style={style()} />
+                <Collection id={tab.collectionId} onBack={() => actions.replaceTab(tab.id, 'api')} style={style()} />
               </Match>
               <Match when={tab.type === 'db'}>
                 <DatabaseClient onOpenDb={(connData) => openDatabase(connData)} style={style()} />
               </Match>
               <Match when={tab.type === 'database'}>
-                <DatabaseWorkspace connData={tab.connData} onBack={() => actions.closeTab(tab.id)} style={style()} />
+                <DatabaseWorkspace connData={tab.connData} onBack={() => actions.replaceTab(tab.id, 'db')} style={style()} />
               </Match>
               <Match when={tab.type === 'rfc'}>
                 <RfcViewer style={style()} />

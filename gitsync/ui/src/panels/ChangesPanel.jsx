@@ -165,7 +165,7 @@ export default function ChangesPanel() {
               <div class="git-empty">No stashes</div>
             </Show>
             <For each={ws.stashes.list}>{(s) => (
-              <div class={`git-stash-item ${ws.stashDetail.ref === s.ref ? 'selected' : ''}`} onClick={() => ws.viewStashDiff(s.ref)}>
+              <div class={`git-stash-item ${ws.stashDetail.ref === s.ref ? 'selected' : ''}`} onClick={() => { ws.viewStashDiff(s.ref); ws.onTabChange('stashes'); }}>
                 <div class="git-stash-info">
                   <span class="git-stash-ref">{s.ref}</span>
                   <span class="git-stash-message">{s.message}</span>
@@ -191,27 +191,15 @@ export default function ChangesPanel() {
 
       <div class="git-right-panel">
         <div class="git-diff-panel">
-          <Show when={ws.stashDetail.ref} fallback={
-            <Show when={ws.diff.filepath} fallback={
-              <div class="git-empty">Select a file to view diff</div>
-            }>
-              <div class="git-diff-header">
-                <span class="git-diff-filepath">{ws.diff.filepath}</span>
-                <span class="git-diff-label">{ws.diff.staged ? 'Staged' : 'Working'}</span>
-              </div>
-              <pre class="git-diff-content">
-                <For each={parseDiffLines(ws.diff.content)}>{(l) => <DiffLine line={l} />}</For>
-              </pre>
-            </Show>
+          <Show when={ws.diff.filepath} fallback={
+            <div class="git-empty">Select a file to view diff</div>
           }>
             <div class="git-diff-header">
-              <span class="git-diff-filepath">{ws.stashDetail.ref}</span>
-              <button class="btn btn-ghost btn-xs" onClick={() => ws.setStashDetail({ ref: null, diff: '' })} title="Close stash diff">
-                <Icon name="fa-solid fa-xmark" />
-              </button>
+              <span class="git-diff-filepath">{ws.diff.filepath}</span>
+              <span class="git-diff-label">{ws.diff.staged ? 'Staged' : 'Working'}</span>
             </div>
             <pre class="git-diff-content">
-              <For each={parseDiffLines(ws.stashDetail.diff)}>{(l) => <DiffLine line={l} />}</For>
+              <For each={parseDiffLines(ws.diff.content)}>{(l) => <DiffLine line={l} />}</For>
             </pre>
           </Show>
         </div>

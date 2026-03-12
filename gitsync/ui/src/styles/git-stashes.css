@@ -69,11 +69,13 @@
   opacity: 1;
 }
 
-.git-stash-item.selected {
+.git-stash-item.selected,
+.git-stash-item.git-stash-selected {
   background: var(--surface2);
 }
 
-.git-stash-item.selected .git-stash-actions {
+.git-stash-item.selected .git-stash-actions,
+.git-stash-item.git-stash-selected .git-stash-actions {
   opacity: 1;
 }
 
@@ -97,4 +99,88 @@
   overflow: auto;
   border-top: 1px solid var(--border);
   min-height: 0;
+}
+
+/* Stash preview split layout */
+.git-stash-preview {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border);
+  min-height: 0;
+  margin-top: 8px;
+}
+
+.git-stash-preview-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.git-stash-preview-title {
+  font-family: var(--mono);
+  font-size: var(--ui-font-size-sm);
+  color: var(--accent);
+}
+
+.git-stash-preview-count {
+  font-size: var(--ui-font-size-xs);
+  color: var(--text-dim);
+  margin-left: auto;
+}
+
+.git-stash-preview-split {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.git-stash-file-list {
+  flex-shrink: 0;
+  overflow-y: auto;
+  border-right: 1px solid var(--border);
+}
+
+.git-stash-file-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+}
+
+.git-stash-file-item:hover {
+  background: var(--surface);
+}
+
+.git-stash-file-item.active {
+  background: var(--surface2);
+}
+
+.git-stash-file-name {
+  font-size: var(--ui-font-size-sm);
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.git-stash-file-path {
+  font-size: var(--ui-font-size-xs);
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  width: 100%;
+}
+
+.git-stash-file-diff {
+  flex: 1;
+  overflow: auto;
+  min-width: 0;
 }

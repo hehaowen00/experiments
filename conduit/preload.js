@@ -35,6 +35,7 @@ contextBridge.exposeInMainWorld('api', {
   importFromDb: () => ipcRenderer.invoke('import:db'),
   importRequests: () => ipcRenderer.invoke('import:requests'),
   readFile: (path) => ipcRenderer.invoke('file:read', path),
+  saveFile: (defaultName, content) => ipcRenderer.invoke('file:save', defaultName, content),
   getSetting: (key) => ipcRenderer.invoke('settings:get', key),
   getAllSettings: () => ipcRenderer.invoke('settings:getAll'),
   setSetting: (key, value) => ipcRenderer.invoke('settings:set', key, value),
@@ -86,7 +87,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('db:getTableData', id, schema, table, limit, offset, orderBy),
   dbGetCellValue: (id, schema, table, column, rowOffset) =>
     ipcRenderer.invoke('db:getCellValue', id, schema, table, column, rowOffset),
-  dbQuery: (id, sql) => ipcRenderer.invoke('db:query', id, sql),
+  dbQuery: (id, sql, limit, offset) => ipcRenderer.invoke('db:query', id, sql, limit, offset),
+  dbQueryExport: (id) => ipcRenderer.invoke('db:queryExport', id),
   dbUpdateCell: (id, schema, table, column, rowOffset, value) =>
     ipcRenderer.invoke('db:updateCell', id, schema, table, column, rowOffset, value),
   dbCreateDatabase: (id, name) => ipcRenderer.invoke('db:createDatabase', id, name),

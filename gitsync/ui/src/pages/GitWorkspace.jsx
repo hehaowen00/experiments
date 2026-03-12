@@ -9,6 +9,7 @@ import { useWorkspace, WorkspaceProvider } from '../context/WorkspaceContext';
 import ChangesPanel from '../panels/ChangesPanel';
 import LogPanel from '../panels/LogPanel';
 import RemotesPanel from '../panels/RemotesPanel';
+import StashesPanel from '../panels/StashesPanel';
 
 function WorkspaceInner() {
   const ws = useWorkspace();
@@ -83,6 +84,12 @@ function WorkspaceInner() {
         <button class={`git-tab ${ws.tab() === 'remotes' ? 'active' : ''}`} onClick={() => ws.onTabChange('remotes')}>
           Remotes
         </button>
+        <button class={`git-tab ${ws.tab() === 'stashes' ? 'active' : ''}`} onClick={() => ws.onTabChange('stashes')}>
+          Stashes
+          <Show when={ws.stashes.list.length > 0}>
+            <span class="git-tab-badge">{ws.stashes.list.length}</span>
+          </Show>
+        </button>
       </div>
 
       <Show when={ws.status.error}>
@@ -141,6 +148,9 @@ function WorkspaceInner() {
       </div>
       <div class="git-content" style={{ display: ws.tab() === 'remotes' ? '' : 'none' }}>
         <RemotesPanel />
+      </div>
+      <div class="git-content" style={{ display: ws.tab() === 'stashes' ? '' : 'none' }}>
+        <StashesPanel />
       </div>
 
       <Modal />

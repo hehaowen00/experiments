@@ -1108,7 +1108,7 @@ function register(mainWindow) {
 
   ipcMain.handle('git:stashShow', async (_, repoPath, ref) => {
     try {
-      const out = await git(repoPath, ['stash', 'show', '-p', '--no-color', ref || 'stash@{0}']);
+      const out = await git(repoPath, ['stash', 'show', '-p', '-u', '--no-color', ref || 'stash@{0}']);
       return { diff: out };
     } catch (e) {
       return { error: e.message };

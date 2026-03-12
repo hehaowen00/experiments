@@ -47,6 +47,8 @@ export default function DatabaseWorkspace(props) {
     result: null,
     running: false,
   });
+  const [queryPage, setQueryPage] = createSignal(0);
+  const QUERY_PAGE_SIZE = 100;
 
   // Sort state for data tab
   const [dataSortCols, setDataSortCols] = createSignal([]);
@@ -300,8 +302,53 @@ export default function DatabaseWorkspace(props) {
     if (!sql) return;
     setQuery({ running: true });
     setTable('tab', 'query');
+    setQueryPage(0);
     const result = await window.api.dbQuery(connData.liveId, sql);
     setQuery({ running: false, result });
+  }
+
+  async function loadQueryPage(page) {
+    setQueryPage(page);
+    const result = await window.api.dbQuery(
+      connData.liveId,
+      null,
+      QUERY_PAGE_SIZE,
+      page * QUERY_PAGE_SIZE,
+    );
+    if (!result.error) {
+      setQuery('result', 'rows', result.rows);
+    }
+  }
+
+  function queryTotalPages() {
+    const count = query.result?.rowCount || 0;
+    return Math.max(1, Math.ceil(count / QUERY_PAGE_SIZE));
+  }
+
+  async function exportResults(format) {
+    const result = await window.api.dbQueryExport(connData.liveId);
+    if (result.error || !result.columns || !result.rows) return;
+    let content, ext;
+    if (format === 'json') {
+      content = JSON.stringify(result.rows, null, 2);
+      ext = 'json';
+    } else {
+      const escape = (v) => {
+        if (v === null || v === undefined) return '';
+        const s = String(v);
+        if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+          return '"' + s.replace(/"/g, '""') + '"';
+        }
+        return s;
+      };
+      const header = result.columns.map(escape).join(',');
+      const rows = result.rows.map((r) =>
+        result.columns.map((c) => escape(r[c])).join(','),
+      );
+      content = [header, ...rows].join('\n');
+      ext = 'csv';
+    }
+    window.api.saveFile(`export.${ext}`, content);
   }
 
   function activeTab() {
@@ -989,6 +1036,25 @@ export default function DatabaseWorkspace(props) {
                         : `${query.result.command}: ${query.result.rowCount} rows affected`}
                     </span>
                     <span class="db-query-time">{query.result.time}ms</span>
+                    <Show when={query.result.columns}>
+                      <button class="btn btn-ghost btn-sm" onClick={() => exportResults('csv')} title="Export as CSV">
+                        <Icon name="fa-solid fa-file-csv" />
+                      </button>
+                      <button class="btn btn-ghost btn-sm" onClick={() => exportResults('json')} title="Export as JSON">
+                        <Icon name="fa-solid fa-file-code" />
+                      </button>
+                    </Show>
+                    <Show when={query.result.columns && queryTotalPages() > 1}>
+                      <div class="db-pagination">
+                        <button class="btn btn-ghost btn-sm" disabled={queryPage() === 0} onClick={() => loadQueryPage(queryPage() - 1)}>
+                          <Icon name="fa-solid fa-chevron-left" />
+                        </button>
+                        <span>{queryPage() + 1} / {queryTotalPages()}</span>
+                        <button class="btn btn-ghost btn-sm" disabled={queryPage() >= queryTotalPages() - 1} onClick={() => loadQueryPage(queryPage() + 1)}>
+                          <Icon name="fa-solid fa-chevron-right" />
+                        </button>
+                      </div>
+                    </Show>
                   </div>
                   <Show when={query.result.columns}>
                     <ResultsTable

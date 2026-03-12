@@ -13,6 +13,13 @@ export default defineConfig({
         main: path.resolve(__dirname, 'index-solid.html'),
         drop: path.resolve(__dirname, 'drop.html'),
       },
+      output: {
+        manualChunks(id) {
+          if (id.includes('@codemirror') || id.includes('@lezer')) {
+            return 'codemirror';
+          }
+        },
+      },
     },
   },
 });

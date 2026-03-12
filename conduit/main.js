@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Menu, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, shell, dialog } = require('electron');
 const path = require('path');
 const store = require('./main/store');
 const ipcCollections = require('./main/ipc-collections');
@@ -38,6 +38,20 @@ app.whenReady().then(() => {
 
   ipcMain.handle('app:homeDir', () => require('os').homedir());
   ipcMain.handle('app:quit', () => app.quit());
+  ipcMain.handle('file:save', async (_, defaultName, content) => {
+    const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+      defaultPath: defaultName,
+      filters: [
+        { name: 'CSV', extensions: ['csv'] },
+        { name: 'JSON', extensions: ['json'] },
+        { name: 'All Files', extensions: ['*'] },
+      ],
+    });
+    if (canceled || !filePath) return null;
+    require('fs').writeFileSync(filePath, content, 'utf-8');
+    return filePath;
+  });
+
   ipcMain.handle('shell:openExternal', async (_, url) => {
     if (typeof url === 'string' && (url.startsWith('http://') || url.startsWith('https://'))) {
       await shell.openExternal(url);
