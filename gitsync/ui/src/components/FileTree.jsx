@@ -101,7 +101,7 @@ function FileTreeNode(props) {
             <span class={`git-file-status ${isClean ? '' : statusClass(code())}`}>{isClean ? ' ' : code()}</span>
             {file.isGitRepo
               ? <><Icon name="fa-solid fa-code-branch" class="git-nested-repo-icon" /><span class="git-file-path git-nested-repo-label" title={filepath}>{filename}</span><span class="git-nested-repo-badge">repo</span></>
-              : <span class="git-file-path" title={filepath}>{filename}</span>
+              : <span class="git-file-path" title={file.origPath ? `${file.origPath} → ${filepath}` : filepath}>{filename}{file.origPath ? <span class="git-rename-from"> ← {file.origPath.split('/').pop()}</span> : null}</span>
             }
             <Show when={!isClean}>
               <span class="git-file-actions">

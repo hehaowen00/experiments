@@ -440,6 +440,7 @@
 .git-added { color: var(--success); }
 .git-deleted { color: var(--danger); }
 .git-renamed { color: var(--accent); }
+.git-rename-from { color: var(--text-dim); font-size: 0.85em; margin-left: 4px; }
 .git-untracked { color: var(--text-dim); }
 .git-conflict { color: var(--danger); }
 

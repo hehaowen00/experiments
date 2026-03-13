@@ -287,13 +287,27 @@ function register(mainWindow) {
       const files = out.split('\n').filter(Boolean).map(line => {
         const xy = line.substring(0, 2);
         let filepath = line.substring(3);
+        let origPath = null;
         // Git quotes paths with spaces or special characters
         if (filepath.startsWith('"') && filepath.endsWith('"')) {
           filepath = filepath.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, '\\');
         }
+        // Renames/copies show as "old_path -> new_path"
+        if ((xy[0] === 'R' || xy[0] === 'C') && filepath.includes(' -> ')) {
+          const parts = filepath.split(' -> ');
+          origPath = parts[0];
+          filepath = parts[1];
+          // Handle quoted new path
+          if (filepath.startsWith('"') && filepath.endsWith('"')) {
+            filepath = filepath.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+          }
+          if (origPath.startsWith('"') && origPath.endsWith('"')) {
+            origPath = origPath.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+          }
+        }
         const fullPath = path.join(repoPath, filepath);
         const isGitRepo = fs.existsSync(path.join(fullPath, '.git'));
-        return { index: xy[0], working: xy[1], path: filepath, isGitRepo };
+        return { index: xy[0], working: xy[1], path: filepath, origPath, isGitRepo };
       });
 
       return { branch, upstream, ahead, behind, files };
