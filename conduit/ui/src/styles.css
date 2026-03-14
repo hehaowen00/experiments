@@ -4050,7 +4050,7 @@ tr:hover .db-row-actions .btn:hover {
   display: flex;
   gap: 8px;
   padding: 4px 0;
-  font-size: var(--ui-font-size-xs);
+  font-size: var(--ui-font-size-sm);
 }
 
 .rfc-meta-row-block {
@@ -4079,7 +4079,7 @@ tr:hover .db-row-actions .btn:hover {
   display: block;
   margin-bottom: 4px;
   line-height: 1.4;
-  font-size: var(--ui-font-size);
+  font-size: var(--ui-font-size-sm);
 }
 
 .rfc-ref-link:hover {

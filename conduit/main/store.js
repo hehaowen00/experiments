@@ -447,7 +447,7 @@ function saveResponse(data) {
 function getLatestResponse(requestId) {
   const row = db
     .prepare(
-      'SELECT * FROM responses WHERE request_id = ? ORDER BY created_at DESC LIMIT 1',
+      'SELECT * FROM responses WHERE request_id = ? ORDER BY id DESC LIMIT 1',
     )
     .get(requestId);
   if (!row) return null;

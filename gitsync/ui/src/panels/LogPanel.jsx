@@ -232,6 +232,12 @@ export default function LogPanel() {
             >
               <button class="file-context-menu-item" onClick={() => {
                 dismissCommitMenu();
+                ws.checkoutCommit(menu.commit.hash);
+              }}>
+                <Icon name="fa-solid fa-right-to-bracket" /> Checkout
+              </button>
+              <button class="file-context-menu-item" onClick={() => {
+                dismissCommitMenu();
                 ws.doCherryPick(menu.commit.hash);
               }}>
                 <Icon name="fa-solid fa-circle-dot" /> Cherry-pick

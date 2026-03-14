@@ -688,6 +688,21 @@ export function WorkspaceProvider(props) {
     await reloadRepo();
   }
 
+  // --- Checkout commit ---
+  async function checkoutCommit(hash) {
+    if (!await showConfirm(`Checkout commit ${hash.substring(0, 8)}?`, 'This will put you in detached HEAD state.', { confirmLabel: 'Checkout', confirmStyle: 'primary' })) return;
+    setOperating('Checking out...');
+    const result = await window.api.gitCheckout(repoPath, hash);
+    setOperating('');
+    if (result.error) {
+      showAlert('Checkout Failed', result.error);
+    } else {
+      setOutput(result.output || `Checked out ${hash.substring(0, 8)} (detached HEAD)`);
+      await reloadRepo();
+      loadBranches();
+    }
+  }
+
   // --- Cherry-pick & Drop ---
   async function doCherryPick(hash) {
     if (!await showConfirm(`Cherry-pick commit ${hash.substring(0, 8)}?`, '', { confirmLabel: 'Cherry-pick', confirmStyle: 'primary' })) return;
@@ -1078,7 +1093,7 @@ export function WorkspaceProvider(props) {
     doCommit, toggleAmend,
     doPull, doPush, doFetch, pickRemote,
     addRemote, removeRemote, editRemoteUrl,
-    checkoutBranch, checkoutRemoteBranch, createBranch,
+    checkoutBranch, checkoutRemoteBranch, checkoutCommit, createBranch,
     doMerge, doMergeAbort, doRebase, doRebaseContinue, doRebaseAbort,
     doCherryPick, doRevert, doDropCommit,
     interactiveRebase, setInteractiveRebase, startInteractiveRebase, executeInteractiveRebase, cancelInteractiveRebase,

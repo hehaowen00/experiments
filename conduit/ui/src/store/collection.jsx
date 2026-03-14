@@ -214,6 +214,7 @@ export function CollectionProvider(props) {
     });
 
     const lastResp = await window.api.getLatestResponse(id);
+    if (state.activeRequestId !== id) return;
     setResponse(lastResp || null);
     if (lastResp?.messages?.length > 0) {
       setState('streamMessages', lastResp.messages);
@@ -785,12 +786,9 @@ export function CollectionProvider(props) {
     const connId = state.streamConnectionId;
     if (connId) {
       const wasWs = state.streamType === 'ws';
-      if (state.streamType === 'sse') await window.api.sseDisconnect(connId);
-      else if (wasWs) await window.api.wsDisconnect(connId);
-      if (wasWs) {
-        appendWsTimeline('info', 'Disconnected by user');
-        await saveWsHistory();
-      }
+      const wasSse = state.streamType === 'sse';
+      // Clear connection id first so the onWsClose/onWsError handlers
+      // skip the duplicate save (isActiveConn will return false)
       streamRequestId = null;
       setState({
         streamConnectionId: null,
@@ -798,6 +796,12 @@ export function CollectionProvider(props) {
         streamConnected: false,
         streamStatus: '',
       });
+      if (wasSse) await window.api.sseDisconnect(connId);
+      else if (wasWs) await window.api.wsDisconnect(connId);
+      if (wasWs) {
+        appendWsTimeline('info', 'Disconnected by user');
+        await saveWsHistory();
+      }
     }
   }
 
