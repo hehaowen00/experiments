@@ -5,6 +5,7 @@ import FormModal, { FormField } from '../components/FormModal';
 import Icon from '../components/Icon';
 import ItemCard from '../components/ItemCard';
 import { showAlert, showConfirm, showConfirmTyped, showPrompt } from '../components/Modal';
+import Select from '../components/Select';
 import { generateId } from '../helpers';
 
 export default function DatabaseClient(props) {
@@ -381,10 +382,15 @@ export default function DatabaseClient(props) {
           </FormField>
 
           <FormField label="Type">
-            <select value={state.form.type} onChange={(e) => setState('form', 'type', e.target.value)} class="body-type-select">
-              <option value="postgres">PostgreSQL</option>
-              <option value="sqlite">SQLite</option>
-            </select>
+            <Select
+              class="select-full"
+              value={state.form.type}
+              options={[
+                { value: 'postgres', label: 'PostgreSQL' },
+                { value: 'sqlite', label: 'SQLite' },
+              ]}
+              onChange={(value) => setState('form', 'type', value)}
+            />
           </FormField>
 
           <Show when={state.form.type === 'postgres'}>

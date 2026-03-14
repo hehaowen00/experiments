@@ -618,11 +618,27 @@ function register(mainWindow) {
 
   ipcMain.handle('git:branchList', async (_, repoPath) => {
     try {
-      const out = await git(repoPath, ['branch', '-a', '--no-color']);
+      const fmt = '%(HEAD) %(refname) %(refname:short) %(upstream:short) %(upstream:track)';
+      const out = await git(repoPath, [
+        'for-each-ref', `--format=${fmt}`, 'refs/heads/', 'refs/remotes/',
+      ]);
       const branches = out.trim().split('\n').filter(Boolean).map(line => {
         const current = line.startsWith('* ');
-        const name = line.replace(/^\*?\s+/, '').trim();
-        return { name, current };
+        const rest = line.replace(/^\*?\s+/, '');
+        const parts = rest.match(/^(\S+)\s+(\S+)\s*(\S*)\s*(.*)$/);
+        const fullRef = parts ? parts[1] : '';
+        const name = parts ? parts[2] : rest.trim();
+        const remote = fullRef.startsWith('refs/remotes/');
+        // Prefix remote branch names with remotes/ for backwards compat
+        const displayName = remote ? `remotes/${name}` : name;
+        const upstream = parts ? parts[3] : '';
+        const trackInfo = parts ? parts[4] : '';
+        let ahead = 0, behind = 0;
+        const aheadMatch = trackInfo.match(/ahead (\d+)/);
+        const behindMatch = trackInfo.match(/behind (\d+)/);
+        if (aheadMatch) ahead = parseInt(aheadMatch[1]);
+        if (behindMatch) behind = parseInt(behindMatch[1]);
+        return { name: displayName, current, upstream, ahead, behind };
       });
       return { branches };
     } catch (e) {
@@ -919,6 +935,20 @@ function register(mainWindow) {
     } catch {
       return { state: null };
     }
+  });
+
+  // --- README ---
+  ipcMain.handle('git:readme', async (_, repoPath) => {
+    // Try common README filenames in the working tree first, fall back to git show
+    const names = ['README.md', 'readme.md', 'Readme.md', 'README.MD', 'README', 'README.txt', 'README.rst'];
+    for (const name of names) {
+      const filePath = path.join(repoPath, name);
+      try {
+        const content = fs.readFileSync(filePath, 'utf8');
+        return { content, filename: name };
+      } catch { /* not found, try next */ }
+    }
+    return { content: null, filename: null };
   });
 
   // --- File History ---
@@ -1219,92 +1249,6 @@ function register(mainWindow) {
     } catch (e) {
       return { error: e.message };
     }
-  });
-
-  // --- Actions (pre-commit scripts) ---
-  ipcMain.handle('actions:list', () => {
-    return store.getDb()
-      .prepare('SELECT id, name, script, enabled, sort_order FROM git_actions ORDER BY sort_order ASC, rowid ASC')
-      .all();
-  });
-
-  ipcMain.handle('actions:create', (_, data) => {
-    const id = generateKSUID();
-    const maxOrder = store.getDb().prepare('SELECT MAX(sort_order) as m FROM git_actions').get();
-    store.getDb().prepare(
-      'INSERT INTO git_actions (id, name, script, enabled, sort_order) VALUES (?, ?, ?, ?, ?)',
-    ).run(id, data.name, data.script, data.enabled ? 1 : 0, (maxOrder?.m || 0) + 1);
-    return { id, name: data.name, script: data.script, enabled: data.enabled ? 1 : 0 };
-  });
-
-  ipcMain.handle('actions:update', (_, id, data) => {
-    store.getDb().prepare(
-      'UPDATE git_actions SET name = ?, script = ?, enabled = ? WHERE id = ?',
-    ).run(data.name, data.script, data.enabled ? 1 : 0, id);
-    return true;
-  });
-
-  ipcMain.handle('actions:delete', (_, id) => {
-    store.getDb().prepare('DELETE FROM git_actions WHERE id = ?').run(id);
-    return true;
-  });
-
-  ipcMain.handle('actions:reorder', (_, orderedIds) => {
-    const stmt = store.getDb().prepare('UPDATE git_actions SET sort_order = ? WHERE id = ?');
-    const tx = store.getDb().transaction(() => {
-      orderedIds.forEach((id, i) => stmt.run(i, id));
-    });
-    tx();
-    return true;
-  });
-
-  ipcMain.handle('actions:run', async (_, repoPath, actionId) => {
-    const action = store.getDb()
-      .prepare('SELECT id, name, script FROM git_actions WHERE id = ?')
-      .get(actionId);
-    if (!action) return { ok: false, error: 'Action not found' };
-    try {
-      const stdout = await new Promise((resolve, reject) => {
-        require('child_process').exec(action.script, {
-          cwd: repoPath,
-          maxBuffer: 10 * 1024 * 1024,
-          timeout: 60000,
-        }, (err, stdout, stderr) => {
-          if (err) reject(new Error(stderr || err.message));
-          else resolve(stdout);
-        });
-      });
-      return { ok: true, name: action.name, output: stdout };
-    } catch (e) {
-      return { ok: false, name: action.name, error: e.message };
-    }
-  });
-
-  ipcMain.handle('actions:runPreCommit', async (_, repoPath) => {
-    const actions = store.getDb()
-      .prepare('SELECT id, name, script FROM git_actions WHERE enabled = 1 ORDER BY sort_order ASC, rowid ASC')
-      .all();
-    if (actions.length === 0) return { ok: true, results: [] };
-    const results = [];
-    for (const action of actions) {
-      try {
-        const stdout = await new Promise((resolve, reject) => {
-          require('child_process').exec(action.script, {
-            cwd: repoPath,
-            maxBuffer: 10 * 1024 * 1024,
-            timeout: 60000,
-          }, (err, stdout, stderr) => {
-            if (err) reject(new Error(stderr || err.message));
-            else resolve(stdout);
-          });
-        });
-        results.push({ id: action.id, name: action.name, ok: true, output: stdout });
-      } catch (e) {
-        results.push({ id: action.id, name: action.name, ok: false, error: e.message });
-        return { ok: false, failedAction: action.name, error: e.message, results };
-      }
-    }
-    return { ok: true, results };
   });
 
   // --- Filesystem watching ---

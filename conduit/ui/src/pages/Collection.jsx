@@ -1,6 +1,7 @@
 import { onCleanup, onMount } from 'solid-js';
 import Icon from '../components/Icon';
 import Modal from '../components/Modal';
+import Select from '../components/Select';
 import RequestPane from '../components/RequestPane';
 import ResponsePane from '../components/ResponsePane';
 import Sidebar from '../components/Sidebar';
@@ -118,32 +119,30 @@ function CollectionView(props) {
               >
                 <Icon name="fa-solid fa-bars" />
               </button>
-              <select
-                class="protocol-select"
+              <Select
+                class="select-fw"
                 value={state.protocol}
-                onChange={(e) =>
-                  actions.updateField('protocol', e.target.value)
-                }
-              >
-                <option value="http">{t.collection.protocols.http}</option>
-                <option value="ws">{t.collection.protocols.ws}</option>
-              </select>
+                options={[
+                  { value: 'http', label: t.collection.protocols.http },
+                  { value: 'ws', label: t.collection.protocols.ws },
+                ]}
+                onChange={(value) => actions.updateField('protocol', value)}
+              />
               {state.protocol === 'http' && (
-                <select
-                  class="method-select"
+                <Select
+                  class="select-fw"
                   value={state.method}
-                  onChange={(e) =>
-                    actions.updateField('method', e.target.value)
-                  }
-                >
-                  <option>GET</option>
-                  <option>POST</option>
-                  <option>PUT</option>
-                  <option>PATCH</option>
-                  <option>DELETE</option>
-                  <option>HEAD</option>
-                  <option>OPTIONS</option>
-                </select>
+                  options={[
+                    { value: 'GET', label: 'GET', color: '#50c878' },
+                    { value: 'POST', label: 'POST', color: '#f0a030' },
+                    { value: 'PUT', label: 'PUT', color: '#5090f0' },
+                    { value: 'PATCH', label: 'PATCH', color: '#c070f0' },
+                    { value: 'DELETE', label: 'DELETE', color: '#e05555' },
+                    { value: 'HEAD', label: 'HEAD', color: '#8888aa' },
+                    { value: 'OPTIONS', label: 'OPTIONS', color: '#8888aa' },
+                  ]}
+                  onChange={(value) => actions.updateField('method', value)}
+                />
               )}
               <input
                 type="text"

@@ -1,6 +1,12 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('api', {
+  // Window controls
+  platform: () => ipcRenderer.invoke('app:platform'),
+  windowMinimize: () => ipcRenderer.invoke('window:minimize'),
+  windowMaximize: () => ipcRenderer.invoke('window:maximize'),
+  windowClose: () => ipcRenderer.invoke('window:close'),
+
   // Collections
   listCollections: () => ipcRenderer.invoke('collections:list'),
   createCollection: (name) => ipcRenderer.invoke('collections:create', name),

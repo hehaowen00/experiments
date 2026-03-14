@@ -98,6 +98,37 @@ func (n *Node) ID() string { return n.opts.ID }
 // Stats returns the node's activity counters.
 func (n *Node) Stats() StatsSnapshot { return n.stats.Snapshot() }
 
+// TopicSubscriberCounts returns a map of topic -> number of subscribers.
+func (n *Node) TopicSubscriberCounts() map[string]int {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+	counts := make(map[string]int, len(n.subscribers))
+	for topic, subs := range n.subscribers {
+		counts[topic] = len(subs)
+	}
+	return counts
+}
+
+// PeerInfo returns information about connected peers.
+func (n *Node) PeerInfo() []PeerSnapshot {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+	info := make([]PeerSnapshot, 0, len(n.peers))
+	for addr, p := range n.peers {
+		info = append(info, PeerSnapshot{
+			Addr:   addr,
+			Topics: p.getTopics(),
+		})
+	}
+	return info
+}
+
+// PeerSnapshot is a point-in-time view of a peer.
+type PeerSnapshot struct {
+	Addr   string   `json:"addr"`
+	Topics []string `json:"topics"`
+}
+
 func (n *Node) Start(ctx context.Context) error {
 	n.ctx, n.cancel = context.WithCancel(ctx)
 
@@ -197,7 +228,7 @@ func (n *Node) Publish(ctx context.Context, source, topic string, payload json.R
 		return "", fmt.Errorf("rate limit exceeded for source %s", source)
 	}
 
-	seq := n.nextSequence(source)
+	seq := n.nextSequence(source, topic)
 	msg := &Message{
 		ID:          uuid.New().String(),
 		Source:      source,
@@ -231,8 +262,10 @@ func (n *Node) Subscribe(topic, subscriberID string, handler Handler) error {
 	if n.subscribers[topic] == nil {
 		n.subscribers[topic] = make(map[string]*subscriber)
 	}
-	if _, exists := n.subscribers[topic][subscriberID]; exists {
-		return fmt.Errorf("subscriber %s already exists on topic %s", subscriberID, topic)
+	if existing, exists := n.subscribers[topic][subscriberID]; exists {
+		// Upsert: replace existing subscriber, drain its buffer into the new one
+		existing.stop()
+		existing.drain()
 	}
 
 	// Build DLQ callback: republish failed messages to _dlq.<topic>
@@ -613,8 +646,9 @@ func (n *Node) removePeer(addr string) {
 	}
 }
 
-func (n *Node) nextSequence(source string) uint64 {
-	val, _ := n.sequences.LoadOrStore(source, &atomic.Uint64{})
+func (n *Node) nextSequence(source, topic string) uint64 {
+	key := source + "\x00" + topic
+	val, _ := n.sequences.LoadOrStore(key, &atomic.Uint64{})
 	return val.(*atomic.Uint64).Add(1)
 }
 

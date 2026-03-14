@@ -5,6 +5,7 @@ import PeersPage from './pages/PeersPage';
 import PeerReposPage from './pages/PeerReposPage';
 import Modal, { showSettings } from './components/Modal';
 import Icon from './components/Icon';
+import Titlebar from './components/Titlebar';
 
 export default function App() {
   const [page, setPage] = createSignal({ type: 'landing' });
@@ -27,10 +28,18 @@ export default function App() {
     setPage({ type: 'peer-repos', peerId, peerName });
   }
 
+  const title = () => {
+    if (page().type === 'git') return page().repoData?.name || 'GitSync';
+    if (page().type === 'peers') return 'Peers';
+    if (page().type === 'peer-repos') return page().peerName || 'Peer Repos';
+    return 'GitSync';
+  };
+
   return (
-    <>
+    <div style={{ display: 'flex', 'flex-direction': 'column', height: '100vh' }}>
+      <Titlebar title={title()} />
       {page().type === 'landing' && (
-        <div class="git-client" style={{ display: 'flex', 'flex-direction': 'column', height: '100vh' }}>
+        <div class="git-client" style={{ display: 'flex', 'flex-direction': 'column', flex: 1, overflow: 'hidden' }}>
           <GitClient onOpenGit={openGit} onOpenPeers={openPeers} />
           <Modal />
         </div>
@@ -39,17 +48,17 @@ export default function App() {
         <GitWorkspace repoData={page().repoData} onBack={goHome} onSwitchRepo={openGit} />
       )}
       {page().type === 'peers' && (
-        <div class="git-client" style={{ display: 'flex', 'flex-direction': 'column', height: '100vh' }}>
+        <div class="git-client" style={{ display: 'flex', 'flex-direction': 'column', flex: 1, overflow: 'hidden' }}>
           <PeersPage onBack={goHome} onBrowseRepos={openPeerRepos} />
           <Modal />
         </div>
       )}
       {page().type === 'peer-repos' && (
-        <div class="git-client" style={{ display: 'flex', 'flex-direction': 'column', height: '100vh' }}>
+        <div class="git-client" style={{ display: 'flex', 'flex-direction': 'column', flex: 1, overflow: 'hidden' }}>
           <PeerReposPage peerId={page().peerId} peerName={page().peerName} onBack={openPeers} />
           <Modal />
         </div>
       )}
-    </>
+    </div>
   );
 }

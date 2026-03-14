@@ -37,7 +37,7 @@ func (n *Node) Request(ctx context.Context, source, topic string, payload json.R
 		return nil, fmt.Errorf("rate limit exceeded for source %s", source)
 	}
 
-	seq := n.nextSequence(source)
+	seq := n.nextSequence(source, topic)
 	msg := &Message{
 		ID:          uuid.New().String(),
 		Source:      source,

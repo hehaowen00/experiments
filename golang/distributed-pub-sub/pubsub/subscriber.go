@@ -108,6 +108,12 @@ func (s *subscriber) stop() {
 }
 
 func (s *subscriber) handleMessage(ctx context.Context, msg *Message) {
+	// Sequence 0 means unsequenced — deliver immediately, skip reordering
+	if msg.Sequence == 0 {
+		s.deliver(ctx, msg)
+		return
+	}
+
 	src := msg.Source
 	exp := s.expected[src]
 

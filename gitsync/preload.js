@@ -1,6 +1,12 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('api', {
+  // Window controls
+  platform: () => ipcRenderer.invoke('app:platform'),
+  windowMinimize: () => ipcRenderer.invoke('window:minimize'),
+  windowMaximize: () => ipcRenderer.invoke('window:maximize'),
+  windowClose: () => ipcRenderer.invoke('window:close'),
+
   // Settings
   getSetting: (key) => ipcRenderer.invoke('settings:get', key),
   getAllSettings: () => ipcRenderer.invoke('settings:getAll'),
@@ -104,6 +110,9 @@ contextBridge.exposeInMainWorld('api', {
   gitBranchRename: (repoPath, oldName, newName) => ipcRenderer.invoke('git:branchRename', repoPath, oldName, newName),
   gitOperationState: (repoPath) => ipcRenderer.invoke('git:operationState', repoPath),
 
+  // README
+  gitReadme: (repoPath) => ipcRenderer.invoke('git:readme', repoPath),
+
   // File history
   gitFileLog: (repoPath, filepath, count, skip) => ipcRenderer.invoke('git:fileLog', repoPath, filepath, count, skip),
   gitFileShowAtCommit: (repoPath, hash, filepath) => ipcRenderer.invoke('git:fileShowAtCommit', repoPath, hash, filepath),
@@ -122,15 +131,6 @@ contextBridge.exposeInMainWorld('api', {
   // Patches
   gitExportStagedPatch: (repoPath) => ipcRenderer.invoke('git:exportStagedPatch', repoPath),
   gitApplyPatch: (repoPath) => ipcRenderer.invoke('git:applyPatch', repoPath),
-
-  // Actions (pre-commit scripts)
-  actionsList: () => ipcRenderer.invoke('actions:list'),
-  actionsCreate: (data) => ipcRenderer.invoke('actions:create', data),
-  actionsUpdate: (id, data) => ipcRenderer.invoke('actions:update', id, data),
-  actionsDelete: (id) => ipcRenderer.invoke('actions:delete', id),
-  actionsReorder: (orderedIds) => ipcRenderer.invoke('actions:reorder', orderedIds),
-  actionsRun: (repoPath, actionId) => ipcRenderer.invoke('actions:run', repoPath, actionId),
-  actionsRunPreCommit: (repoPath) => ipcRenderer.invoke('actions:runPreCommit', repoPath),
 
   // Filesystem watching
   gitWatchRepo: (repoPath) => ipcRenderer.invoke('git:watchRepo', repoPath),

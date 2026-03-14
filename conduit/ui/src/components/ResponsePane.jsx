@@ -13,6 +13,7 @@ import { evaluateJsonPath, searchXPathResults } from '../search';
 import { useCollection } from '../store/collection';
 import Icon from './Icon';
 import ResponseViewer from './ResponseViewer';
+import Select from './Select';
 
 // Foldable JSON renderer (DOM-based for performance with large responses)
 function renderFoldableJson(value) {
@@ -675,20 +676,19 @@ export default function ResponsePane() {
         >
           <Show when={searchVisible()}>
             <div class="response-search-bar" style={{ display: 'flex' }}>
-              <select
-                class="body-type-select"
+              <Select
+                class="select-sm"
                 value={searchMode()}
-                onChange={(e) => {
-                  setSearchMode(e.target.value);
+                options={[
+                  { value: 'text', label: t.responsePane.search.textMode },
+                  { value: 'jsonpath', label: t.responsePane.search.jsonpathMode },
+                  { value: 'xpath', label: t.responsePane.search.xpathMode },
+                ]}
+                onChange={(value) => {
+                  setSearchMode(value);
                   executeSearch(searchQuery());
                 }}
-              >
-                <option value="text">{t.responsePane.search.textMode}</option>
-                <option value="jsonpath">
-                  {t.responsePane.search.jsonpathMode}
-                </option>
-                <option value="xpath">{t.responsePane.search.xpathMode}</option>
-              </select>
+              />
               <input
                 type="text"
                 class="url-input search-input"
@@ -826,26 +826,19 @@ export default function ResponsePane() {
           </div>
           <Show when={state.streamType === 'ws' && state.streamConnected}>
             <div class="stream-compose">
-              <select
-                class="body-type-select"
+              <Select
+                class="select-sm"
                 value={state.wsFrameType}
-                onChange={(e) =>
-                  actions.updateField('wsFrameType', e.target.value)
+                options={[
+                  { value: 'text', label: t.responsePane.stream.frameTypes.text },
+                  { value: 'binary', label: t.responsePane.stream.frameTypes.binary },
+                  { value: 'ping', label: t.responsePane.stream.frameTypes.ping },
+                  { value: 'pong', label: t.responsePane.stream.frameTypes.pong },
+                ]}
+                onChange={(value) =>
+                  actions.updateField('wsFrameType', value)
                 }
-              >
-                <option value="text">
-                  {t.responsePane.stream.frameTypes.text}
-                </option>
-                <option value="binary">
-                  {t.responsePane.stream.frameTypes.binary}
-                </option>
-                <option value="ping">
-                  {t.responsePane.stream.frameTypes.ping}
-                </option>
-                <option value="pong">
-                  {t.responsePane.stream.frameTypes.pong}
-                </option>
-              </select>
+              />
               <input
                 type="text"
                 class="url-input"

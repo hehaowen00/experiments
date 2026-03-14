@@ -1,4 +1,4 @@
-import { For } from 'solid-js';
+import { For, Show, createSignal, createMemo } from 'solid-js';
 
 export function parseDiffFiles(rawDiff) {
   if (!rawDiff) return [];
@@ -27,7 +27,7 @@ export function parseDiffLines(raw) {
     if (line.startsWith('@@')) {
       const m = line.match(/@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
       if (m) { oldNum = parseInt(m[1]); newNum = parseInt(m[2]); }
-      result.push({ cls: 'git-diff-line git-diff-hunk', text: line, oldN: '', newN: '' });
+      result.push({ cls: 'git-diff-line git-diff-hunk', text: line, oldN: '', newN: '', hunk: true });
     } else if (line.startsWith('+') && !line.startsWith('+++')) {
       result.push({ cls: 'git-diff-line git-diff-add', text: line, oldN: '', newN: newNum });
       newNum++;
@@ -47,19 +47,50 @@ export function parseDiffLines(raw) {
 }
 
 export function DiffLine(props) {
+  const prefix = () => props.line.text ? props.line.text[0] : '';
+  const content = () => props.line.text ? props.line.text.substring(1) : '';
   return (
     <div class={props.line.cls}>
       <span class="git-diff-ln">{props.line.oldN}</span>
       <span class="git-diff-ln">{props.line.newN}</span>
-      <span class="git-diff-text">{props.line.text}</span>
+      {props.line.hunk
+        ? <span class="git-diff-hunk-text">{props.line.text}</span>
+        : <>
+            <span class="git-diff-prefix">{prefix()}</span>
+            <span class="git-diff-text">{content()}</span>
+          </>
+      }
     </div>
+  );
+}
+
+const DIFF_LINE_LIMIT = 3000;
+const DIFF_LINE_CHUNK = 3000;
+
+export function DiffLines(props) {
+  const allLines = createMemo(() => parseDiffLines(props.raw));
+  const [limit, setLimit] = createSignal(DIFF_LINE_LIMIT);
+  const visible = () => allLines().slice(0, limit());
+  const remaining = () => Math.max(0, allLines().length - limit());
+
+  return (
+    <>
+      <For each={visible()}>{(l) => <DiffLine line={l} />}</For>
+      <Show when={remaining() > 0}>
+        <div class="git-diff-truncated" onClick={() => setLimit(l => l + DIFF_LINE_CHUNK)}>
+          {remaining()} more lines — click to show more
+        </div>
+      </Show>
+    </>
   );
 }
 
 export function DiffContent(props) {
   return (
     <pre class={`git-diff-content ${props.class || ''}`}>
-      <For each={parseDiffLines(props.raw)}>{(l) => <DiffLine line={l} />}</For>
+      <div class="git-diff-inner">
+        <DiffLines raw={props.raw} />
+      </div>
     </pre>
   );
 }

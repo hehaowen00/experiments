@@ -1,8 +1,17 @@
 import { For, createSignal } from 'solid-js';
 import Icon from './Icon';
+import Select from './Select';
 import { useWorkspace } from '../context/WorkspaceContext';
 
 const ACTIONS = ['pick', 'reword', 'squash', 'fixup', 'drop'];
+
+const ACTION_OPTIONS = [
+  { value: 'pick', label: 'pick', color: '#50c878' },
+  { value: 'reword', label: 'reword', color: '#7c5cfc' },
+  { value: 'squash', label: 'squash', color: '#f0a030' },
+  { value: 'fixup', label: 'fixup', color: '#f0a030' },
+  { value: 'drop', label: 'drop', color: '#e05555' },
+];
 
 export default function InteractiveRebase() {
   const ws = useWorkspace();
@@ -64,15 +73,12 @@ export default function InteractiveRebase() {
               <div class="irebase-grip" title="Drag to reorder">
                 <Icon name="fa-solid fa-grip-vertical" />
               </div>
-              <select
-                class={`irebase-action irebase-action-${commit.action}`}
+              <Select
                 value={commit.action}
-                onChange={(e) => setAction(idx(), e.target.value)}
-              >
-                <For each={ACTIONS}>{(a) => (
-                  <option value={a}>{a}</option>
-                )}</For>
-              </select>
+                options={ACTION_OPTIONS}
+                onChange={(value) => setAction(idx(), value)}
+                class="select-sm"
+              />
               <code class="irebase-hash">{commit.hash}</code>
               <span class="irebase-subject">{commit.subject}</span>
               <div class="irebase-move">

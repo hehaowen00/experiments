@@ -9,9 +9,9 @@ export function statusClass(code) {
 }
 
 function isConflict(f) {
-  return f.index === 'U' || f.working === 'U' ||
-    (f.index === 'A' && f.working === 'A') ||
-    (f.index === 'D' && f.working === 'D');
+  const pair = f.index + f.working;
+  return pair === 'UU' || pair === 'AA' || pair === 'DD' ||
+    pair === 'AU' || pair === 'UA' || pair === 'DU' || pair === 'UD';
 }
 
 export function conflictFiles(files) {

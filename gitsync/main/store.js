@@ -50,14 +50,6 @@ function initDb() {
       email TEXT NOT NULL
     );
 
-    CREATE TABLE IF NOT EXISTS git_actions (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      script TEXT NOT NULL,
-      enabled INTEGER NOT NULL DEFAULT 1,
-      sort_order INTEGER NOT NULL DEFAULT 0
-    );
-
     CREATE TABLE IF NOT EXISTS p2p_peers (
       id TEXT PRIMARY KEY,
       peer_id TEXT NOT NULL UNIQUE,

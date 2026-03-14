@@ -9,6 +9,11 @@ export default function RemotesPanel() {
   const [tagMessage, setTagMessage] = createSignal('');
   const [tagTarget, setTagTarget] = createSignal('');
 
+  const hasRemotes = () => ws.remotes.list.length > 0;
+  const localBranches = () => ws.branches.list.filter(b => !b.remote);
+  const remoteBranches = () => ws.branches.list.filter(b => b.remote && !b.name.includes('/HEAD'));
+  const hasTags = () => ws.tags.list.length > 0;
+
   function formatDate(dateStr) {
     if (!dateStr) return '';
     try {
@@ -43,16 +48,13 @@ export default function RemotesPanel() {
     <div class="git-remotes-panel">
       <div class="git-section">
         <div class="git-section-header" onClick={() => ws.toggleSection('remotes')}>
-          <Icon name={ws.collapsedSections().has('remotes') ? 'fa-solid fa-chevron-right' : 'fa-solid fa-chevron-down'} class="git-section-chevron" />
-          <span>Remotes</span>
+          <Icon name={!hasRemotes() || ws.collapsedSections().has('remotes') ? 'fa-solid fa-chevron-right' : 'fa-solid fa-chevron-down'} class="git-section-chevron" />
+          <span>Remotes ({ws.remotes.list.length})</span>
           <button class="btn btn-ghost btn-xs" onClick={(e) => { e.stopPropagation(); ws.addRemote(); }} title="Add remote">
             <Icon name="fa-solid fa-plus" /> Add
           </button>
         </div>
-        <Show when={!ws.collapsedSections().has('remotes')}>
-          <Show when={ws.remotes.list.length === 0 && !ws.remotes.loading}>
-            <div class="git-empty">No remotes configured</div>
-          </Show>
+        <Show when={hasRemotes() && !ws.collapsedSections().has('remotes')}>
           <For each={ws.remotes.list}>{(r) => (
             <div class="git-remote-item">
               <div class="git-remote-name">{r.name}</div>
@@ -78,8 +80,8 @@ export default function RemotesPanel() {
 
       <div class="git-section" style={{ 'margin-top': '16px' }}>
         <div class="git-section-header" onClick={() => ws.toggleSection('local-branches')}>
-          <Icon name={ws.collapsedSections().has('local-branches') ? 'fa-solid fa-chevron-right' : 'fa-solid fa-chevron-down'} class="git-section-chevron" />
-          <span>Local Branches</span>
+          <Icon name={localBranches().length === 0 || ws.collapsedSections().has('local-branches') ? 'fa-solid fa-chevron-right' : 'fa-solid fa-chevron-down'} class="git-section-chevron" />
+          <span>Local Branches ({localBranches().length})</span>
           <button class="btn btn-ghost btn-xs" onClick={(e) => { e.stopPropagation(); ws.createBranch(); }} title="Create new branch">
             <Icon name="fa-solid fa-plus" /> New
           </button>
@@ -87,13 +89,22 @@ export default function RemotesPanel() {
             <Icon name="fa-solid fa-rotate" />
           </button>
         </div>
-        <Show when={!ws.collapsedSections().has('local-branches')}>
-          <For each={ws.branches.list.filter(b => !b.remote)}>{(b) => (
+        <Show when={localBranches().length > 0 && !ws.collapsedSections().has('local-branches')}>
+          <For each={localBranches()}>{(b) => (
             <div class={`git-branch-item ${b.current ? 'git-branch-current' : ''}`}>
               <Show when={b.current}><Icon name="fa-solid fa-circle" class="git-branch-dot" /></Show>
               <span class="git-branch-name">{b.name}</span>
+              <Show when={b.ahead > 0}>
+                <span class="git-branch-badge git-ahead" title={`${b.ahead} ahead`}>{b.ahead}<Icon name="fa-solid fa-arrow-up" /></span>
+              </Show>
+              <Show when={b.behind > 0}>
+                <span class="git-branch-badge git-behind" title={`${b.behind} behind`}>{b.behind}<Icon name="fa-solid fa-arrow-down" /></span>
+              </Show>
               <button class="btn btn-ghost btn-xs git-branch-action" onClick={() => ws.doRenameBranch(b.name)} title={`Rename ${b.name}`}>
                 <Icon name="fa-solid fa-pen" />
+              </button>
+              <button class="btn btn-ghost btn-xs git-branch-action" onClick={() => ws.doPushBranch(b.name)} title={`Push ${b.name} to remote`}>
+                <Icon name="fa-solid fa-upload" />
               </button>
               <Show when={!b.current}>
                 <button class="btn btn-ghost btn-xs git-branch-action" onClick={() => ws.doMerge(b.name)} title={`Merge ${b.name} into ${ws.status.branch}`}>
@@ -116,11 +127,11 @@ export default function RemotesPanel() {
 
       <div class="git-section" style={{ 'margin-top': '16px' }}>
         <div class="git-section-header" onClick={() => ws.toggleSection('remote-branches')}>
-          <Icon name={ws.collapsedSections().has('remote-branches') ? 'fa-solid fa-chevron-right' : 'fa-solid fa-chevron-down'} class="git-section-chevron" />
-          <span>Remote Branches</span>
+          <Icon name={remoteBranches().length === 0 || ws.collapsedSections().has('remote-branches') ? 'fa-solid fa-chevron-right' : 'fa-solid fa-chevron-down'} class="git-section-chevron" />
+          <span>Remote Branches ({remoteBranches().length})</span>
         </div>
-        <Show when={!ws.collapsedSections().has('remote-branches')}>
-          <For each={ws.branches.list.filter(b => b.remote && !b.name.includes('/HEAD'))}>{(b) => {
+        <Show when={remoteBranches().length > 0 && !ws.collapsedSections().has('remote-branches')}>
+          <For each={remoteBranches()}>{(b) => {
             const shortName = b.name.replace(/^remotes\//, '');
             return (
               <div class="git-branch-item">
@@ -143,8 +154,8 @@ export default function RemotesPanel() {
 
       <div class="git-section" style={{ 'margin-top': '16px' }}>
         <div class="git-section-header" onClick={() => ws.toggleSection('tags')}>
-          <Icon name={ws.collapsedSections().has('tags') ? 'fa-solid fa-chevron-right' : 'fa-solid fa-chevron-down'} class="git-section-chevron" />
-          <span>Tags</span>
+          <Icon name={!hasTags() || ws.collapsedSections().has('tags') ? 'fa-solid fa-chevron-right' : 'fa-solid fa-chevron-down'} class="git-section-chevron" />
+          <span>Tags ({ws.tags.list.length})</span>
           <button class="btn btn-ghost btn-xs" onClick={(e) => { e.stopPropagation(); setNewTagOpen(!newTagOpen()); }} title="Create new tag">
             <Icon name="fa-solid fa-plus" /> New
           </button>
@@ -152,45 +163,41 @@ export default function RemotesPanel() {
             <Icon name="fa-solid fa-rotate" />
           </button>
         </div>
-        <Show when={!ws.collapsedSections().has('tags')}>
-          <Show when={newTagOpen()}>
-            <div class="git-tag-form">
-              <input
-                type="text"
-                class="input input-sm"
-                placeholder="Tag name (required)"
-                value={tagName()}
-                onInput={(e) => setTagName(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleCreateTag()}
-              />
-              <input
-                type="text"
-                class="input input-sm"
-                placeholder="Message (optional, makes annotated tag)"
-                value={tagMessage()}
-                onInput={(e) => setTagMessage(e.target.value)}
-              />
-              <input
-                type="text"
-                class="input input-sm"
-                placeholder="Target (optional, defaults to HEAD)"
-                value={tagTarget()}
-                onInput={(e) => setTagTarget(e.target.value)}
-              />
-              <div class="git-tag-form-actions">
-                <button class="btn btn-primary btn-sm" onClick={handleCreateTag} disabled={!tagName().trim()}>
-                  Create Tag
-                </button>
-                <button class="btn btn-ghost btn-sm" onClick={() => setNewTagOpen(false)}>
-                  Cancel
-                </button>
-              </div>
+        <Show when={newTagOpen()}>
+          <div class="git-tag-form">
+            <input
+              type="text"
+              class="input input-sm"
+              placeholder="Tag name (required)"
+              value={tagName()}
+              onInput={(e) => setTagName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleCreateTag()}
+            />
+            <input
+              type="text"
+              class="input input-sm"
+              placeholder="Message (optional, makes annotated tag)"
+              value={tagMessage()}
+              onInput={(e) => setTagMessage(e.target.value)}
+            />
+            <input
+              type="text"
+              class="input input-sm"
+              placeholder="Target (optional, defaults to HEAD)"
+              value={tagTarget()}
+              onInput={(e) => setTagTarget(e.target.value)}
+            />
+            <div class="git-tag-form-actions">
+              <button class="btn btn-primary btn-sm" onClick={handleCreateTag} disabled={!tagName().trim()}>
+                Create Tag
+              </button>
+              <button class="btn btn-ghost btn-sm" onClick={() => setNewTagOpen(false)}>
+                Cancel
+              </button>
             </div>
-          </Show>
-
-          <Show when={ws.tags.list.length === 0 && !ws.tags.loading && !newTagOpen()}>
-            <div class="git-empty">No tags</div>
-          </Show>
+          </div>
+        </Show>
+        <Show when={hasTags() && !ws.collapsedSections().has('tags')}>
           <For each={ws.tags.list}>{(t) => (
             <div class="git-tag-item">
               <Icon name="fa-solid fa-tag" class="git-tag-icon" />

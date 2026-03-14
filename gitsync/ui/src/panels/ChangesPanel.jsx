@@ -2,9 +2,10 @@ import { Show, For, createSignal } from 'solid-js';
 import Icon from '../components/Icon';
 import FileTree from '../components/FileTree';
 import ResizeHandle from '../components/ResizeHandle';
+import Select from '../components/Select';
 import { useWorkspace } from '../context/WorkspaceContext';
 import { stagedFiles, unstagedFiles, untrackedFiles, conflictFiles } from '../utils/status';
-import { parseDiffLines, DiffLine } from '../utils/diff';
+import { DiffLines } from '../utils/diff';
 
 export default function ChangesPanel() {
   const ws = useWorkspace();
@@ -199,73 +200,28 @@ export default function ChangesPanel() {
               <span class="git-diff-label">{ws.diff.staged ? 'Staged' : 'Working'}</span>
             </div>
             <pre class="git-diff-content">
-              <For each={parseDiffLines(ws.diff.content)}>{(l) => <DiffLine line={l} />}</For>
+              <div class="git-diff-inner">
+                <DiffLines raw={ws.diff.content} />
+              </div>
             </pre>
           </Show>
         </div>
 
-        <Show when={ws.actions().length > 0}>
-          <div class="git-actions-bar">
-            <select
-              class="git-actions-select"
-              value={ws.selectedAction() || ''}
-              onChange={(e) => ws.setSelectedAction(e.target.value || null)}
-            >
-              <For each={ws.actions()}>{(action) => (
-                <option value={action.id}>{action.name}</option>
-              )}</For>
-            </select>
-            <button
-              class="btn btn-ghost btn-xs"
-              disabled={!ws.selectedAction() || ws.actionRunning()}
-              onClick={() => {
-                const action = ws.actions().find(a => a.id === ws.selectedAction());
-                if (action) ws.runAction(action);
-              }}
-              title="Run action"
-            >
-              <Icon name={ws.actionRunning() ? 'fa-solid fa-spinner' : 'fa-solid fa-play'} />
-            </button>
-          </div>
-          <Show when={ws.actionOutput()}>
-            <div class={`git-action-result ${ws.actionOutput().ok ? 'git-action-success' : 'git-action-error'}`}>
-              <div class="git-action-result-header">
-                <span>{ws.actionOutput().name}: {ws.actionOutput().ok ? 'Passed' : 'Failed'}</span>
-                <div class="git-action-result-buttons">
-                  <button
-                    class="btn btn-ghost btn-xs"
-                    onClick={() => {
-                      const out = ws.actionOutput();
-                      const content = out.ok ? out.output : out.error;
-                      navigator.clipboard.writeText(content || '');
-                    }}
-                    title="Copy to clipboard"
-                  >
-                    <Icon name="fa-solid fa-copy" />
-                  </button>
-                  <button class="btn btn-ghost btn-xs" onClick={() => ws.setActionOutput(null)} title="Dismiss">
-                    <Icon name="fa-solid fa-xmark" />
-                  </button>
-                </div>
-              </div>
-              <pre class="git-action-result-output">{ws.actionOutput().ok ? ws.actionOutput().output : ws.actionOutput().error}</pre>
-            </div>
-          </Show>
-        </Show>
-
         <div class="git-commit-box">
           <Show when={ws.identities().length > 0}>
-            <select
-              class="git-identity-select"
+            <Select
+              class="select-full select-sm"
               value={ws.currentIdentity()?.id || ''}
-              onChange={(e) => ws.setRepoIdentity(e.target.value || null)}
-              title="Git identity for this repo"
-            >
-              <option value="">No identity</option>
-              <For each={ws.identities()}>
-                {(id) => <option value={id.id}>{id.name} &lt;{id.email}&gt;</option>}
-              </For>
-            </select>
+              placeholder="No identity"
+              options={[
+                { value: '', label: 'No identity' },
+                ...ws.identities().map((id) => ({
+                  value: id.id,
+                  label: `${id.name} <${id.email}>`,
+                })),
+              ]}
+              onChange={(v) => ws.setRepoIdentity(v || null)}
+            />
           </Show>
           <input
             type="text"

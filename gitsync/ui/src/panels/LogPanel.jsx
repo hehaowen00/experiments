@@ -1,9 +1,10 @@
 import { Show, For, createSignal, onCleanup } from 'solid-js';
 import Icon from '../components/Icon';
+import Select from '../components/Select';
 import ResizeHandle from '../components/ResizeHandle';
 import { useWorkspace } from '../context/WorkspaceContext';
 import { GraphCell, parseRefs } from '../utils/graph';
-import { parseDiffFiles, parseDiffLines, DiffLine } from '../utils/diff';
+import { parseDiffFiles, DiffLines } from '../utils/diff';
 
 export default function LogPanel() {
   const ws = useWorkspace();
@@ -62,17 +63,16 @@ export default function LogPanel() {
   return (
     <div class="git-log-wrapper">
       <div class="git-log-toolbar">
-        <select
-          class="git-log-branch-select"
+        <Select
           value={ws.logBranch()}
-          onChange={(e) => { ws.setLogBranch(e.target.value); setTimeout(ws.loadLog, 0); }}
-        >
-          <option value="__current__">Current branch</option>
-          <option value="__all__">All branches</option>
-          <For each={ws.logBranches()}>{(b) => (
-            <option value={b.name}>{b.name}{b.current ? ' *' : ''}</option>
-          )}</For>
-        </select>
+          options={[
+            { value: '__current__', label: 'Current branch' },
+            { value: '__all__', label: 'All branches' },
+            ...ws.logBranches().map((b) => ({ value: b.name, label: `${b.name}${b.current ? ' *' : ''}` })),
+          ]}
+          onChange={(value) => { ws.setLogBranch(value); setTimeout(ws.loadLog, 0); }}
+          class="select-sm select-mono"
+        />
         <div class="git-log-search">
           <Icon name="fa-solid fa-magnifying-glass" class="git-log-search-icon" />
           <input
@@ -105,6 +105,9 @@ export default function LogPanel() {
           <Show when={ws.log.loading}>
             <div class="git-empty">Loading...</div>
           </Show>
+          <Show when={!ws.log.loading && ws.log.commits.length === 0}>
+            <div class="git-empty">No commits found</div>
+          </Show>
           <table class="git-log-table">
             <thead>
               <tr>
@@ -130,7 +133,7 @@ export default function LogPanel() {
                         <GraphCell row={row} maxCols={ws.log.maxCols} />
                       </Show>
                     </td>
-                    <td class="git-log-hash"><code>{c.short}</code></td>
+                    <td class="git-log-hash"><code onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(c.hash); }}  title="Click to copy full hash">{c.short}</code></td>
                     <td class="git-log-subject">
                       <Show when={c.refs}>
                         <For each={parseRefs(c.refs)}>{(ref) => (
@@ -160,6 +163,9 @@ export default function LogPanel() {
             <div class="git-commit-detail-header">
               <div class="git-commit-detail-meta">
                 <code class="git-commit-detail-hash">{ws.commitDetail.hash?.substring(0, 12)}</code>
+                <button class="btn btn-ghost btn-xs" onClick={() => navigator.clipboard.writeText(ws.commitDetail.hash)} title="Copy full hash">
+                  <Icon name="fa-solid fa-copy" />
+                </button>
                 <span class="git-commit-detail-author">{ws.commitDetail.author} &lt;{ws.commitDetail.email}&gt;</span>
                 <span class="git-commit-detail-date">
                   {ws.commitDetail.date ? new Date(ws.commitDetail.date).toLocaleString() : ''}
@@ -209,7 +215,9 @@ export default function LogPanel() {
                       </div>
                       <Show when={ws.expandedDetailFiles().has(file.filename)}>
                         <pre class="git-diff-content git-detail-file-diff">
-                          <For each={parseDiffLines(file.diff)}>{(l) => <DiffLine line={l} />}</For>
+                          <div class="git-diff-inner">
+                            <DiffLines raw={file.diff} />
+                          </div>
                         </pre>
                       </Show>
                     </div>

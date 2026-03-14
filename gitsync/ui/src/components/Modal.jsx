@@ -4,7 +4,7 @@ import { applyEditorFontSize, applyUiFontSize } from '../index';
 import t from '../locale';
 import { applyTheme, getStoredThemeId, getThemeList } from '../themes';
 import Icon from './Icon';
-import ScriptEditor from './ScriptEditor';
+import Select from './Select';
 
 let modalResolve = null;
 const [modalVisible, setModalVisible] = createSignal(false);
@@ -125,12 +125,6 @@ export default function Modal() {
   const [identityName, setIdentityName] = createSignal('');
   const [identityEmail, setIdentityEmail] = createSignal('');
 
-  // Actions management
-  const [actions, setActions] = createStore([]);
-  const [editingAction, setEditingAction] = createSignal(null);
-  const [actionName, setActionName] = createSignal('');
-  const [actionScript, setActionScript] = createSignal('');
-
   // P2P settings
   const [p2pIdentity, setP2pIdentity] = createSignal(null);
   const [p2pDisplayName, setP2pDisplayName] = createSignal('');
@@ -144,7 +138,6 @@ export default function Modal() {
         if (s.editorFontSize) setEditorFontSize(parseInt(s.editorFontSize));
       });
       window.api.identityList().then((list) => setIdentities(list));
-      window.api.actionsList().then((list) => setActions(list));
       window.api.p2pGetIdentity().then((id) => {
         setP2pIdentity(id);
         setP2pDisplayName(id.displayName);
@@ -203,48 +196,6 @@ export default function Modal() {
       }
     }
     setIdentities(await window.api.identityList());
-  }
-
-  // Actions CRUD
-  function resetActionForm() {
-    setEditingAction(null);
-    setActionName('');
-    setActionScript('');
-  }
-
-  async function saveAction() {
-    const name = actionName().trim();
-    const script = actionScript().trim();
-    if (!name || !script) return;
-    if (editingAction()) {
-      const existing = actions.find((a) => a.id === editingAction());
-      await window.api.actionsUpdate(editingAction(), { name, script, enabled: existing?.enabled ?? 1 });
-    } else {
-      await window.api.actionsCreate({ name, script, enabled: true });
-    }
-    setActions(await window.api.actionsList());
-    resetActionForm();
-  }
-
-  function startEditAction(id) {
-    const item = actions.find((a) => a.id === id);
-    if (!item) return;
-    setEditingAction(id);
-    setActionName(item.name);
-    setActionScript(item.script);
-  }
-
-  async function deleteAction(id) {
-    await window.api.actionsDelete(id);
-    setActions(await window.api.actionsList());
-    if (editingAction() === id) resetActionForm();
-  }
-
-  async function toggleActionEnabled(id) {
-    const item = actions.find((a) => a.id === id);
-    if (!item) return;
-    await window.api.actionsUpdate(id, { name: item.name, script: item.script, enabled: !item.enabled });
-    setActions(await window.api.actionsList());
   }
 
   function onKeyDown(e) {
@@ -331,60 +282,48 @@ export default function Modal() {
             <div class="settings-tabs">
               <button class={`settings-tab ${settingsTab() === 'general' ? 'active' : ''}`} onClick={() => setSettingsTab('general')}>General</button>
               <button class={`settings-tab ${settingsTab() === 'identities' ? 'active' : ''}`} onClick={() => setSettingsTab('identities')}>Identities</button>
-              <button class={`settings-tab ${settingsTab() === 'actions' ? 'active' : ''}`} onClick={() => setSettingsTab('actions')}>Actions</button>
               <button class={`settings-tab ${settingsTab() === 'p2p' ? 'active' : ''}`} onClick={() => setSettingsTab('p2p')}>P2P</button>
             </div>
             <div class="settings-tab-content">
               <Show when={settingsTab() === 'general'}>
                 <div class="settings-section">
                   <div class="settings-label">{t.modal.themeLabel}</div>
-                  <select
-                    class="settings-select"
+                  <Select
                     value={selectedTheme()}
-                    onChange={(e) => {
-                      applyTheme(e.target.value);
-                      setSelectedTheme(e.target.value);
+                    options={getThemeList().map((theme) => ({ value: theme.id, label: theme.name }))}
+                    onChange={(value) => {
+                      applyTheme(value);
+                      setSelectedTheme(value);
                     }}
-                  >
-                    <For each={getThemeList()}>
-                      {(theme) => <option value={theme.id}>{theme.name}</option>}
-                    </For>
-                  </select>
+                    class="select-full"
+                  />
                 </div>
                 <div class="settings-row">
                   <div class="settings-section">
                     <div class="settings-label">{t.modal.uiFontSizeLabel}</div>
-                    <select
-                      class="settings-select"
+                    <Select
                       value={uiFontSize()}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setUiFontSize(parseInt(v));
-                        window.api.setSetting('uiFontSize', v);
-                        applyUiFontSize(v);
+                      options={[10, 11, 12, 13, 14, 15, 16].map((s) => ({ value: s, label: `${s}px` }))}
+                      onChange={(value) => {
+                        setUiFontSize(parseInt(value));
+                        window.api.setSetting('uiFontSize', value);
+                        applyUiFontSize(value);
                       }}
-                    >
-                      <For each={[10, 11, 12, 13, 14, 15, 16]}>
-                        {(s) => <option value={s}>{s}px</option>}
-                      </For>
-                    </select>
+                      class="select-full"
+                    />
                   </div>
                   <div class="settings-section">
                     <div class="settings-label">{t.modal.editorFontSizeLabel}</div>
-                    <select
-                      class="settings-select"
+                    <Select
                       value={editorFontSize()}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        setEditorFontSize(parseInt(v));
-                        window.api.setSetting('editorFontSize', v);
-                        applyEditorFontSize(v);
+                      options={[10, 11, 12, 13, 14, 15, 16].map((s) => ({ value: s, label: `${s}px` }))}
+                      onChange={(value) => {
+                        setEditorFontSize(parseInt(value));
+                        window.api.setSetting('editorFontSize', value);
+                        applyEditorFontSize(value);
                       }}
-                    >
-                      <For each={[10, 11, 12, 13, 14, 15, 16]}>
-                        {(s) => <option value={s}>{s}px</option>}
-                      </For>
-                    </select>
+                      class="select-full"
+                    />
                   </div>
                 </div>
               </Show>
@@ -438,55 +377,6 @@ export default function Modal() {
                     <button class="btn btn-ghost btn-xs" onClick={importRepoIdentities} title="Import from all saved repos' local git config">
                       <Icon name="fa-solid fa-folder-open" /> Import from Repos
                     </button>
-                  </div>
-                </div>
-              </Show>
-              <Show when={settingsTab() === 'actions'}>
-                <div class="settings-section">
-                  <div class="settings-actions-list">
-                    <For each={actions}>{(action) => (
-                      <div class="settings-action-row">
-                        <label class="settings-action-toggle" title={action.enabled ? 'Enabled' : 'Disabled'}>
-                          <input type="checkbox" checked={action.enabled} onChange={() => toggleActionEnabled(action.id)} />
-                        </label>
-                        <div class="settings-action-info">
-                          <span class="settings-action-name">{action.name}</span>
-                          <span class="settings-action-script">{action.script}</span>
-                        </div>
-                        <div class="settings-action-actions">
-                          <button class="btn btn-ghost btn-xs" onClick={() => startEditAction(action.id)} title="Edit">
-                            <Icon name="fa-solid fa-pen" />
-                          </button>
-                          <button class="btn btn-ghost btn-xs" onClick={() => deleteAction(action.id)} title="Delete">
-                            <Icon name="fa-solid fa-trash" />
-                          </button>
-                        </div>
-                      </div>
-                    )}</For>
-                  </div>
-                  <div class="settings-action-form">
-                    <div class="settings-action-form-top">
-                      <input
-                        type="text"
-                        class="settings-action-input"
-                        placeholder="Action name"
-                        value={actionName()}
-                        onInput={(e) => setActionName(e.target.value)}
-                      />
-                      <button class="btn btn-primary btn-xs" onClick={saveAction} disabled={!actionName().trim() || !actionScript().trim()}>
-                        {editingAction() ? 'Update' : 'Add'}
-                      </button>
-                      <Show when={editingAction()}>
-                        <button class="btn btn-ghost btn-xs" onClick={resetActionForm}>Cancel</button>
-                      </Show>
-                    </div>
-                    <div class="settings-action-editor">
-                      <ScriptEditor
-                        value={actionScript()}
-                        onInput={setActionScript}
-                        placeholder="#!/bin/bash&#10;npm test"
-                      />
-                    </div>
                   </div>
                 </div>
               </Show>

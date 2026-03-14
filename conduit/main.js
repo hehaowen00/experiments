@@ -14,6 +14,8 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
+    titleBarStyle: 'hidden',
+    trafficLightPosition: { x: 12, y: 10 },
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -37,7 +39,14 @@ app.whenReady().then(() => {
   ipcRfc.register(mainWindow);
 
   ipcMain.handle('app:homeDir', () => require('os').homedir());
+  ipcMain.handle('app:platform', () => process.platform);
   ipcMain.handle('app:quit', () => app.quit());
+  ipcMain.handle('window:minimize', () => mainWindow?.minimize());
+  ipcMain.handle('window:maximize', () => {
+    if (mainWindow?.isMaximized()) mainWindow.unmaximize();
+    else mainWindow?.maximize();
+  });
+  ipcMain.handle('window:close', () => mainWindow?.close());
   ipcMain.handle('file:save', async (_, defaultName, content) => {
     const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
       defaultPath: defaultName,

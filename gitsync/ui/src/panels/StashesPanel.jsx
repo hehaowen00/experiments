@@ -2,7 +2,7 @@ import { Show, For, createSignal, createMemo } from 'solid-js';
 import Icon from '../components/Icon';
 import ResizeHandle from '../components/ResizeHandle';
 import { useWorkspace } from '../context/WorkspaceContext';
-import { parseDiffFiles, parseDiffLines, DiffLine } from '../utils/diff';
+import { parseDiffFiles, DiffLines } from '../utils/diff';
 import { buildTree, compactTree } from '../utils/tree';
 
 function StashTreeDir(props) {
@@ -211,7 +211,9 @@ export default function StashesPanel() {
                   <span class="git-diff-filepath">{selectedDiff().filename}</span>
                 </div>
                 <pre class="git-diff-content git-detail-file-diff">
-                  <For each={parseDiffLines(selectedDiff().diff)}>{(l) => <DiffLine line={l} />}</For>
+                  <div class="git-diff-inner">
+                    <DiffLines raw={selectedDiff().diff} />
+                  </div>
                 </pre>
               </Show>
             </div>

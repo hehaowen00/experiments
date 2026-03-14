@@ -3,6 +3,7 @@ import { applyEditorFontSize, applyUiFontSize } from '../index';
 import t from '../locale';
 import { applyTheme, getStoredThemeId, getThemeList } from '../themes';
 import Icon from './Icon';
+import Select from './Select';
 
 let modalResolve = null;
 const [modalVisible, setModalVisible] = createSignal(false);
@@ -184,53 +185,42 @@ export default function Modal() {
           <Show when={modalType() === 'settings'}>
             <div class="settings-section">
               <div class="settings-label">{t.modal.themeLabel}</div>
-              <select
-                class="settings-select"
+              <Select
+                class="select-full"
                 value={selectedTheme()}
-                onChange={(e) => {
-                  applyTheme(e.target.value);
-                  setSelectedTheme(e.target.value);
+                options={getThemeList().map((theme) => ({ value: theme.id, label: theme.name }))}
+                onChange={(value) => {
+                  applyTheme(value);
+                  setSelectedTheme(value);
                 }}
-              >
-                <For each={getThemeList()}>
-                  {(theme) => <option value={theme.id}>{theme.name}</option>}
-                </For>
-              </select>
+              />
             </div>
             <div class="settings-row">
               <div class="settings-section">
                 <div class="settings-label">{t.modal.uiFontSizeLabel}</div>
-                <select
-                  class="settings-select"
-                  value={uiFontSize()}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setUiFontSize(parseInt(v));
-                    window.api.setSetting('uiFontSize', v);
-                    applyUiFontSize(v);
+                <Select
+                  class="select-full"
+                  value={String(uiFontSize())}
+                  options={[10, 11, 12, 13, 14, 15, 16].map((s) => ({ value: String(s), label: `${s}px` }))}
+                  onChange={(value) => {
+                    setUiFontSize(parseInt(value));
+                    window.api.setSetting('uiFontSize', value);
+                    applyUiFontSize(value);
                   }}
-                >
-                  <For each={[10, 11, 12, 13, 14, 15, 16]}>
-                    {(s) => <option value={s}>{s}px</option>}
-                  </For>
-                </select>
+                />
               </div>
               <div class="settings-section">
                 <div class="settings-label">{t.modal.editorFontSizeLabel}</div>
-                <select
-                  class="settings-select"
-                  value={editorFontSize()}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setEditorFontSize(parseInt(v));
-                    window.api.setSetting('editorFontSize', v);
-                    applyEditorFontSize(v);
+                <Select
+                  class="select-full"
+                  value={String(editorFontSize())}
+                  options={[10, 11, 12, 13, 14, 15, 16].map((s) => ({ value: String(s), label: `${s}px` }))}
+                  onChange={(value) => {
+                    setEditorFontSize(parseInt(value));
+                    window.api.setSetting('editorFontSize', value);
+                    applyEditorFontSize(value);
                   }}
-                >
-                  <For each={[10, 11, 12, 13, 14, 15, 16]}>
-                    {(s) => <option value={s}>{s}px</option>}
-                  </For>
-                </select>
+                />
               </div>
             </div>
           </Show>

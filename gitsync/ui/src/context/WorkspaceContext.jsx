@@ -47,7 +47,16 @@ export function WorkspaceProvider(props) {
   // --- Signals ---
   const [tab, setTab] = createSignal('changes');
   const [operating, setOperating] = createSignal('');
-  const [output, setOutput] = createSignal('');
+  const [outputLog, setOutputLog] = createSignal([]);
+  const [outputOpen, setOutputOpen] = createSignal(false);
+  function setOutput(msg, autoOpen) {
+    if (!msg) return;
+    setOutputLog(prev => [{ text: msg, time: new Date() }, ...prev]);
+    if (autoOpen) setOutputOpen(true);
+  }
+  function clearOutputLog() { setOutputLog([]); setOutputOpen(false); }
+  function toggleOutputPanel() { setOutputOpen(v => !v); }
+  const [readme, setReadme] = createSignal({ content: null, filename: null });
   const [expandedDirs, setExpandedDirs] = createSignal(new Set());
   const [collapsedSections, setCollapsedSections] = createSignal(new Set());
   const [ctxMenu, setCtxMenu] = createSignal(null);
@@ -76,6 +85,11 @@ export function WorkspaceProvider(props) {
   // Reload working tree + commit history. Use after any operation that
   // may change files, branches, or commits so callers don't need to
   // remember which combination of loaders to invoke.
+  async function loadReadme() {
+    const result = await window.api.gitReadme(repoPath);
+    setReadme({ content: result.content, filename: result.filename });
+  }
+
   async function reloadRepo() {
     await refresh();
     loadLog();
@@ -249,35 +263,41 @@ export function WorkspaceProvider(props) {
 
   // --- Staging ---
   async function stageFile(filepath) {
-    await window.api.gitStage(repoPath, [filepath]);
+    const result = await window.api.gitStage(repoPath, [filepath]);
+    if (result?.error) { showAlert('Stage Failed', result.error); return; }
     await refresh();
     if (diff.filepath === filepath) viewDiff(filepath, true);
   }
 
   async function unstageFile(filepath) {
-    await window.api.gitUnstage(repoPath, [filepath]);
+    const result = await window.api.gitUnstage(repoPath, [filepath]);
+    if (result?.error) { showAlert('Unstage Failed', result.error); return; }
     await refresh();
     if (diff.filepath === filepath) viewDiff(filepath, false);
   }
 
   async function stageAll(files) {
+    let result;
     if (files && files.length > 0) {
-      await window.api.gitStage(repoPath, files.map(f => f.path));
+      result = await window.api.gitStage(repoPath, files.map(f => f.path));
     } else {
-      await window.api.gitStageAll(repoPath);
+      result = await window.api.gitStageAll(repoPath);
     }
+    if (result?.error) { showAlert('Stage Failed', result.error); return; }
     await refresh();
   }
 
   async function unstageAll() {
-    await window.api.gitUnstageAll(repoPath);
+    const result = await window.api.gitUnstageAll(repoPath);
+    if (result?.error) { showAlert('Unstage Failed', result.error); return; }
     await refresh();
   }
 
   async function stageSelected() {
     const files = [...selectedFiles()];
     if (files.length === 0) return;
-    await window.api.gitStage(repoPath, files);
+    const result = await window.api.gitStage(repoPath, files);
+    if (result?.error) { showAlert('Stage Failed', result.error); return; }
     setSelectedFiles(new Set());
     await refresh();
   }
@@ -285,7 +305,8 @@ export function WorkspaceProvider(props) {
   async function unstageSelected() {
     const files = [...selectedFiles()];
     if (files.length === 0) return;
-    await window.api.gitUnstage(repoPath, files);
+    const result = await window.api.gitUnstage(repoPath, files);
+    if (result?.error) { showAlert('Unstage Failed', result.error); return; }
     setSelectedFiles(new Set());
     await refresh();
   }
@@ -303,6 +324,27 @@ export function WorkspaceProvider(props) {
     const label = filepaths.length === 1 ? `"${filepaths[0]}"` : `${filepaths.length} files`;
     if (await showConfirm(`Discard changes to ${label}?`, 'This cannot be undone.')) {
       await window.api.gitDiscard(repoPath, filepaths);
+      await refresh();
+      if (filepaths.includes(diff.filepath)) setDiff({ content: '', filepath: null });
+    }
+  }
+
+  async function discardStagedFiles(filepaths) {
+    const label = filepaths.length === 1 ? `"${filepaths[0]}"` : `${filepaths.length} files`;
+    if (await showConfirm(`Discard staged changes to ${label}?`, 'This will unstage and discard all changes. This cannot be undone.')) {
+      await window.api.gitUnstage(repoPath, filepaths);
+      // New files become untracked after unstaging — delete them
+      const newFiles = filepaths.filter((fp) => {
+        const f = status.files.find((s) => s.path === fp);
+        return f && f.index === 'A';
+      });
+      const modifiedFiles = filepaths.filter((fp) => !newFiles.includes(fp));
+      if (modifiedFiles.length > 0) {
+        await window.api.gitDiscard(repoPath, modifiedFiles);
+      }
+      if (newFiles.length > 0) {
+        await window.api.gitDeleteUntracked(repoPath, newFiles);
+      }
       await refresh();
       if (filepaths.includes(diff.filepath)) setDiff({ content: '', filepath: null });
     }
@@ -356,33 +398,6 @@ export function WorkspaceProvider(props) {
     }
   }
 
-  // --- Actions ---
-  const [actions, setActions] = createSignal([]);
-  const [selectedAction, setSelectedAction] = createSignal(null);
-  const [actionRunning, setActionRunning] = createSignal(null);
-  const [actionOutput, setActionOutput] = createSignal(null);
-
-  async function loadActions() {
-    const list = await window.api.actionsList();
-    setActions(list);
-    if (list.length > 0 && !selectedAction()) {
-      setSelectedAction(list[0].id);
-    }
-  }
-
-  async function runAction(action) {
-    setActionRunning(action.id);
-    setActionOutput(null);
-    const result = await window.api.actionsRun(repoPath, action.id);
-    if (result.ok) {
-      setActionOutput({ ok: true, name: result.name, output: result.output || 'Done' });
-    } else {
-      setActionOutput({ ok: false, name: result.name, error: result.error });
-    }
-    setActionRunning(null);
-    await refresh();
-  }
-
   // --- Commit ---
   async function doCommit() {
     const subject = commit.message.trim();
@@ -391,28 +406,24 @@ export function WorkspaceProvider(props) {
     const fullMsg = desc ? `${subject}\n\n${desc}` : subject;
     setCommit('running', true);
 
-    // Run pre-commit actions
-    const preResult = await window.api.actionsRunPreCommit(repoPath);
-    if (!preResult.ok) {
-      setCommit('running', false);
-      showAlert(
-        `Pre-commit action "${preResult.failedAction}" failed`,
-        preResult.error,
-      );
-      return;
-    }
-
     let result;
-    if (commit.amend) {
-      result = await window.api.gitCommit(repoPath, fullMsg || commit.originalAmendMsg);
-    } else {
-      result = await window.api.gitCommit(repoPath, fullMsg);
+    try {
+      if (commit.amend) {
+        result = await window.api.gitCommit(repoPath, fullMsg || commit.originalAmendMsg);
+      } else {
+        result = await window.api.gitCommit(repoPath, fullMsg);
+      }
+    } catch (e) {
+      setCommit('running', false);
+      showAlert('Commit Failed', e.message);
+      return;
     }
     setCommit('running', false);
     if (result.error) {
       showAlert('Commit Failed', result.error);
     } else {
       setCommit({ message: '', description: '', amend: false, originalAmendMsg: '', amendHash: null });
+      localStorage.removeItem(commitKey);
       // Clear diff if the displayed file was part of the commit (staged)
       if (diff.filepath && diff.staged) {
         setDiff({ content: '', filepath: null, staged: false });
@@ -642,7 +653,7 @@ export function WorkspaceProvider(props) {
     const result = await window.api.gitMerge(repoPath, branch);
     setOperating('');
     if (result.error) showAlert('Merge Failed', result.error);
-    else if (result.conflict) setOutput(result.output || 'Merge conflicts detected');
+    else if (result.conflict) setOutput(result.output || 'Merge conflicts detected', true);
     else setOutput(result.output || 'Merge complete');
     await reloadRepo();
   }
@@ -663,7 +674,7 @@ export function WorkspaceProvider(props) {
     const result = await window.api.gitRebase(repoPath, branch);
     setOperating('');
     if (result.error) showAlert('Rebase Failed', result.error);
-    else if (result.conflict) setOutput(result.output || 'Rebase conflicts detected — resolve and continue');
+    else if (result.conflict) setOutput(result.output || 'Rebase conflicts detected — resolve and continue', true);
     else setOutput(result.output || 'Rebase complete');
     await reloadRepo();
   }
@@ -673,7 +684,7 @@ export function WorkspaceProvider(props) {
     const result = await window.api.gitRebaseContinue(repoPath);
     setOperating('');
     if (result.error) showAlert('Rebase Continue Failed', result.error);
-    else if (result.conflict) setOutput(result.output || 'More conflicts — resolve and continue');
+    else if (result.conflict) setOutput(result.output || 'More conflicts — resolve and continue', true);
     else setOutput(result.output || 'Rebase complete');
     await reloadRepo();
   }
@@ -710,7 +721,7 @@ export function WorkspaceProvider(props) {
     const result = await window.api.gitCherryPick(repoPath, hash);
     setOperating('');
     if (result.error) showAlert('Cherry-pick Failed', result.error);
-    else if (result.conflict) setOutput(result.output || 'Cherry-pick conflicts detected — resolve and commit');
+    else if (result.conflict) setOutput(result.output || 'Cherry-pick conflicts detected — resolve and commit', true);
     else setOutput(result.output || 'Cherry-pick complete');
     await reloadRepo();
   }
@@ -721,7 +732,7 @@ export function WorkspaceProvider(props) {
     const result = await window.api.gitRevert(repoPath, hash);
     setOperating('');
     if (result.error) showAlert('Revert Failed', result.error);
-    else if (result.conflict) setOutput(result.output || 'Revert conflicts detected — resolve and commit');
+    else if (result.conflict) setOutput(result.output || 'Revert conflicts detected — resolve and commit', true);
     else setOutput(result.output || 'Revert complete');
     await reloadRepo();
   }
@@ -732,7 +743,7 @@ export function WorkspaceProvider(props) {
     const result = await window.api.gitDropCommit(repoPath, hash);
     setOperating('');
     if (result.error) showAlert('Drop Failed', result.error);
-    else if (result.conflict) setOutput(result.output || 'Conflicts while dropping — resolve and continue rebase');
+    else if (result.conflict) setOutput(result.output || 'Conflicts while dropping — resolve and continue rebase', true);
     else setOutput(result.output || 'Commit dropped');
     await reloadRepo();
   }
@@ -761,7 +772,7 @@ export function WorkspaceProvider(props) {
     const result = await window.api.gitInteractiveRebase(repoPath, state.baseHash, state.commits);
     setOperating('');
     if (result.error) showAlert('Rebase Failed', result.error);
-    else if (result.conflict) setOutput(result.output || 'Rebase conflicts — resolve and continue');
+    else if (result.conflict) setOutput(result.output || 'Rebase conflicts — resolve and continue', true);
     else setOutput(result.output || 'Interactive rebase complete');
     await reloadRepo();
   }
@@ -852,6 +863,18 @@ export function WorkspaceProvider(props) {
   }
 
   // --- Branch delete & rename ---
+  async function doPushBranch(branch) {
+    const remote = await pickRemote('Push Branch', `Push "${branch}" to remote.`);
+    if (!remote) return;
+    lastRemote = remote;
+    setOperating('Pushing...');
+    const result = await window.api.gitPushSetUpstream(repoPath, remote, branch);
+    setOperating('');
+    if (result.error) showAlert('Push Failed', result.error);
+    else setOutput(result.output || `Pushed "${branch}" to ${remote}`);
+    await reloadRepo();
+  }
+
   async function doDeleteBranch(branch) {
     if (!await showConfirm(`Delete branch "${branch}"?`, '')) return;
     setOperating('Deleting branch...');
@@ -898,7 +921,7 @@ export function WorkspaceProvider(props) {
     const result = await window.api.gitStashPop(repoPath, ref);
     setOperating('');
     if (result.error) showAlert('Stash Pop Failed', result.error);
-    else if (result.conflict) setOutput(result.output || 'Stash applied with conflicts');
+    else if (result.conflict) setOutput(result.output || 'Stash applied with conflicts', true);
     else setOutput(result.output || 'Stash popped');
     await refresh();
     loadStashes();
@@ -909,7 +932,7 @@ export function WorkspaceProvider(props) {
     const result = await window.api.gitStashApply(repoPath, ref);
     setOperating('');
     if (result.error) showAlert('Stash Apply Failed', result.error);
-    else if (result.conflict) setOutput(result.output || 'Stash applied with conflicts');
+    else if (result.conflict) setOutput(result.output || 'Stash applied with conflicts', true);
     else setOutput(result.output || 'Stash applied');
     await refresh();
     loadStashes();
@@ -1050,16 +1073,42 @@ export function WorkspaceProvider(props) {
     }
   }
 
+  // --- Commit message persistence ---
+  const commitKey = `gitsync:commit:${repoPath}`;
+
+  function saveCommitMessage() {
+    const msg = commit.message;
+    const desc = commit.description;
+    if (msg || desc) {
+      localStorage.setItem(commitKey, JSON.stringify({ message: msg, description: desc }));
+    } else {
+      localStorage.removeItem(commitKey);
+    }
+  }
+
+  function restoreCommitMessage() {
+    try {
+      const saved = localStorage.getItem(commitKey);
+      if (saved) {
+        const { message, description } = JSON.parse(saved);
+        if (message) setCommit('message', message);
+        if (description) setCommit('description', description);
+      }
+    } catch {}
+  }
+
   // --- Lifecycle ---
   let removeFsListener;
 
   onMount(() => {
+    restoreCommitMessage();
     reloadRepo();
     loadStashes();
+    loadReadme();
     loadIdentities();
-    loadActions();
     initHomeDir();
     document.addEventListener('click', dismissCtxMenu);
+    window.addEventListener('beforeunload', saveCommitMessage);
     window.api.gitWatchRepo(repoPath);
     removeFsListener = window.api.onFsChanged((changedPath) => {
       if (changedPath === repoPath) reloadRepo();
@@ -1067,6 +1116,8 @@ export function WorkspaceProvider(props) {
   });
 
   onCleanup(() => {
+    saveCommitMessage();
+    window.removeEventListener('beforeunload', saveCommitMessage);
     document.removeEventListener('click', dismissCtxMenu);
     window.api.gitUnwatchRepo(repoPath);
     if (removeFsListener) removeFsListener();
@@ -1079,7 +1130,7 @@ export function WorkspaceProvider(props) {
     log, setLog, remotes, branches, tags, stashes, stashDetail, setStashDetail,
     commitDetail, setCommitDetail,
     // Signals
-    tab, setTab, operating, output, setOutput,
+    tab, setTab, operating, outputLog, outputOpen, setOutputOpen, toggleOutputPanel, clearOutputLog,
     expandedDirs, collapsedSections, ctxMenu, setCtxMenu, opState, submodules,
     expandedDetailFiles, setExpandedDetailFiles,
     logBranch, setLogBranch, logBranches, logSearch, setLogSearch, logTopoOrder, setLogTopoOrder, selectedFiles, allFiles,
@@ -1089,7 +1140,7 @@ export function WorkspaceProvider(props) {
     onTabChange, viewDiff,
     stageFile, unstageFile, stageAll, unstageAll, stageSelected, unstageSelected, exportStagedPatch, applyPatch,
     resolveOurs, resolveTheirs, viewConflictDiff,
-    discardFile, discardFiles, deleteUntrackedFiles,
+    discardFile, discardFiles, discardStagedFiles, deleteUntrackedFiles,
     doCommit, toggleAmend,
     doPull, doPush, doFetch, pickRemote,
     addRemote, removeRemote, editRemoteUrl,
@@ -1099,7 +1150,7 @@ export function WorkspaceProvider(props) {
     interactiveRebase, setInteractiveRebase, startInteractiveRebase, executeInteractiveRebase, cancelInteractiveRebase,
     fileHistory, openFileHistory, closeFileHistory, selectFileHistoryCommit,
     bisect, startBisectSelect, finishBisectSelect, cancelBisectSelect, doBisectMark, doBisectReset,
-    doDeleteBranch, doRenameBranch,
+    doPushBranch, doDeleteBranch, doRenameBranch,
     doCreateTag, doDeleteTag, doPushTag, doDeleteRemoteTag,
     doStashPush, doStashPop, doStashApply, doStashDrop, viewStashDiff,
     initSubmodule, openSubmodule, selectCommit,
@@ -1107,7 +1158,7 @@ export function WorkspaceProvider(props) {
     toggleSection, toggleDir, toggleFileSelection,
     openSwitcher, closeSwitcher, filteredSwitcherRepos, switcherSelect,
     identities, currentIdentity, setRepoIdentity, loadIdentities,
-    actions, selectedAction, setSelectedAction, actionRunning, actionOutput, setActionOutput, loadActions, runAction,
+    readme, loadReadme,
   };
 
   return (

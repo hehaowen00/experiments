@@ -1,6 +1,7 @@
 package pubsub
 
 import (
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -47,7 +48,12 @@ func (p *peer) setTopics(topics []string) {
 // hasTopic returns true if the peer has subscribers for the given topic.
 // Returns true if the peer's topic list is unknown or empty (conservative —
 // only skip forwarding when we know the peer has topics and ours isn't among them).
+// Ephemeral topics (_reply.*, _stream.*, _dlq.*) are always forwarded since
+// they are created dynamically and may not yet be known via exchange.
 func (p *peer) hasTopic(topic string) bool {
+	if strings.HasPrefix(topic, "_reply.") || strings.HasPrefix(topic, "_stream.") || strings.HasPrefix(topic, "_dlq.") {
+		return true
+	}
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	if !p.topicsKnown || len(p.topics) == 0 {
@@ -55,6 +61,16 @@ func (p *peer) hasTopic(topic string) bool {
 	}
 	_, ok := p.topics[topic]
 	return ok
+}
+
+func (p *peer) getTopics() []string {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	topics := make([]string, 0, len(p.topics))
+	for t := range p.topics {
+		topics = append(topics, t)
+	}
+	return topics
 }
 
 func (p *peer) close() {

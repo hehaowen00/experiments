@@ -1,7 +1,7 @@
 import { Show, For } from 'solid-js';
 import Icon from './Icon';
 import { useWorkspace } from '../context/WorkspaceContext';
-import { parseDiffLines, DiffLine } from '../utils/diff';
+import { DiffLines } from '../utils/diff';
 
 export default function FileHistory() {
   const ws = useWorkspace();
@@ -51,7 +51,9 @@ export default function FileHistory() {
             </Show>
             <Show when={h().selectedHash && !h().diffLoading && h().diff}>
               <pre class="git-diff-content fhistory-diff-content">
-                <For each={parseDiffLines(h().diff)}>{(l) => <DiffLine line={l} />}</For>
+                <div class="git-diff-inner">
+                  <DiffLines raw={h().diff} />
+                </div>
               </pre>
             </Show>
           </div>

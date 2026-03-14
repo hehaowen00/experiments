@@ -264,6 +264,7 @@ th.git-log-graph {
 .git-commit-detail-hash {
   font-weight: 600;
   color: var(--text-accent);
+  user-select: text;
 }
 
 .git-commit-detail-author {
@@ -286,6 +287,7 @@ th.git-log-graph {
   font-size: var(--ui-font-size-sm);
   white-space: pre-wrap;
   word-break: break-word;
+  user-select: text;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }

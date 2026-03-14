@@ -9,6 +9,7 @@ import t from '../locale';
 import { useCollection } from '../store/collection';
 import CodeEditor from './CodeEditor';
 import Icon from './Icon';
+import Select from './Select';
 
 function useDragReorder(onReorder) {
   let dragIdx = null;
@@ -392,32 +393,25 @@ function BodyTab(props) {
   return (
     <Show when={props.activeTab() === 'body'}>
       <div class="body-type-bar">
-        <select
-          class="body-type-select"
+        <Select
+          class="select-sm"
           value={state.bodyType}
-          onChange={(e) => actions.updateField('bodyType', e.target.value)}
-        >
-          <option value="text">{t.requestPane.bodyTypes.text}</option>
-          <option value="file">{t.requestPane.bodyTypes.file}</option>
-          <option value="form">{t.requestPane.bodyTypes.form}</option>
-        </select>
-        <select
-          class="body-type-select"
+          options={[
+            { value: 'text', label: t.requestPane.bodyTypes.text },
+            { value: 'file', label: t.requestPane.bodyTypes.file },
+            { value: 'form', label: t.requestPane.bodyTypes.form },
+          ]}
+          onChange={(value) => actions.updateField('bodyType', value)}
+        />
+        <Select
+          class="select-sm"
           value={state.contentType}
-          onChange={(e) => {
-            actions.updateField('contentType', e.target.value);
-            actions.syncContentTypeHeader(e.target.value);
+          options={optionItems}
+          onChange={(value) => {
+            actions.updateField('contentType', value);
+            actions.syncContentTypeHeader(value);
           }}
-        >
-          <For each={optionItems}>
-            {(opt) => <option value={opt.value}>{opt.label}</option>}
-          </For>
-          {/* <option value="auto">{t.requestPane.contentTypes.auto}</option>
-          <option value="json">{t.requestPane.contentTypes.json}</option>
-          <option value="xml">{t.requestPane.contentTypes.xml}</option>
-          <option value="html">{t.requestPane.contentTypes.html}</option>
-          <option value="text">{t.requestPane.contentTypes.text}</option> */}
-        </select>
+        />
       </div>
 
       <Show when={state.bodyType === 'text'}>
@@ -471,19 +465,17 @@ function BodyTab(props) {
                     actions.onFormFieldChange(i, 'key', e.target.value)
                   }
                 />
-                <select
+                <Select
+                  class="select-sm"
                   value={f().type}
-                  onChange={(e) =>
-                    actions.onFormFieldChange(i, 'type', e.target.value)
+                  options={[
+                    { value: 'text', label: t.requestPane.formFieldTypes.text },
+                    { value: 'file', label: t.requestPane.formFieldTypes.file },
+                  ]}
+                  onChange={(value) =>
+                    actions.onFormFieldChange(i, 'type', value)
                   }
-                >
-                  <option value="text">
-                    {t.requestPane.formFieldTypes.text}
-                  </option>
-                  <option value="file">
-                    {t.requestPane.formFieldTypes.file}
-                  </option>
-                </select>
+                />
                 <Show
                   when={f().type === 'text'}
                   fallback={

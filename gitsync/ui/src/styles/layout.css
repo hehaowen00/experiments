@@ -1,9 +1,14 @@
 /* Landing page */
 .landing {
-  height: 100vh;
+  flex: 1;
   display: flex;
   flex-direction: row;
   overflow: hidden;
+  user-select: none;
+}
+
+input, textarea {
+  user-select: text;
 }
 
 .landing-sidebar {
@@ -40,7 +45,7 @@
     position: absolute;
     top: 0;
     left: 0;
-    height: 100vh;
+    height: 100%;
     z-index: 100;
   }
 
@@ -365,89 +370,6 @@
   margin-top: 6px;
 }
 
-.settings-actions-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-bottom: 8px;
-}
-
-.settings-action-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 8px;
-  border-radius: var(--radius);
-  background: var(--surface);
-}
-
-.settings-action-toggle input {
-  cursor: pointer;
-}
-
-.settings-action-info {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.settings-action-name {
-  font-size: var(--ui-font-size);
-  color: var(--text);
-}
-
-.settings-action-script {
-  font-size: var(--ui-font-size-xs);
-  color: var(--text-dim);
-  font-family: monospace;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.settings-action-actions {
-  display: flex;
-  gap: 4px;
-  flex-shrink: 0;
-}
-
-.settings-action-form {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.settings-action-form-top {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-}
-
-.settings-action-input {
-  flex: 1;
-  padding: 4px 8px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  color: var(--text);
-  font-size: var(--ui-font-size-xs);
-  outline: none;
-}
-
-.settings-action-input:focus {
-  border-color: var(--accent);
-}
-
-.settings-action-editor {
-  height: 120px;
-}
-
-.settings-action-editor .cm-editor-wrapper {
-  height: 100%;
-  min-height: 0;
-}
-
 .landing-section {
   margin-bottom: 4px;
 }
@@ -632,7 +554,7 @@
 /* Collection view */
 .collection-view {
   display: flex;
-  height: 100vh;
+  flex: 1;
   position: relative;
 }
 
@@ -645,7 +567,7 @@
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100%;
 }
 
 @media (max-aspect-ratio: 1/1) {
@@ -653,7 +575,7 @@
     position: absolute;
     top: 0;
     left: 0;
-    height: 100vh;
+    height: 100%;
     z-index: 100;
   }
 

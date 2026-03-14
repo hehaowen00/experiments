@@ -11,6 +11,8 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
+    titleBarStyle: 'hidden',
+    trafficLightPosition: { x: 12, y: 10 },
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -55,6 +57,13 @@ app.whenReady().then(async () => {
   ipcP2p.register(mainWindow);
 
   ipcMain.handle('app:homeDir', () => require('os').homedir());
+  ipcMain.handle('app:platform', () => process.platform);
+  ipcMain.handle('window:minimize', () => mainWindow?.minimize());
+  ipcMain.handle('window:maximize', () => {
+    if (mainWindow?.isMaximized()) mainWindow.unmaximize();
+    else mainWindow?.maximize();
+  });
+  ipcMain.handle('window:close', () => mainWindow?.close());
   ipcMain.handle('settings:get', (_, key) => {
     const row = store.getDb().prepare('SELECT value FROM settings WHERE key = ?').get(key);
     return row ? row.value : null;

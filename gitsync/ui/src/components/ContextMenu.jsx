@@ -26,6 +26,14 @@ export default function ContextMenu() {
                 <Icon name="fa-solid fa-minus" /> Unstage {label}
               </button>
             )}
+            {isStaged && (
+              <button class="file-context-menu-item danger" onClick={() => {
+                ws.setCtxMenu(null);
+                ws.discardStagedFiles(menu.filepaths);
+              }}>
+                <Icon name="fa-solid fa-xmark" /> Discard Changes
+              </button>
+            )}
             {!isStaged && (
               <button class="file-context-menu-item" onClick={() => {
                 ws.setCtxMenu(null);

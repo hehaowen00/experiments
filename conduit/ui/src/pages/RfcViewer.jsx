@@ -253,6 +253,19 @@ export default function RfcViewer(props) {
             >
               <Icon name="fa-solid fa-circle-info" />
             </button>
+            <button
+              class="btn btn-ghost btn-xs"
+              onClick={async () => {
+                const content = rfcContent();
+                if (!content) return;
+                const name = `rfc${selectedRfc().number}.txt`;
+                await window.api.saveFile(name, content);
+              }}
+              title="Save RFC to file"
+              disabled={!rfcContent()}
+            >
+              <Icon name="fa-solid fa-download" />
+            </button>
           </Show>
         </div>
         <Show
@@ -285,6 +298,12 @@ function RfcContent(props) {
   const [matchCount, setMatchCount] = createSignal(0);
   let findInputRef;
   let wrapperRef;
+
+  createEffect(() => {
+    props.content();
+    setMatchIndex(0);
+    setMatchCount(0);
+  });
 
   // TOC entry with dot leaders + page: "   1.1.  Title ......... 7"
   // Also handles spaced dots: "   1.1.  Title . . . . . 7"
@@ -319,9 +338,6 @@ function RfcContent(props) {
 
   function closeFindBar() {
     setFindOpen(false);
-    setFindQuery('');
-    setMatchIndex(0);
-    setMatchCount(0);
   }
 
   function nextMatch() {
@@ -457,21 +473,6 @@ function RfcContent(props) {
     const q = findQuery().trim().toLowerCase();
     const lines = text.split('\n');
 
-    // Count total find matches
-    let totalMatches = 0;
-    if (q) {
-      const lower = text.toLowerCase();
-      let pos = 0;
-      while ((pos = lower.indexOf(q, pos)) !== -1) {
-        totalMatches++;
-        pos += q.length;
-      }
-    }
-    setMatchCount(totalMatches);
-    if (matchIndex() >= totalMatches && totalMatches > 0) setMatchIndex(0);
-
-    if (q && totalMatches > 0) scrollToMatch();
-
     let globalFindIdx = 0;
     let inToc = false;
 
@@ -578,6 +579,9 @@ function RfcContent(props) {
       );
     });
 
+    setMatchCount(globalFindIdx);
+    if (matchIndex() >= globalFindIdx && globalFindIdx > 0) setMatchIndex(0);
+
     return <pre class="rfc-content">{rendered}</pre>;
   }
 
@@ -594,15 +598,8 @@ function RfcContent(props) {
             onInput={(e) => onFindInput(e.target.value)}
             onKeyDown={onFindKeyDown}
           />
-          <span class="rfc-find-count">
-            {matchCount() > 0
-              ? `${matchIndex() + 1}/${matchCount()}`
-              : findQuery().trim()
-                ? 'No matches'
-                : ''}
-          </span>
           <button
-            class="btn btn-ghost btn-xs"
+            class="rfc-find-btn"
             onClick={prevMatch}
             disabled={matchCount() === 0}
             title="Previous (Shift+Enter)"
@@ -610,7 +607,7 @@ function RfcContent(props) {
             <Icon name="fa-solid fa-chevron-up" />
           </button>
           <button
-            class="btn btn-ghost btn-xs"
+            class="rfc-find-btn"
             onClick={nextMatch}
             disabled={matchCount() === 0}
             title="Next (Enter)"
@@ -618,12 +615,19 @@ function RfcContent(props) {
             <Icon name="fa-solid fa-chevron-down" />
           </button>
           <button
-            class="btn btn-ghost btn-xs"
+            class="rfc-find-btn"
             onClick={closeFindBar}
             title="Close (Esc)"
           >
             <Icon name="fa-solid fa-xmark" />
           </button>
+          <span class="rfc-find-count">
+            {matchCount() > 0
+              ? `${matchIndex() + 1}/${matchCount()}`
+              : findQuery().trim()
+                ? 'No matches'
+                : ''}
+          </span>
         </div>
       </Show>
       <Show when={props.loading()}>

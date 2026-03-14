@@ -1,4 +1,4 @@
-import { onCleanup, onMount, Show } from 'solid-js';
+import { onCleanup, onMount, Show, For } from 'solid-js';
 import ContextMenu from '../components/ContextMenu';
 import FileHistory from '../components/FileHistory';
 import Icon from '../components/Icon';
@@ -9,6 +9,7 @@ import { useWorkspace, WorkspaceProvider } from '../context/WorkspaceContext';
 import ChangesPanel from '../panels/ChangesPanel';
 import LogPanel from '../panels/LogPanel';
 import RemotesPanel from '../panels/RemotesPanel';
+import ReadmePanel from '../panels/ReadmePanel';
 import StashesPanel from '../panels/StashesPanel';
 
 function WorkspaceInner() {
@@ -53,20 +54,30 @@ function WorkspaceInner() {
         <Show when={ws.operating()}>
           <span class="git-operating">{ws.operating()}</span>
         </Show>
-        <button class="btn btn-ghost btn-sm" onClick={ws.doStashPush} title="Stash">
+        <button class="btn btn-ghost btn-sm" onClick={ws.doStashPush} disabled={!!ws.operating()} title="Stash">
           <Icon name="fa-solid fa-box-archive" /> Stash
         </button>
-        <button class="btn btn-ghost btn-sm" onClick={ws.doFetch} title="Fetch">
+        <button class="btn btn-ghost btn-sm" onClick={ws.doFetch} disabled={!!ws.operating()} title="Fetch">
           <Icon name="fa-solid fa-cloud-arrow-down" /> Fetch
         </button>
-        <button class="btn btn-ghost btn-sm" onClick={ws.doPull} title="Pull">
+        <button class="btn btn-ghost btn-sm" onClick={ws.doPull} disabled={!!ws.operating()} title="Pull">
           <Icon name="fa-solid fa-download" /> Pull
         </button>
-        <button class="btn btn-ghost btn-sm" onClick={ws.doPush} title="Push">
+        <button class="btn btn-ghost btn-sm" onClick={ws.doPush} disabled={!!ws.operating()} title="Push">
           <Icon name="fa-solid fa-upload" /> Push
         </button>
         <button class="btn btn-ghost btn-sm" onClick={ws.refresh} title="Refresh">
           <Icon name="fa-solid fa-rotate" />
+        </button>
+        <button
+          class={`btn btn-ghost btn-sm ${ws.outputOpen() ? 'btn-active' : ''}`}
+          onClick={ws.toggleOutputPanel}
+          title="Toggle output log"
+        >
+          <Icon name="fa-solid fa-terminal" />
+          <Show when={ws.outputLog().length > 0}>
+            <span class="git-tab-badge">{ws.outputLog().length}</span>
+          </Show>
         </button>
       </div>
 
@@ -90,19 +101,42 @@ function WorkspaceInner() {
             <span class="git-tab-badge">{ws.stashes.list.length}</span>
           </Show>
         </button>
+        <div style={{ flex: 1 }} />
+        <Show when={ws.readme().content}>
+          <button class={`git-tab ${ws.tab() === 'readme' ? 'active' : ''}`} onClick={() => ws.onTabChange('readme')}>
+            README
+          </button>
+        </Show>
       </div>
 
       <Show when={ws.status.error}>
         <div class="git-error">{ws.status.error}</div>
       </Show>
 
-      {/* Output bar */}
-      <Show when={ws.output()}>
-        <div class="git-output-bar">
-          <pre>{ws.output()}</pre>
-          <button class="btn btn-ghost btn-xs" onClick={() => ws.setOutput('')} title="Dismiss">
-            <Icon name="fa-solid fa-xmark" />
-          </button>
+      {/* Output sidebar */}
+      <Show when={ws.outputOpen()}>
+        <div class="git-output-sidebar">
+          <div class="git-output-sidebar-header">
+            <span>Output Log</span>
+            <div style={{ flex: 1 }} />
+            <button class="btn btn-ghost btn-xs" onClick={ws.clearOutputLog} title="Clear log">
+              <Icon name="fa-solid fa-trash" />
+            </button>
+            <button class="btn btn-ghost btn-xs" onClick={ws.toggleOutputPanel} title="Close">
+              <Icon name="fa-solid fa-xmark" />
+            </button>
+          </div>
+          <div class="git-output-sidebar-body">
+            <Show when={ws.outputLog().length === 0}>
+              <div class="git-empty">No output yet</div>
+            </Show>
+            <For each={ws.outputLog()}>{(entry) => (
+              <div class="git-output-entry">
+                <span class="git-output-time">{entry.time.toLocaleTimeString()}</span>
+                <pre class="git-output-text">{entry.text}</pre>
+              </div>
+            )}</For>
+          </div>
         </div>
       </Show>
 
@@ -151,6 +185,9 @@ function WorkspaceInner() {
       </div>
       <div class="git-content" style={{ display: ws.tab() === 'stashes' ? '' : 'none' }}>
         <StashesPanel />
+      </div>
+      <div class="git-content" style={{ display: ws.tab() === 'readme' ? '' : 'none' }}>
+        <ReadmePanel />
       </div>
 
       <Modal />
