@@ -3,16 +3,21 @@
   -webkit-app-region: drag;
   display: flex;
   align-items: center;
-  height: 32px;
-  padding: 0 12px;
+  height: 38px;
+  padding: 0 6px;
   background: var(--bg);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
+  gap: 4px;
   user-select: none;
 }
 
+.titlebar-no-drag {
+  -webkit-app-region: no-drag;
+}
+
 .titlebar-traffic-light-spacer {
-  width: 68px;
+  width: 62px;
   flex-shrink: 0;
 }
 
@@ -30,7 +35,7 @@
   display: flex;
   align-items: center;
   height: 100%;
-  margin-right: -12px;
+  margin-right: -6px;
 }
 
 .titlebar-btn {

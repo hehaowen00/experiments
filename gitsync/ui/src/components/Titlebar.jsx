@@ -14,8 +14,14 @@ export default function Titlebar(props) {
       <Show when={isMac()}>
         <div class="titlebar-traffic-light-spacer" />
       </Show>
-      <div class="titlebar-title">{props.title || 'GitSync'}</div>
-      <div style={{ flex: 1 }} />
+      <Show when={props.children} fallback={
+        <>
+          <div class="titlebar-title">{props.title || 'GitSync'}</div>
+          <div style={{ flex: 1 }} />
+        </>
+      }>
+        {props.children}
+      </Show>
       <Show when={!isMac()}>
         <div class="titlebar-controls">
           <button

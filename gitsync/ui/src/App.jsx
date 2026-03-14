@@ -28,36 +28,37 @@ export default function App() {
     setPage({ type: 'peer-repos', peerId, peerName });
   }
 
-  const title = () => {
-    if (page().type === 'git') return page().repoData?.name || 'GitSync';
-    if (page().type === 'peers') return 'Peers';
-    if (page().type === 'peer-repos') return page().peerName || 'Peer Repos';
-    return 'GitSync';
-  };
-
   return (
     <div style={{ display: 'flex', 'flex-direction': 'column', height: '100vh' }}>
-      <Titlebar title={title()} />
       {page().type === 'landing' && (
-        <div class="git-client" style={{ display: 'flex', 'flex-direction': 'column', flex: 1, overflow: 'hidden' }}>
-          <GitClient onOpenGit={openGit} onOpenPeers={openPeers} />
-          <Modal />
-        </div>
+        <>
+          <Titlebar title="GitSync" />
+          <div class="git-client" style={{ display: 'flex', 'flex-direction': 'column', flex: 1, overflow: 'hidden' }}>
+            <GitClient onOpenGit={openGit} onOpenPeers={openPeers} />
+            <Modal />
+          </div>
+        </>
       )}
       {page().type === 'git' && (
         <GitWorkspace repoData={page().repoData} onBack={goHome} onSwitchRepo={openGit} />
       )}
       {page().type === 'peers' && (
-        <div class="git-client" style={{ display: 'flex', 'flex-direction': 'column', flex: 1, overflow: 'hidden' }}>
-          <PeersPage onBack={goHome} onBrowseRepos={openPeerRepos} />
-          <Modal />
-        </div>
+        <>
+          <Titlebar title="Peers" />
+          <div class="git-client" style={{ display: 'flex', 'flex-direction': 'column', flex: 1, overflow: 'hidden' }}>
+            <PeersPage onBack={goHome} onBrowseRepos={openPeerRepos} />
+            <Modal />
+          </div>
+        </>
       )}
       {page().type === 'peer-repos' && (
-        <div class="git-client" style={{ display: 'flex', 'flex-direction': 'column', flex: 1, overflow: 'hidden' }}>
-          <PeerReposPage peerId={page().peerId} peerName={page().peerName} onBack={openPeers} />
-          <Modal />
-        </div>
+        <>
+          <Titlebar title={page().peerName || 'Peer Repos'} />
+          <div class="git-client" style={{ display: 'flex', 'flex-direction': 'column', flex: 1, overflow: 'hidden' }}>
+            <PeerReposPage peerId={page().peerId} peerName={page().peerName} onBack={openPeers} />
+            <Modal />
+          </div>
+        </>
       )}
     </div>
   );

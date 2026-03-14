@@ -5,6 +5,7 @@ import Icon from '../components/Icon';
 import InteractiveRebase from '../components/InteractiveRebase';
 import Modal from '../components/Modal';
 import RepoSwitcher from '../components/RepoSwitcher';
+import Titlebar from '../components/Titlebar';
 import { useWorkspace, WorkspaceProvider } from '../context/WorkspaceContext';
 import ChangesPanel from '../panels/ChangesPanel';
 import LogPanel from '../panels/LogPanel';
@@ -29,14 +30,14 @@ function WorkspaceInner() {
   return (
     <div class="git-workspace">
       {/* Header */}
-      <div class="git-header">
-        <button class="btn btn-ghost btn-sm" onClick={ws.onBack} title="Back to repos">
+      <Titlebar>
+        <button class="btn btn-ghost btn-sm titlebar-no-drag" onClick={ws.onBack} title="Back to repos">
           <Icon name="fa-solid fa-arrow-left" />
         </button>
-        <button class="git-header-name" onClick={ws.openSwitcher} title="Switch repo (Ctrl+P)">
+        <button class="git-header-name titlebar-no-drag" onClick={ws.openSwitcher} title="Switch repo (Ctrl+P)">
           {ws.repoData.name}
         </button>
-        <span class="git-header-branch" onClick={() => ws.onTabChange('remotes')} title="View branches">
+        <span class="git-header-branch titlebar-no-drag" onClick={() => ws.onTabChange('remotes')} title="View branches">
           <Icon name="fa-solid fa-code-branch" />
           {ws.status.branch || '...'}
         </span>
@@ -54,23 +55,23 @@ function WorkspaceInner() {
         <Show when={ws.operating()}>
           <span class="git-operating">{ws.operating()}</span>
         </Show>
-        <button class="btn btn-ghost btn-sm" onClick={ws.doStashPush} disabled={!!ws.operating()} title="Stash">
+        <button class="btn btn-ghost btn-sm titlebar-no-drag" onClick={ws.doStashPush} disabled={!!ws.operating()} title="Stash">
           <Icon name="fa-solid fa-box-archive" /> Stash
         </button>
-        <button class="btn btn-ghost btn-sm" onClick={ws.doFetch} disabled={!!ws.operating()} title="Fetch">
+        <button class="btn btn-ghost btn-sm titlebar-no-drag" onClick={ws.doFetch} disabled={!!ws.operating()} title="Fetch">
           <Icon name="fa-solid fa-cloud-arrow-down" /> Fetch
         </button>
-        <button class="btn btn-ghost btn-sm" onClick={ws.doPull} disabled={!!ws.operating()} title="Pull">
+        <button class="btn btn-ghost btn-sm titlebar-no-drag" onClick={ws.doPull} disabled={!!ws.operating()} title="Pull">
           <Icon name="fa-solid fa-download" /> Pull
         </button>
-        <button class="btn btn-ghost btn-sm" onClick={ws.doPush} disabled={!!ws.operating()} title="Push">
+        <button class="btn btn-ghost btn-sm titlebar-no-drag" onClick={ws.doPush} disabled={!!ws.operating()} title="Push">
           <Icon name="fa-solid fa-upload" /> Push
         </button>
-        <button class="btn btn-ghost btn-sm" onClick={ws.refresh} title="Refresh">
+        <button class="btn btn-ghost btn-sm titlebar-no-drag" onClick={ws.refresh} title="Refresh">
           <Icon name="fa-solid fa-rotate" />
         </button>
         <button
-          class={`btn btn-ghost btn-sm ${ws.outputOpen() ? 'btn-active' : ''}`}
+          class={`btn btn-ghost btn-sm titlebar-no-drag ${ws.outputOpen() ? 'btn-active' : ''}`}
           onClick={ws.toggleOutputPanel}
           title="Toggle output log"
         >
@@ -79,7 +80,7 @@ function WorkspaceInner() {
             <span class="git-tab-badge">{ws.outputLog().length}</span>
           </Show>
         </button>
-      </div>
+      </Titlebar>
 
       {/* Tabs */}
       <div class="git-tabs">

@@ -48,19 +48,9 @@
   user-select: none;
 }
 
-.git-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-  background: var(--bg);
-}
-
 .git-header-name {
   font-weight: 600;
-  font-size: var(--ui-font-size-lg);
+  font-size: var(--ui-font-size-sm);
   background: none;
   border: none;
   color: inherit;
