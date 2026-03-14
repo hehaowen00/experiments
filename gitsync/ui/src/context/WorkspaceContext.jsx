@@ -58,7 +58,7 @@ export function WorkspaceProvider(props) {
   function toggleOutputPanel() { setOutputOpen(v => !v); }
   const [readme, setReadme] = createSignal({ content: null, filename: null });
   const [expandedDirs, setExpandedDirs] = createSignal(new Set());
-  const [collapsedSections, setCollapsedSections] = createSignal(new Set());
+  const [collapsedSections, setCollapsedSections] = createSignal(new Set(['stashes']));
   const [ctxMenu, setCtxMenu] = createSignal(null);
   const [opState, setOpState] = createSignal(null);
   const [submodules, setSubmodules] = createSignal([]);
@@ -200,8 +200,17 @@ export function WorkspaceProvider(props) {
   async function loadStashes() {
     setStashes('loading', true);
     const result = await window.api.gitStashList(repoPath);
-    if (!result.error) setStashes({ list: result.stashes, loading: false });
-    else setStashes('loading', false);
+    if (!result.error) {
+      setStashes({ list: result.stashes, loading: false });
+      setCollapsedSections((prev) => {
+        const next = new Set(prev);
+        if (result.stashes.length > 0) next.delete('stashes');
+        else next.add('stashes');
+        return next;
+      });
+    } else {
+      setStashes('loading', false);
+    }
   }
 
   async function loadTags() {

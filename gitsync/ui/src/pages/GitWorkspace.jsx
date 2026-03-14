@@ -56,16 +56,16 @@ function WorkspaceInner() {
           <span class="git-operating">{ws.operating()}</span>
         </Show>
         <button class="btn btn-ghost btn-sm titlebar-no-drag" onClick={ws.doStashPush} disabled={!!ws.operating()} title="Stash">
-          <Icon name="fa-solid fa-box-archive" /> Stash
+          <Icon name="fa-solid fa-box-archive" />
         </button>
         <button class="btn btn-ghost btn-sm titlebar-no-drag" onClick={ws.doFetch} disabled={!!ws.operating()} title="Fetch">
-          <Icon name="fa-solid fa-cloud-arrow-down" /> Fetch
+          <Icon name="fa-solid fa-cloud-arrow-down" />
         </button>
         <button class="btn btn-ghost btn-sm titlebar-no-drag" onClick={ws.doPull} disabled={!!ws.operating()} title="Pull">
-          <Icon name="fa-solid fa-download" /> Pull
+          <Icon name="fa-solid fa-download" />
         </button>
         <button class="btn btn-ghost btn-sm titlebar-no-drag" onClick={ws.doPush} disabled={!!ws.operating()} title="Push">
-          <Icon name="fa-solid fa-upload" /> Push
+          <Icon name="fa-solid fa-upload" />
         </button>
         <button class="btn btn-ghost btn-sm titlebar-no-drag" onClick={ws.refresh} title="Refresh">
           <Icon name="fa-solid fa-rotate" />
@@ -85,7 +85,7 @@ function WorkspaceInner() {
       {/* Tabs */}
       <div class="git-tabs">
         <button class={`git-tab ${ws.tab() === 'changes' ? 'active' : ''}`} onClick={() => ws.onTabChange('changes')}>
-          Changes
+          Workspace
           <Show when={ws.status.files.length > 0}>
             <span class="git-tab-badge">{ws.status.files.length}</span>
           </Show>
@@ -94,7 +94,7 @@ function WorkspaceInner() {
           History
         </button>
         <button class={`git-tab ${ws.tab() === 'remotes' ? 'active' : ''}`} onClick={() => ws.onTabChange('remotes')}>
-          Remotes
+          Refs
         </button>
         <button class={`git-tab ${ws.tab() === 'stashes' ? 'active' : ''}`} onClick={() => ws.onTabChange('stashes')}>
           Stashes
