@@ -328,6 +328,28 @@ function register(mainWindow) {
     }
   });
 
+  ipcMain.handle('git:diffRaw', async (_, repoPath, filepath, staged) => {
+    try {
+      const args = ['diff', '--no-color'];
+      if (staged) args.push('--cached');
+      if (filepath) args.push('--', filepath);
+      const out = await git(repoPath, args);
+      // Extract the file header (diff --git, index, ---, +++ lines)
+      const lines = out.split('\n');
+      const headerLines = [];
+      for (const line of lines) {
+        if (line.startsWith('diff ') || line.startsWith('index ') || line.startsWith('---') || line.startsWith('+++') || line.startsWith('old mode') || line.startsWith('new mode') || line.startsWith('new file') || line.startsWith('deleted file') || line.startsWith('similarity') || line.startsWith('rename')) {
+          headerLines.push(line);
+        } else if (line.startsWith('@@')) {
+          break;
+        }
+      }
+      return { diff: out, header: headerLines.join('\n') };
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
+
   ipcMain.handle('git:diffUntracked', async (_, repoPath, filepath) => {
     // git diff --no-index returns exit code 1 when files differ (expected)
     const result = await gitRaw(repoPath, ['diff', '--no-color', '--no-index', '--', '/dev/null', filepath]);
@@ -338,6 +360,60 @@ function register(mainWindow) {
       return { error: result.stderr || 'Failed to diff untracked file' };
     }
     return { diff: result.stdout || '(empty file)' };
+  });
+
+  ipcMain.handle('git:stageHunk', async (_, repoPath, patchText) => {
+    try {
+      await new Promise((resolve, reject) => {
+        const proc = execFile('git', ['apply', '--cached', '--unidiff-zero', '-'], {
+          cwd: repoPath, maxBuffer: 10 * 1024 * 1024,
+        }, (err, stdout, stderr) => {
+          if (err) reject(new Error(stderr || err.message));
+          else resolve(stdout);
+        });
+        proc.stdin.write(patchText);
+        proc.stdin.end();
+      });
+      return { ok: true };
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
+
+  ipcMain.handle('git:unstageHunk', async (_, repoPath, patchText) => {
+    try {
+      await new Promise((resolve, reject) => {
+        const proc = execFile('git', ['apply', '--cached', '--unidiff-zero', '--reverse', '-'], {
+          cwd: repoPath, maxBuffer: 10 * 1024 * 1024,
+        }, (err, stdout, stderr) => {
+          if (err) reject(new Error(stderr || err.message));
+          else resolve(stdout);
+        });
+        proc.stdin.write(patchText);
+        proc.stdin.end();
+      });
+      return { ok: true };
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
+
+  ipcMain.handle('git:discardHunk', async (_, repoPath, patchText) => {
+    try {
+      await new Promise((resolve, reject) => {
+        const proc = execFile('git', ['apply', '--reverse', '--unidiff-zero', '-'], {
+          cwd: repoPath, maxBuffer: 10 * 1024 * 1024,
+        }, (err, stdout, stderr) => {
+          if (err) reject(new Error(stderr || err.message));
+          else resolve(stdout);
+        });
+        proc.stdin.write(patchText);
+        proc.stdin.end();
+      });
+      return { ok: true };
+    } catch (e) {
+      return { error: e.message };
+    }
   });
 
   ipcMain.handle('git:stage', async (_, repoPath, filepaths) => {
@@ -1246,6 +1322,84 @@ function register(mainWindow) {
       const patchPath = result.filePaths[0];
       const out = await git(repoPath, ['apply', patchPath]);
       return { ok: true, output: out || 'Patch applied successfully' };
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
+
+  // --- Worktrees ---
+  ipcMain.handle('git:worktreeList', async (_, repoPath) => {
+    try {
+      const output = await git(repoPath, ['worktree', 'list', '--porcelain']);
+      const worktrees = [];
+      let current = {};
+      for (const line of output.split('\n')) {
+        if (line.startsWith('worktree ')) {
+          current = { path: line.slice(9) };
+        } else if (line === 'bare') {
+          current.bare = true;
+        } else if (line.startsWith('HEAD ')) {
+          current.head = line.slice(5);
+        } else if (line.startsWith('branch ')) {
+          current.branch = line.slice(7).replace(/^refs\/heads\//, '');
+        } else if (line === 'detached') {
+          current.detached = true;
+        } else if (line === 'prunable') {
+          current.prunable = true;
+        } else if (line === '') {
+          if (current.path) worktrees.push(current);
+          current = {};
+        }
+      }
+      if (current.path) worktrees.push(current);
+      return { ok: true, worktrees };
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
+
+  ipcMain.handle('git:pickWorktreeFolder', async () => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openDirectory', 'createDirectory'],
+      title: 'Select Worktree Directory',
+    });
+    if (result.canceled || !result.filePaths.length) return null;
+    return result.filePaths[0];
+  });
+
+  ipcMain.handle('git:worktreeAdd', async (_, repoPath, wtPath, branch, newBranch) => {
+    try {
+      const args = ['worktree', 'add'];
+      if (newBranch) {
+        args.push('-b', newBranch, wtPath);
+      } else if (branch) {
+        args.push(wtPath, branch);
+      } else {
+        args.push(wtPath);
+      }
+      const output = await git(repoPath, args);
+      return { ok: true, output };
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
+
+  ipcMain.handle('git:worktreeRemove', async (_, repoPath, wtPath, force) => {
+    try {
+      const args = ['worktree', 'remove'];
+      if (force) args.push('--force');
+      args.push(wtPath);
+      const output = await git(repoPath, args);
+      return { ok: true, output };
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
+
+  ipcMain.handle('git:worktreePrune', async (_, repoPath) => {
+    try {
+      const output = await git(repoPath, ['worktree', 'prune']);
+      return { ok: true, output };
     } catch (e) {
       return { error: e.message };
     }

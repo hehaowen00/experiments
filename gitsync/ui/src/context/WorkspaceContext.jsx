@@ -1,6 +1,7 @@
 import { createContext, useContext, createSignal, onMount, onCleanup } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
 import { showAlert, showChoice, showConfirm, showPrompt } from '../components/Modal';
+import { parseDiffHunks } from '../utils/diff';
 import { buildGraph, resetGraphColors } from '../utils/graph';
 import { initHomeDir } from '../utils/path';
 import { allFilesInTree } from '../utils/tree';
@@ -23,7 +24,7 @@ export function WorkspaceProvider(props) {
   });
 
   const [diff, setDiff] = createStore({
-    content: '', filepath: null, staged: false,
+    content: '', filepath: null, staged: false, header: '',
   });
 
   const [commit, setCommit] = createStore({
@@ -38,6 +39,7 @@ export function WorkspaceProvider(props) {
   const [branches, setBranches] = createStore({ list: [], loading: false });
   const [stashes, setStashes] = createStore({ list: [], loading: false });
   const [tags, setTags] = createStore({ list: [], loading: false });
+  const [worktrees, setWorktrees] = createStore({ list: [], loading: false });
   const [stashDetail, setStashDetail] = createStore({ ref: null, diff: '' });
 
   const [commitDetail, setCommitDetail] = createStore({
@@ -246,10 +248,64 @@ export function WorkspaceProvider(props) {
     else setOutput(`Tag "${name}" deleted from ${remote}`);
   }
 
+  // --- Worktrees ---
+  async function loadWorktrees() {
+    setWorktrees('loading', true);
+    const result = await window.api.gitWorktreeList(repoPath);
+    if (!result.error) setWorktrees({ list: result.worktrees, loading: false });
+    else setWorktrees('loading', false);
+  }
+
+  async function addWorktree(branchName, wtPath) {
+    // Check if branch exists
+    const branchResult = await window.api.gitBranchList(repoPath);
+    const exists = branchResult.branches && branchResult.branches.some(
+      b => b.name === branchName || b.name === `remotes/origin/${branchName}`
+    );
+    setOperating('Adding worktree...');
+    const result = await window.api.gitWorktreeAdd(
+      repoPath, wtPath, exists ? branchName : '', exists ? '' : branchName,
+    );
+    setOperating('');
+    if (result.error) {
+      showAlert('Add Worktree Failed', result.error);
+      return false;
+    }
+    setOutput(result.output || `Worktree added at ${wtPath}`);
+    loadWorktrees();
+    return true;
+  }
+
+  async function removeWorktree(wtPath) {
+    if (!await showConfirm(`Remove worktree?`, wtPath)) return;
+    setOperating('Removing worktree...');
+    let result = await window.api.gitWorktreeRemove(repoPath, wtPath, false);
+    if (result.error && result.error.includes('contains modified or untracked files')) {
+      if (await showConfirm('Worktree has changes. Force remove?', 'Untracked and modified files will be lost.')) {
+        result = await window.api.gitWorktreeRemove(repoPath, wtPath, true);
+      }
+    }
+    setOperating('');
+    if (result.error) showAlert('Remove Failed', result.error);
+    else setOutput('Worktree removed');
+    loadWorktrees();
+  }
+
+  async function pruneWorktrees() {
+    const result = await window.api.gitWorktreePrune(repoPath);
+    if (result.error) showAlert('Prune Failed', result.error);
+    else setOutput('Stale worktrees pruned');
+    loadWorktrees();
+  }
+
+  function openWorktree(wt) {
+    onSwitchRepo({ name: `${repoData.name} [${wt.branch || 'detached'}]`, path: wt.path });
+  }
+
   function onTabChange(t) {
     setTab(t);
     if (t === 'log') { loadLog(); loadLogBranches(); }
-    if (t === 'remotes') { loadRemotes(); loadBranches(); loadTags(); }
+    if (t === 'remotes') { loadRemotes(); loadBranches(); loadTags(); loadWorktrees(); }
     if (t === 'stashes') { loadStashes(); }
   }
 
@@ -260,13 +316,18 @@ export function WorkspaceProvider(props) {
     let result;
     if (isUntracked) {
       result = await window.api.gitDiffUntracked(repoPath, filepath);
+      if (result.error) {
+        setDiff({ content: `Error: ${result.error}`, filepath, staged, header: '' });
+      } else {
+        setDiff({ content: result.diff || '(no changes)', filepath, staged, header: '' });
+      }
     } else {
-      result = await window.api.gitDiff(repoPath, filepath, staged);
-    }
-    if (result.error) {
-      setDiff({ content: `Error: ${result.error}`, filepath, staged });
-    } else {
-      setDiff({ content: result.diff || '(no changes)', filepath, staged });
+      result = await window.api.gitDiffRaw(repoPath, filepath, staged);
+      if (result.error) {
+        setDiff({ content: `Error: ${result.error}`, filepath, staged, header: '' });
+      } else {
+        setDiff({ content: result.diff || '(no changes)', filepath, staged, header: result.header || '' });
+      }
     }
   }
 
@@ -318,6 +379,43 @@ export function WorkspaceProvider(props) {
     if (result?.error) { showAlert('Unstage Failed', result.error); return; }
     setSelectedFiles(new Set());
     await refresh();
+  }
+
+  // --- Hunk staging ---
+  function buildHunkPatch(hunkIndex) {
+    if (!diff.header || !diff.content) return null;
+    const hunks = parseDiffHunks(diff.content);
+    if (hunkIndex < 0 || hunkIndex >= hunks.length) return null;
+    const hunk = hunks[hunkIndex];
+    return diff.header + '\n' + hunk.rawLines.join('\n') + '\n';
+  }
+
+  async function stageHunk(hunkIndex) {
+    const patch = buildHunkPatch(hunkIndex);
+    if (!patch) return;
+    const result = await window.api.gitStageHunk(repoPath, patch);
+    if (result?.error) { showAlert('Stage Hunk Failed', result.error); return; }
+    await refresh();
+    if (diff.filepath) viewDiff(diff.filepath, diff.staged);
+  }
+
+  async function unstageHunk(hunkIndex) {
+    const patch = buildHunkPatch(hunkIndex);
+    if (!patch) return;
+    const result = await window.api.gitUnstageHunk(repoPath, patch);
+    if (result?.error) { showAlert('Unstage Hunk Failed', result.error); return; }
+    await refresh();
+    if (diff.filepath) viewDiff(diff.filepath, diff.staged);
+  }
+
+  async function discardHunk(hunkIndex) {
+    if (!await showConfirm('Discard this hunk?', 'This cannot be undone.')) return;
+    const patch = buildHunkPatch(hunkIndex);
+    if (!patch) return;
+    const result = await window.api.gitDiscardHunk(repoPath, patch);
+    if (result?.error) { showAlert('Discard Hunk Failed', result.error); return; }
+    await refresh();
+    if (diff.filepath) viewDiff(diff.filepath, diff.staged);
   }
 
   // --- Discard ---
@@ -433,10 +531,7 @@ export function WorkspaceProvider(props) {
     } else {
       setCommit({ message: '', description: '', amend: false, originalAmendMsg: '', amendHash: null });
       localStorage.removeItem(commitKey);
-      // Clear diff if the displayed file was part of the commit (staged)
-      if (diff.filepath && diff.staged) {
-        setDiff({ content: '', filepath: null, staged: false });
-      }
+      setDiff({ content: '', filepath: null, staged: false, header: '' });
       setOutput(result.output || 'Committed successfully');
       await reloadRepo();
     }
@@ -1148,6 +1243,7 @@ export function WorkspaceProvider(props) {
     reloadRepo, refresh, loadLog, loadMoreLog, loadLogBranches, loadRemotes, loadBranches, loadTags, loadStashes,
     onTabChange, viewDiff,
     stageFile, unstageFile, stageAll, unstageAll, stageSelected, unstageSelected, exportStagedPatch, applyPatch,
+    stageHunk, unstageHunk, discardHunk,
     resolveOurs, resolveTheirs, viewConflictDiff,
     discardFile, discardFiles, discardStagedFiles, deleteUntrackedFiles,
     doCommit, toggleAmend,
@@ -1161,6 +1257,7 @@ export function WorkspaceProvider(props) {
     bisect, startBisectSelect, finishBisectSelect, cancelBisectSelect, doBisectMark, doBisectReset,
     doPushBranch, doDeleteBranch, doRenameBranch,
     doCreateTag, doDeleteTag, doPushTag, doDeleteRemoteTag,
+    worktrees, loadWorktrees, addWorktree, removeWorktree, pruneWorktrees, openWorktree,
     doStashPush, doStashPop, doStashApply, doStashDrop, viewStashDiff,
     initSubmodule, openSubmodule, selectCommit,
     onFileContextMenu, onFolderContextMenu, dismissCtxMenu,

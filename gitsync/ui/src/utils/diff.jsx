@@ -1,4 +1,5 @@
 import { For, Show, createSignal, createMemo } from 'solid-js';
+import Icon from '../components/Icon';
 
 export function parseDiffFiles(rawDiff) {
   if (!rawDiff) return [];
@@ -46,6 +47,43 @@ export function parseDiffLines(raw) {
   return result;
 }
 
+// Parse hunks as separate groups with their raw text preserved
+export function parseDiffHunks(raw) {
+  const lines = raw.split('\n');
+  const hunks = [];
+  let current = null;
+  for (const line of lines) {
+    if (line.startsWith('@@')) {
+      if (current) hunks.push(current);
+      current = { headerLine: line, rawLines: [line], parsedLines: [] };
+      const m = line.match(/@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+      current.oldStart = m ? parseInt(m[1]) : 0;
+      current.newStart = m ? parseInt(m[2]) : 0;
+      current.oldNum = current.oldStart;
+      current.newNum = current.newStart;
+      current.parsedLines.push({ cls: 'git-diff-line git-diff-hunk', text: line, oldN: '', newN: '', hunk: true });
+    } else if (current) {
+      if (line.startsWith('diff ') || line.startsWith('---') || line.startsWith('+++') || line.startsWith('index ') || line.startsWith('new file') || line.startsWith('deleted file') || line.startsWith('similarity') || line.startsWith('rename') || line.startsWith('old mode') || line.startsWith('new mode')) {
+        continue;
+      }
+      current.rawLines.push(line);
+      if (line.startsWith('+') && !line.startsWith('+++')) {
+        current.parsedLines.push({ cls: 'git-diff-line git-diff-add', text: line, oldN: '', newN: current.newNum });
+        current.newNum++;
+      } else if (line.startsWith('-') && !line.startsWith('---')) {
+        current.parsedLines.push({ cls: 'git-diff-line git-diff-del', text: line, oldN: current.oldNum, newN: '' });
+        current.oldNum++;
+      } else {
+        current.parsedLines.push({ cls: 'git-diff-line', text: line, oldN: current.oldNum, newN: current.newNum });
+        current.oldNum++;
+        current.newNum++;
+      }
+    }
+  }
+  if (current) hunks.push(current);
+  return hunks;
+}
+
 export function DiffLine(props) {
   const prefix = () => props.line.text ? props.line.text[0] : '';
   const content = () => props.line.text ? props.line.text.substring(1) : '';
@@ -82,6 +120,47 @@ export function DiffLines(props) {
         </div>
       </Show>
     </>
+  );
+}
+
+export function DiffHunks(props) {
+  const hunks = createMemo(() => parseDiffHunks(props.raw));
+
+  return (
+    <For each={hunks()}>{(hunk, idx) => (
+      <div class="git-diff-hunk-group">
+        <div class="git-diff-hunk-actions">
+          <Show when={props.onStageHunk}>
+            <button
+              class="btn btn-ghost btn-xs git-hunk-btn"
+              onClick={() => props.onStageHunk(idx())}
+              title="Stage hunk"
+            >
+              <Icon name="fa-solid fa-plus" />
+            </button>
+          </Show>
+          <Show when={props.onUnstageHunk}>
+            <button
+              class="btn btn-ghost btn-xs git-hunk-btn"
+              onClick={() => props.onUnstageHunk(idx())}
+              title="Unstage hunk"
+            >
+              <Icon name="fa-solid fa-minus" />
+            </button>
+          </Show>
+          <Show when={props.onDiscardHunk}>
+            <button
+              class="btn btn-ghost btn-xs btn-danger-hover git-hunk-btn"
+              onClick={() => props.onDiscardHunk(idx())}
+              title="Discard hunk"
+            >
+              <Icon name="fa-solid fa-trash" />
+            </button>
+          </Show>
+        </div>
+        <For each={hunk.parsedLines}>{(l) => <DiffLine line={l} />}</For>
+      </div>
+    )}</For>
   );
 }
 

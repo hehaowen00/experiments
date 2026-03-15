@@ -718,6 +718,9 @@
 }
 
 .git-commit-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   padding: 10px;
   border-top: 1px solid var(--border);
   flex-shrink: 0;
@@ -1051,4 +1054,71 @@
   border: none;
   border-top: 1px solid var(--border);
   margin: 1.5em 0;
+}
+
+/* Hunk staging */
+.git-diff-hunk-group {
+  position: relative;
+}
+
+.git-diff-hunk-actions {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  gap: 2px;
+  padding: 2px 4px;
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+  border-bottom: 1px solid var(--border);
+}
+
+.git-hunk-btn {
+  font-size: var(--ui-font-size-xs) !important;
+  padding: 1px 6px !important;
+  opacity: 0.7;
+}
+
+.git-hunk-btn:hover {
+  opacity: 1;
+}
+
+/* Worktrees */
+.git-worktree-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  font-size: var(--ui-font-size-sm);
+}
+
+.git-worktree-item:hover {
+  background: var(--surface);
+}
+
+.git-worktree-icon {
+  font-size: var(--ui-font-size-xs);
+  flex-shrink: 0;
+}
+
+.git-worktree-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.git-worktree-branch {
+  font-family: var(--mono);
+  font-size: var(--ui-font-size-sm);
+  color: var(--accent);
+}
+
+.git-worktree-path {
+  font-family: var(--mono);
+  font-size: var(--ui-font-size-xs);
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

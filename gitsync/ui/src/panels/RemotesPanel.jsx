@@ -1,4 +1,5 @@
 import { Show, For, createSignal } from 'solid-js';
+import FormModal, { FormField } from '../components/FormModal';
 import Icon from '../components/Icon';
 import { useWorkspace } from '../context/WorkspaceContext';
 
@@ -9,10 +10,18 @@ export default function RemotesPanel() {
   const [tagMessage, setTagMessage] = createSignal('');
   const [tagTarget, setTagTarget] = createSignal('');
 
+  // Worktree form state
+  const [wtFormOpen, setWtFormOpen] = createSignal(false);
+  const [wtBranch, setWtBranch] = createSignal('');
+  const [wtPath, setWtPath] = createSignal('');
+  const [wtError, setWtError] = createSignal('');
+  const [wtPathEdited, setWtPathEdited] = createSignal(false);
+
   const hasRemotes = () => ws.remotes.list.length > 0;
   const localBranches = () => ws.branches.list.filter(b => !b.remote);
   const remoteBranches = () => ws.branches.list.filter(b => b.remote && !b.name.includes('/HEAD'));
   const hasTags = () => ws.tags.list.length > 0;
+  const hasWorktrees = () => ws.worktrees.list.length > 1; // >1 because main worktree always exists
 
   function formatDate(dateStr) {
     if (!dateStr) return '';
@@ -42,6 +51,39 @@ export default function RemotesPanel() {
     const remote = await ws.pickRemote('Delete Remote Tag', 'Select which remote to delete the tag from.');
     if (!remote) return;
     ws.doDeleteRemoteTag(remote, name);
+  }
+
+  function defaultWtPathFor(branch) {
+    if (!branch) return '';
+    const dirName = branch.replace(/\//g, '-');
+    return ws.repoPath + '/.worktrees/' + dirName;
+  }
+
+  function openWtForm() {
+    setWtBranch('');
+    setWtPath('');
+    setWtError('');
+    setWtPathEdited(false);
+    setWtFormOpen(true);
+  }
+
+  function closeWtForm() {
+    setWtFormOpen(false);
+  }
+
+  async function browseWtPath() {
+    const picked = await window.api.gitPickWorktreeFolder();
+    if (picked) { setWtPathEdited(true); setWtPath(picked); }
+  }
+
+  async function submitWtForm() {
+    const branch = wtBranch().trim();
+    if (!branch) { setWtError('Branch name is required.'); return; }
+    const path = wtPath().trim();
+    if (!path) { setWtError('Directory path is required.'); return; }
+    setWtError('');
+    const ok = await ws.addWorktree(branch, path);
+    if (ok) closeWtForm();
   }
 
   return (
@@ -223,6 +265,84 @@ export default function RemotesPanel() {
           )}</For>
         </Show>
       </div>
+
+      <div class="git-section" style={{ 'margin-top': '16px' }}>
+        <div class="git-section-header" onClick={() => ws.toggleSection('worktrees')}>
+          <Icon name={!hasWorktrees() || ws.collapsedSections().has('worktrees') ? 'fa-solid fa-chevron-right' : 'fa-solid fa-chevron-down'} class="git-section-chevron" />
+          <span>Worktrees ({Math.max(0, ws.worktrees.list.length - 1)})</span>
+          <button class="btn btn-ghost btn-xs" onClick={(e) => { e.stopPropagation(); openWtForm(); }} title="Add worktree">
+            <Icon name="fa-solid fa-plus" /> Add
+          </button>
+          <Show when={hasWorktrees()}>
+            <button class="btn btn-ghost btn-xs" onClick={(e) => { e.stopPropagation(); ws.pruneWorktrees(); }} title="Prune stale worktrees">
+              <Icon name="fa-solid fa-broom" />
+            </button>
+          </Show>
+          <button class="btn btn-ghost btn-xs" onClick={(e) => { e.stopPropagation(); ws.loadWorktrees(); }} title="Refresh worktrees">
+            <Icon name="fa-solid fa-rotate" />
+          </button>
+        </div>
+        <Show when={hasWorktrees() && !ws.collapsedSections().has('worktrees')}>
+          <For each={ws.worktrees.list.filter(wt => wt.path !== ws.repoPath)}>{(wt) => (
+            <div class="git-worktree-item">
+              <Icon name={wt.prunable ? 'fa-solid fa-circle-exclamation' : 'fa-solid fa-folder-tree'} class="git-worktree-icon" style={{ color: wt.prunable ? 'var(--warning)' : 'var(--text-dim)' }} />
+              <div class="git-worktree-info">
+                <span class="git-worktree-branch">
+                  {wt.branch || (wt.detached ? `detached @ ${wt.head?.slice(0, 7)}` : 'bare')}
+                </span>
+                <span class="git-worktree-path" title={wt.path}>{wt.path}</span>
+              </div>
+              <Show when={!wt.prunable}>
+                <button class="btn btn-ghost btn-xs git-branch-action" onClick={() => ws.openWorktree(wt)} title="Open worktree">
+                  <Icon name="fa-solid fa-arrow-up-right-from-square" />
+                </button>
+              </Show>
+              <button class="btn btn-ghost btn-xs btn-danger-hover git-branch-action" onClick={() => ws.removeWorktree(wt.path)} title="Remove worktree">
+                <Icon name="fa-solid fa-trash" />
+              </button>
+            </div>
+          )}</For>
+        </Show>
+      </div>
+
+      <Show when={wtFormOpen()}>
+        <FormModal
+          title="Add Worktree"
+          error={wtError()}
+          submitLabel="Add"
+          onClose={closeWtForm}
+          onSubmit={submitWtForm}
+        >
+          <FormField label="Branch">
+            <input
+              type="text"
+              value={wtBranch()}
+              onInput={(e) => {
+                setWtBranch(e.target.value);
+                // Update path to default when user hasn't manually edited it
+                if (!wtPathEdited()) setWtPath(defaultWtPathFor(e.target.value.trim()));
+              }}
+              placeholder="Existing or new branch name"
+              onKeyDown={(e) => e.key === 'Enter' && submitWtForm()}
+              autofocus
+            />
+          </FormField>
+          <FormField label="Directory">
+            <div style={{ display: 'flex', gap: '6px' }}>
+              <input
+                type="text"
+                value={wtPath()}
+                onInput={(e) => { setWtPathEdited(true); setWtPath(e.target.value); }}
+                style={{ flex: 1 }}
+                onKeyDown={(e) => e.key === 'Enter' && submitWtForm()}
+              />
+              <button class="btn btn-ghost btn-sm" onClick={browseWtPath} title="Browse">
+                <Icon name="fa-solid fa-folder-open" />
+              </button>
+            </div>
+          </FormField>
+        </FormModal>
+      </Show>
     </div>
   );
 }

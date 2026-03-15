@@ -5,7 +5,7 @@ import ResizeHandle from '../components/ResizeHandle';
 import Select from '../components/Select';
 import { useWorkspace } from '../context/WorkspaceContext';
 import { stagedFiles, unstagedFiles, untrackedFiles, conflictFiles } from '../utils/status';
-import { DiffLines } from '../utils/diff';
+import { DiffLines, DiffHunks } from '../utils/diff';
 
 export default function ChangesPanel() {
   const ws = useWorkspace();
@@ -201,7 +201,14 @@ export default function ChangesPanel() {
             </div>
             <pre class="git-diff-content">
               <div class="git-diff-inner">
-                <DiffLines raw={ws.diff.content} />
+                <Show when={ws.diff.header} fallback={<DiffLines raw={ws.diff.content} />}>
+                  <DiffHunks
+                    raw={ws.diff.content}
+                    onStageHunk={!ws.diff.staged ? (idx) => ws.stageHunk(idx) : undefined}
+                    onUnstageHunk={ws.diff.staged ? (idx) => ws.unstageHunk(idx) : undefined}
+                    onDiscardHunk={!ws.diff.staged ? (idx) => ws.discardHunk(idx) : undefined}
+                  />
+                </Show>
               </div>
             </pre>
           </Show>

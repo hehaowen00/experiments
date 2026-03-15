@@ -49,6 +49,10 @@ contextBridge.exposeInMainWorld('api', {
   gitClone: (url, parentDir, dirName) => ipcRenderer.invoke('git:clone', url, parentDir, dirName),
   gitStatus: (repoPath) => ipcRenderer.invoke('git:status', repoPath),
   gitDiff: (repoPath, filepath, staged) => ipcRenderer.invoke('git:diff', repoPath, filepath, staged),
+  gitDiffRaw: (repoPath, filepath, staged) => ipcRenderer.invoke('git:diffRaw', repoPath, filepath, staged),
+  gitStageHunk: (repoPath, patchText) => ipcRenderer.invoke('git:stageHunk', repoPath, patchText),
+  gitUnstageHunk: (repoPath, patchText) => ipcRenderer.invoke('git:unstageHunk', repoPath, patchText),
+  gitDiscardHunk: (repoPath, patchText) => ipcRenderer.invoke('git:discardHunk', repoPath, patchText),
   gitDiffUntracked: (repoPath, filepath) => ipcRenderer.invoke('git:diffUntracked', repoPath, filepath),
   gitStage: (repoPath, filepaths) => ipcRenderer.invoke('git:stage', repoPath, filepaths),
   gitUnstage: (repoPath, filepaths) => ipcRenderer.invoke('git:unstage', repoPath, filepaths),
@@ -131,6 +135,13 @@ contextBridge.exposeInMainWorld('api', {
   // Patches
   gitExportStagedPatch: (repoPath) => ipcRenderer.invoke('git:exportStagedPatch', repoPath),
   gitApplyPatch: (repoPath) => ipcRenderer.invoke('git:applyPatch', repoPath),
+
+  // Worktrees
+  gitPickWorktreeFolder: () => ipcRenderer.invoke('git:pickWorktreeFolder'),
+  gitWorktreeList: (repoPath) => ipcRenderer.invoke('git:worktreeList', repoPath),
+  gitWorktreeAdd: (repoPath, wtPath, branch, newBranch) => ipcRenderer.invoke('git:worktreeAdd', repoPath, wtPath, branch, newBranch),
+  gitWorktreeRemove: (repoPath, wtPath, force) => ipcRenderer.invoke('git:worktreeRemove', repoPath, wtPath, force),
+  gitWorktreePrune: (repoPath) => ipcRenderer.invoke('git:worktreePrune', repoPath),
 
   // Filesystem watching
   gitWatchRepo: (repoPath) => ipcRenderer.invoke('git:watchRepo', repoPath),
