@@ -1,6 +1,6 @@
 import { For, createSignal } from 'solid-js';
-import Icon from './Icon';
-import Select from './Select';
+import Icon from '../lib/Icon';
+import Select from '../lib/Select';
 import { useWorkspace } from '../context/WorkspaceContext';
 
 const ACTIONS = ['pick', 'reword', 'squash', 'fixup', 'drop'];

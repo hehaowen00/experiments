@@ -1,96 +1,102 @@
 package pubsub
 
 import (
-	"sync"
+	"context"
+	"errors"
+	"fmt"
 	"time"
+
+	"github.com/google/uuid"
 )
 
-// pendingStream holds chunks until all parts arrive.
-type pendingStream struct {
-	chunks    map[uint32][]byte // chunkIndex -> payload fragment
-	total     uint32
-	received  uint32
-	msg       *Message // template carrying source, dest, seq, etc.
-	createdAt time.Time
+// Stream provides bidirectional streaming over the pub-sub system.
+// Each stream has a unique ID and is backed by a dedicated subscription
+// on the internal topic _stream.<id>.
+type Stream struct {
+	ID     string
+	Topic  string
+	node   *Node
+	subID  string
+	ch     chan *Message
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
-// streamAssembler reassembles chunked messages.
-type streamAssembler struct {
-	mu      sync.Mutex
-	streams map[string]*pendingStream // streamID -> pending
-}
+// OpenStream creates a new bidirectional stream on the given topic.
+// The stream subscribes to an internal reply topic (_stream.<id>) for
+// receiving messages, and publishes outgoing messages to the specified topic
+// with the StreamID field set.
+func (n *Node) OpenStream(topic string) (*Stream, error) {
+	streamID := uuid.New().String()
+	ctx, cancel := context.WithCancel(context.Background())
 
-func newStreamAssembler() *streamAssembler {
-	return &streamAssembler{streams: make(map[string]*pendingStream)}
-}
-
-// addChunk stores a chunk and returns the reassembled payload if all chunks
-// have arrived. Returns nil if the stream is still incomplete.
-func (sa *streamAssembler) addChunk(streamID string, index, total uint32, data []byte, template *Message) []byte {
-	sa.mu.Lock()
-	defer sa.mu.Unlock()
-
-	ps, ok := sa.streams[streamID]
-	if !ok {
-		ps = &pendingStream{
-			chunks:    make(map[uint32][]byte, total),
-			total:     total,
-			msg:       template,
-			createdAt: time.Now(),
-		}
-		sa.streams[streamID] = ps
+	s := &Stream{
+		ID:     streamID,
+		Topic:  topic,
+		node:   n,
+		ch:     make(chan *Message, n.opts.ChannelSize),
+		ctx:    ctx,
+		cancel: cancel,
 	}
 
-	if _, dup := ps.chunks[index]; dup {
+	internalTopic := fmt.Sprintf("_stream.%s", streamID)
+	subID, err := n.Subscribe(internalTopic, func(msg *Message) error {
+		select {
+		case s.ch <- msg:
+		case <-s.ctx.Done():
+		}
 		return nil
+	})
+	if err != nil {
+		cancel()
+		return nil, fmt.Errorf("subscribe to stream topic: %w", err)
 	}
-	ps.chunks[index] = data
-	ps.received++
+	s.subID = subID
 
-	if ps.received < ps.total {
-		return nil
-	}
-
-	// All chunks received — reassemble in order
-	size := 0
-	for _, c := range ps.chunks {
-		size += len(c)
-	}
-	payload := make([]byte, 0, size)
-	for i := uint32(0); i < ps.total; i++ {
-		payload = append(payload, ps.chunks[i]...)
-	}
-
-	delete(sa.streams, streamID)
-	return payload
+	return s, nil
 }
 
-// cleanup removes incomplete streams older than maxAge.
-func (sa *streamAssembler) cleanup(maxAge time.Duration) {
-	sa.mu.Lock()
-	defer sa.mu.Unlock()
+// Send publishes a message on the stream's topic with the StreamID set.
+func (s *Stream) Send(payload []byte) error {
+	select {
+	case <-s.ctx.Done():
+		return errors.New("stream closed")
+	default:
+	}
 
-	cutoff := time.Now().Add(-maxAge)
-	for id, ps := range sa.streams {
-		if ps.createdAt.Before(cutoff) {
-			delete(sa.streams, id)
+	msg := &Message{
+		ID:          uuid.New().String(),
+		Source:      s.node.opts.NodeID,
+		Destination: s.Topic,
+		Payload:     payload,
+		Timestamp:   time.Now().UnixNano(),
+		StreamID:    s.ID,
+	}
+
+	return s.node.Publish(msg)
+}
+
+// Receive blocks until a message arrives on the stream or the stream is closed.
+func (s *Stream) Receive() (*Message, error) {
+	select {
+	case msg, ok := <-s.ch:
+		if !ok {
+			return nil, errors.New("stream closed")
 		}
+		return msg, nil
+	case <-s.ctx.Done():
+		return nil, errors.New("stream closed")
 	}
 }
 
-// splitPayload divides data into chunks of at most chunkSize bytes.
-func splitPayload(data []byte, chunkSize int) [][]byte {
-	if chunkSize <= 0 || len(data) <= chunkSize {
-		return [][]byte{data}
-	}
-	var chunks [][]byte
-	for len(data) > 0 {
-		end := chunkSize
-		if end > len(data) {
-			end = len(data)
+// Close tears down the stream by unsubscribing and closing the channel.
+func (s *Stream) Close() error {
+	s.cancel()
+	if s.subID != "" {
+		if err := s.node.Unsubscribe(s.subID); err != nil {
+			return fmt.Errorf("unsubscribe stream: %w", err)
 		}
-		chunks = append(chunks, data[:end])
-		data = data[end:]
 	}
-	return chunks
+	close(s.ch)
+	return nil
 }

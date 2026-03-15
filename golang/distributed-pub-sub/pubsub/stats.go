@@ -1,49 +1,78 @@
 package pubsub
 
-import "sync/atomic"
+import (
+	"sync/atomic"
 
-// Stats holds atomic counters for node activity.
+	"github.com/prometheus/client_golang/prometheus"
+)
+
+// Stats tracks node metrics using atomic counters.
 type Stats struct {
-	Published        atomic.Uint64 // messages published locally
-	Forwarded        atomic.Uint64 // messages forwarded to peers
-	ForwardsFailed   atomic.Uint64 // forward attempts that exhausted retries
-	Received         atomic.Uint64 // messages received from peers
-	Delivered        atomic.Uint64 // messages delivered to subscriber handlers
-	DeliveryRetries  atomic.Uint64 // handler retries (each retry attempt)
-	Dropped          atomic.Uint64 // messages dropped (buffer full or handler exhausted)
-	Deduplicated     atomic.Uint64 // messages rejected by dedup
-	RateLimited      atomic.Uint64 // publishes rejected by rate limiter
-	DeadLettered     atomic.Uint64 // messages sent to dead letter queue
-	Overflowed       atomic.Uint64 // messages spilled to overflow queue
+	MessagesPublished atomic.Int64
+	MessagesDelivered atomic.Int64
+	MessagesForwarded atomic.Int64
+	MessagesFailed    atomic.Int64
+	MessagesDLQ       atomic.Int64
+	ActiveSubscribers atomic.Int64
+	ConnectedPeers    atomic.Int64
 }
 
-// Snapshot returns a point-in-time copy of all counters.
-type StatsSnapshot struct {
-	Published       uint64 `json:"published"`
-	Forwarded       uint64 `json:"forwarded"`
-	ForwardsFailed  uint64 `json:"forwards_failed"`
-	Received        uint64 `json:"received"`
-	Delivered       uint64 `json:"delivered"`
-	DeliveryRetries uint64 `json:"delivery_retries"`
-	Dropped         uint64 `json:"dropped"`
-	Deduplicated    uint64 `json:"deduplicated"`
-	RateLimited     uint64 `json:"rate_limited"`
-	DeadLettered    uint64 `json:"dead_lettered"`
-	Overflowed      uint64 `json:"overflowed"`
-}
-
-func (s *Stats) Snapshot() StatsSnapshot {
-	return StatsSnapshot{
-		Published:       s.Published.Load(),
-		Forwarded:       s.Forwarded.Load(),
-		ForwardsFailed:  s.ForwardsFailed.Load(),
-		Received:        s.Received.Load(),
-		Delivered:       s.Delivered.Load(),
-		DeliveryRetries: s.DeliveryRetries.Load(),
-		Dropped:         s.Dropped.Load(),
-		Deduplicated:    s.Deduplicated.Load(),
-		RateLimited:     s.RateLimited.Load(),
-		DeadLettered:    s.DeadLettered.Load(),
-		Overflowed:      s.Overflowed.Load(),
+// Snapshot returns all current stats as a map.
+func (s *Stats) Snapshot() map[string]int64 {
+	return map[string]int64{
+		"messages_published":  s.MessagesPublished.Load(),
+		"messages_delivered":  s.MessagesDelivered.Load(),
+		"messages_forwarded":  s.MessagesForwarded.Load(),
+		"messages_failed":     s.MessagesFailed.Load(),
+		"messages_dlq":        s.MessagesDLQ.Load(),
+		"active_subscribers":  s.ActiveSubscribers.Load(),
+		"connected_peers":     s.ConnectedPeers.Load(),
 	}
+}
+
+// statsCollector implements prometheus.Collector by reading from atomic Stats
+// on each scrape. This avoids touching the hot path.
+type statsCollector struct {
+	stats *Stats
+
+	publishedDesc  *prometheus.Desc
+	deliveredDesc  *prometheus.Desc
+	forwardedDesc  *prometheus.Desc
+	failedDesc     *prometheus.Desc
+	dlqDesc        *prometheus.Desc
+	subscriberDesc *prometheus.Desc
+	peersDesc      *prometheus.Desc
+}
+
+func newStatsCollector(stats *Stats) *statsCollector {
+	return &statsCollector{
+		stats:          stats,
+		publishedDesc:  prometheus.NewDesc("pubsub_messages_published_total", "Total messages published", nil, nil),
+		deliveredDesc:  prometheus.NewDesc("pubsub_messages_delivered_total", "Total messages delivered to subscribers", nil, nil),
+		forwardedDesc:  prometheus.NewDesc("pubsub_messages_forwarded_total", "Total messages forwarded to peers", nil, nil),
+		failedDesc:     prometheus.NewDesc("pubsub_messages_failed_total", "Total messages that failed delivery", nil, nil),
+		dlqDesc:        prometheus.NewDesc("pubsub_messages_dlq_total", "Total messages sent to dead-letter queue", nil, nil),
+		subscriberDesc: prometheus.NewDesc("pubsub_active_subscribers", "Number of active subscribers", nil, nil),
+		peersDesc:      prometheus.NewDesc("pubsub_connected_peers", "Number of connected peers", nil, nil),
+	}
+}
+
+func (c *statsCollector) Describe(ch chan<- *prometheus.Desc) {
+	ch <- c.publishedDesc
+	ch <- c.deliveredDesc
+	ch <- c.forwardedDesc
+	ch <- c.failedDesc
+	ch <- c.dlqDesc
+	ch <- c.subscriberDesc
+	ch <- c.peersDesc
+}
+
+func (c *statsCollector) Collect(ch chan<- prometheus.Metric) {
+	ch <- prometheus.MustNewConstMetric(c.publishedDesc, prometheus.CounterValue, float64(c.stats.MessagesPublished.Load()))
+	ch <- prometheus.MustNewConstMetric(c.deliveredDesc, prometheus.CounterValue, float64(c.stats.MessagesDelivered.Load()))
+	ch <- prometheus.MustNewConstMetric(c.forwardedDesc, prometheus.CounterValue, float64(c.stats.MessagesForwarded.Load()))
+	ch <- prometheus.MustNewConstMetric(c.failedDesc, prometheus.CounterValue, float64(c.stats.MessagesFailed.Load()))
+	ch <- prometheus.MustNewConstMetric(c.dlqDesc, prometheus.CounterValue, float64(c.stats.MessagesDLQ.Load()))
+	ch <- prometheus.MustNewConstMetric(c.subscriberDesc, prometheus.GaugeValue, float64(c.stats.ActiveSubscribers.Load()))
+	ch <- prometheus.MustNewConstMetric(c.peersDesc, prometheus.GaugeValue, float64(c.stats.ConnectedPeers.Load()))
 }

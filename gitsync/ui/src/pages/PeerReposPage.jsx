@@ -1,6 +1,6 @@
 import { For, Show, createSignal, onMount, onCleanup } from 'solid-js';
 import { createStore } from 'solid-js/store';
-import Icon from '../components/Icon';
+import Icon from '../lib/Icon';
 import { showAlert } from '../components/Modal';
 
 export default function PeerReposPage(props) {

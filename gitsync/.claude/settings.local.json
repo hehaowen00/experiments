@@ -6,7 +6,8 @@
       "Read(//Users/hehaowen00/Library/Android/sdk/**)",
       "Bash(chmod +x /Users/hehaowen00/Documents/repos/experiments/gitsync-android/gradlew)",
       "Read(//Users/hehaowen00/Documents/repos/experiments/gitsync-tauri/src-tauri/**)",
-      "Bash(python3 -c \":*)"
+      "Bash(python3 -c \":*)",
+      "Bash(npm run:*)"
     ]
   }
 }

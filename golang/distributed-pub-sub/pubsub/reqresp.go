@@ -2,74 +2,74 @@ package pubsub
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 )
 
-// Request publishes a message and blocks until a reply is received or the context
-// is cancelled. The responder should call Reply() with the original message.
-func (n *Node) Request(ctx context.Context, source, topic string, payload json.RawMessage) (*Message, error) {
-	replyTopic := "_reply." + uuid.New().String()
-	replyCh := make(chan *Message, 1)
+// Request performs a request-response exchange over the pub-sub system.
+// It publishes a message to the given topic with a unique reply topic set,
+// then waits for a single response (or until the timeout/context expires).
+func (n *Node) Request(ctx context.Context, topic string, payload []byte, timeout time.Duration) (*Message, error) {
+	replyTopic := fmt.Sprintf("_reply.%s", uuid.New().String())
 
-	subID := replyTopic
-	if err := n.Subscribe(replyTopic, subID, func(_ context.Context, msg *Message) error {
+	respCh := make(chan *Message, 1)
+	errCh := make(chan error, 1)
+
+	subID, err := n.Subscribe(replyTopic, func(msg *Message) error {
 		select {
-		case replyCh <- msg:
+		case respCh <- msg:
 		default:
 		}
 		return nil
-	}); err != nil {
-		return nil, fmt.Errorf("subscribe reply topic: %w", err)
+	})
+	if err != nil {
+		return nil, fmt.Errorf("subscribe to reply topic: %w", err)
 	}
+	defer n.Unsubscribe(subID)
 
-	defer n.Unsubscribe(replyTopic, subID)
-
-	// Publish the request with ReplyTo set
-	if n.draining.Load() {
-		return nil, fmt.Errorf("node is draining")
-	}
-	if n.limiter != nil && !n.limiter.allow(source) {
-		n.stats.RateLimited.Add(1)
-		return nil, fmt.Errorf("rate limit exceeded for source %s", source)
-	}
-
-	seq := n.nextSequence(source, topic)
 	msg := &Message{
 		ID:          uuid.New().String(),
-		Source:      source,
+		Source:      n.opts.NodeID,
 		Destination: topic,
 		Payload:     payload,
-		Timestamp:   time.Now().UnixMilli(),
-		Sequence:    seq,
-		OriginNode:  n.opts.ID,
+		Timestamp:   time.Now().UnixNano(),
 		ReplyTo:     replyTopic,
 	}
 
-	n.seen.Store(msg.ID, time.Now())
-	n.stats.Published.Add(1)
-	n.deliverLocal(msg)
+	if err := n.Publish(msg); err != nil {
+		return nil, fmt.Errorf("publish request: %w", err)
+	}
 
-	n.inflight.Go(func() {
-		n.forwardToPeers(msg)
-	})
+	timeoutCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 
 	select {
-	case reply := <-replyCh:
-		return reply, nil
-	case <-ctx.Done():
-		return nil, ctx.Err()
+	case resp := <-respCh:
+		return resp, nil
+	case err := <-errCh:
+		return nil, err
+	case <-timeoutCtx.Done():
+		return nil, errors.New("request timed out")
 	}
 }
 
-// Reply publishes a response to a request message. The reply is sent to the
+// Reply sends a response to a request message by publishing to the
 // original message's ReplyTo topic.
-func (n *Node) Reply(ctx context.Context, request *Message, source string, payload json.RawMessage) (string, error) {
-	if request.ReplyTo == "" {
-		return "", fmt.Errorf("message has no ReplyTo field")
+func (n *Node) Reply(original *Message, payload []byte) error {
+	if original.ReplyTo == "" {
+		return errors.New("message has no ReplyTo topic")
 	}
-	return n.Publish(ctx, source, request.ReplyTo, payload)
+
+	resp := &Message{
+		ID:          uuid.New().String(),
+		Source:      n.opts.NodeID,
+		Destination: original.ReplyTo,
+		Payload:     payload,
+		Timestamp:   time.Now().UnixNano(),
+	}
+
+	return n.Publish(resp)
 }

@@ -1,5 +1,5 @@
 import { Show } from 'solid-js';
-import Icon from './Icon';
+import Icon from '../lib/Icon';
 import { useWorkspace } from '../context/WorkspaceContext';
 
 export default function ContextMenu() {

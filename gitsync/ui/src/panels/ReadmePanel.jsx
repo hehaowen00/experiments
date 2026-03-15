@@ -1,6 +1,6 @@
 import { Show } from 'solid-js';
 import { marked } from 'marked';
-import Icon from '../components/Icon';
+import Icon from '../lib/Icon';
 import { useWorkspace } from '../context/WorkspaceContext';
 
 export default function ReadmePanel() {

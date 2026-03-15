@@ -3,367 +3,259 @@ package service
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 )
 
-// RemoteTransport connects to a pubsub mesh node's HTTP/WebSocket gateway.
-// Applications use this to talk to the mesh without embedding a pubsub.Node.
-//
-// If the WebSocket connection drops, the transport automatically reconnects
-// and re-subscribes to all topics. Callers can register a callback via
-// OnReconnect to perform recovery (e.g. fetch missed messages).
-type RemoteTransport struct {
-	urls []string // gateway URLs, e.g. ["http://localhost:8080", "http://localhost:8081"]
-	url  string   // currently connected URL
+// wsMessage represents a WebSocket protocol message.
+type wsMessage struct {
+	Type    string `json:"type"`
+	Topic   string `json:"topic,omitempty"`
+	Payload string `json:"payload,omitempty"` // base64-encoded
+}
 
-	mu       sync.Mutex
+// httpRequestBody represents the JSON body for an HTTP request-response call.
+type httpRequestBody struct {
+	Topic   string `json:"topic"`
+	Payload string `json:"payload"` // base64-encoded
+	Timeout int    `json:"timeout"` // milliseconds
+}
+
+// httpResponseBody represents the JSON response from an HTTP request-response call.
+type httpResponseBody struct {
+	Payload string `json:"payload"` // base64-encoded
+	Error   string `json:"error,omitempty"`
+}
+
+// RemoteTransport connects to a node via HTTP/WebSocket.
+type RemoteTransport struct {
+	baseURL  string
+	wsURL    string
 	conn     *websocket.Conn
-	connID   string
-	handlers map[string]map[string]MessageHandler // topic -> subID -> handler
-	closed   bool
+	handlers map[string]func(data []byte) []byte
+	mu       sync.RWMutex
 	ctx      context.Context
 	cancel   context.CancelFunc
-
-	reconnectCb func() // called after successful reconnect
 }
 
-// NewRemoteTransport creates a transport that connects to one or more gateway URLs.
-// When multiple URLs are provided, the transport cycles through them on reconnect.
-// Call Connect to establish the WebSocket connection.
-func NewRemoteTransport(gatewayURLs ...string) *RemoteTransport {
-	urls := make([]string, len(gatewayURLs))
-	for i, u := range gatewayURLs {
-		urls[i] = strings.TrimRight(u, "/")
-	}
+// NewRemoteTransport creates a new RemoteTransport.
+// httpBaseURL should be the HTTP base URL of the node (e.g., "http://localhost:8080").
+func NewRemoteTransport(httpBaseURL string) *RemoteTransport {
+	// Derive WebSocket URL from HTTP URL.
+	wsURL := strings.Replace(httpBaseURL, "https://", "wss://", 1)
+	wsURL = strings.Replace(wsURL, "http://", "ws://", 1)
+
+	ctx, cancel := context.WithCancel(context.Background())
+
 	return &RemoteTransport{
-		urls:     urls,
-		url:      urls[0],
-		handlers: make(map[string]map[string]MessageHandler),
+		baseURL:  httpBaseURL,
+		wsURL:    wsURL,
+		handlers: make(map[string]func(data []byte) []byte),
+		ctx:      ctx,
+		cancel:   cancel,
 	}
-}
-
-// OnReconnect registers a callback that fires after the transport reconnects
-// and re-subscribes to all topics. Use this to fetch missed messages.
-func (t *RemoteTransport) OnReconnect(fn func()) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	t.reconnectCb = fn
 }
 
 // Connect establishes the WebSocket connection and starts the read loop.
-// Must be called before Subscribe.
-func (t *RemoteTransport) Connect(ctx context.Context) error {
-	t.mu.Lock()
-	t.ctx, t.cancel = context.WithCancel(ctx)
-	t.mu.Unlock()
-
-	return t.dial()
-}
-
-// dial creates a new WebSocket connection to the gateway.
-func (t *RemoteTransport) dial() error {
-	connID := uuid.New().String()
-	wsURL := t.wsURL() + "/subscribe?topic=_noop&id=" + connID
-	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+func (t *RemoteTransport) Connect() error {
+	dialer := websocket.DefaultDialer
+	conn, _, err := dialer.DialContext(t.ctx, t.wsURL+"/ws", nil)
 	if err != nil {
-		return fmt.Errorf("connect to %s: %w", wsURL, err)
+		return fmt.Errorf("failed to connect to %s/ws: %w", t.wsURL, err)
 	}
-
-	// Keepalive: respond to server pings, timeout if no pings for 40s
-	conn.SetReadDeadline(time.Now().Add(40 * time.Second))
-	conn.SetPongHandler(func(string) error {
-		conn.SetReadDeadline(time.Now().Add(40 * time.Second))
-		return nil
-	})
-	conn.SetPingHandler(func(msg string) error {
-		conn.SetReadDeadline(time.Now().Add(40 * time.Second))
-		t.mu.Lock()
-		defer t.mu.Unlock()
-		conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
-		return conn.WriteMessage(websocket.PongMessage, []byte(msg))
-	})
 
 	t.mu.Lock()
 	t.conn = conn
-	t.connID = connID
 	t.mu.Unlock()
 
-	go t.readLoop(conn)
+	go t.readLoop()
 	return nil
 }
 
-// Close shuts down the WebSocket connection and stops reconnection.
-func (t *RemoteTransport) Close() error {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	t.closed = true
-	if t.cancel != nil {
-		t.cancel()
-	}
-	if t.conn != nil {
-		return t.conn.Close()
-	}
-	return nil
-}
-
-func (t *RemoteTransport) Publish(ctx context.Context, source, topic string, payload json.RawMessage) (string, error) {
-	body, _ := json.Marshal(map[string]any{
-		"source":  source,
-		"topic":   topic,
-		"payload": payload,
-	})
-	resp, err := http.Post(t.url+"/publish", "application/json", bytes.NewReader(body))
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	var result struct {
-		ID    string `json:"id"`
-		Error string `json:"error"`
-	}
-	json.NewDecoder(resp.Body).Decode(&result)
-	if result.Error != "" {
-		return "", fmt.Errorf("%s", result.Error)
-	}
-	return result.ID, nil
-}
-
-func (t *RemoteTransport) Subscribe(topic, id string, handler MessageHandler) error {
-	t.mu.Lock()
-	if t.handlers[topic] == nil {
-		t.handlers[topic] = make(map[string]MessageHandler)
-	}
-	isNew := len(t.handlers[topic]) == 0
-	t.handlers[topic][id] = handler
-	conn := t.conn
-	t.mu.Unlock()
-
-	// Only send subscribe if this is the first handler for this topic
-	if isNew && conn != nil {
-		t.wsSend(map[string]string{"action": "subscribe", "topic": topic})
-	}
-	return nil
-}
-
-func (t *RemoteTransport) Unsubscribe(topic, id string) error {
-	t.mu.Lock()
-	if subs, ok := t.handlers[topic]; ok {
-		delete(subs, id)
-		if len(subs) == 0 {
-			delete(t.handlers, topic)
-			t.mu.Unlock()
-			t.wsSend(map[string]string{"action": "unsubscribe", "topic": topic})
-			return nil
-		}
-	}
-	t.mu.Unlock()
-	return nil
-}
-
-func (t *RemoteTransport) Request(ctx context.Context, source, topic string, payload json.RawMessage) (*Message, error) {
-	body, _ := json.Marshal(map[string]any{
-		"source":  source,
-		"topic":   topic,
-		"payload": payload,
-	})
-
-	req, err := http.NewRequestWithContext(ctx, "POST", t.url+"/request", bytes.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		errBody, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("request failed (%d): %s", resp.StatusCode, errBody)
-	}
-
-	var msg struct {
-		ID          string          `json:"id"`
-		Source      string          `json:"source"`
-		Destination string          `json:"destination"`
-		Payload     json.RawMessage `json:"payload"`
-		Timestamp   int64           `json:"timestamp"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&msg); err != nil {
-		return nil, fmt.Errorf("decode reply: %w", err)
-	}
-	return &Message{
-		ID:        msg.ID,
-		Source:    msg.Source,
-		Topic:     msg.Destination,
-		Payload:   msg.Payload,
-		Timestamp: msg.Timestamp,
-	}, nil
-}
-
-func (t *RemoteTransport) Reply(ctx context.Context, replyTo, source string, payload json.RawMessage) (string, error) {
-	return t.Publish(ctx, source, replyTo, payload)
-}
-
-// readLoop processes incoming WebSocket messages and dispatches to handlers.
-// When the connection drops, it triggers reconnection.
-func (t *RemoteTransport) readLoop(conn *websocket.Conn) {
+// readLoop reads incoming WebSocket messages and dispatches them to handlers.
+func (t *RemoteTransport) readLoop() {
 	for {
-		_, raw, err := conn.ReadMessage()
+		select {
+		case <-t.ctx.Done():
+			return
+		default:
+		}
+
+		_, raw, err := t.conn.ReadMessage()
 		if err != nil {
-			t.mu.Lock()
-			closed := t.closed
-			t.mu.Unlock()
-			if closed {
+			// Connection closed or error.
+			select {
+			case <-t.ctx.Done():
+				return
+			default:
+				// Unexpected error, exit read loop.
 				return
 			}
-			log.Printf("remote transport: connection lost: %v", err)
-			go t.reconnect()
-			return
 		}
 
-		var msg struct {
-			Type        string          `json:"type"`
-			ID          string          `json:"id"`
-			Source      string          `json:"source"`
-			Destination string          `json:"destination"`
-			Payload     json.RawMessage `json:"payload"`
-			Timestamp   int64           `json:"timestamp"`
-			ReplyTo     string          `json:"reply_to"`
-			Error       string          `json:"error"`
-		}
+		var msg wsMessage
 		if err := json.Unmarshal(raw, &msg); err != nil {
 			continue
 		}
 
-		if msg.Type != "message" {
-			continue
-		}
+		if msg.Type == "message" && msg.Topic != "" {
+			t.mu.RLock()
+			handler, ok := t.handlers[msg.Topic]
+			t.mu.RUnlock()
 
-		m := &Message{
-			ID:        msg.ID,
-			Source:    msg.Source,
-			Topic:     msg.Destination,
-			Payload:   msg.Payload,
-			Timestamp: msg.Timestamp,
-			ReplyTo:   msg.ReplyTo,
-		}
-
-		t.mu.Lock()
-		handlers := make([]MessageHandler, 0)
-		if subs, ok := t.handlers[msg.Destination]; ok {
-			for _, h := range subs {
-				handlers = append(handlers, h)
-			}
-		}
-		t.mu.Unlock()
-
-		for _, h := range handlers {
-			go func() {
-				if err := h(context.Background(), m); err != nil {
-					log.Printf("remote transport: handler error: %v", err)
+			if ok {
+				payload, err := base64.StdEncoding.DecodeString(msg.Payload)
+				if err != nil {
+					continue
 				}
-			}()
-		}
-	}
-}
 
-// reconnect attempts to re-establish the WebSocket connection with backoff.
-// On success, it re-subscribes to all topics the transport was subscribed to.
-// When multiple gateway URLs are configured, it cycles through them.
-func (t *RemoteTransport) reconnect() {
-	backoff := 500 * time.Millisecond
-	maxBackoff := 10 * time.Second
-
-	for {
-		t.mu.Lock()
-		if t.closed {
-			t.mu.Unlock()
-			return
-		}
-		ctx := t.ctx
-		t.mu.Unlock()
-
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(backoff):
-		}
-
-		// Try each URL in order
-		connected := false
-		for _, u := range t.urls {
-			t.mu.Lock()
-			t.url = u
-			t.mu.Unlock()
-
-			log.Printf("remote transport: reconnecting to %s...", u)
-			if err := t.dial(); err != nil {
-				log.Printf("remote transport: reconnect to %s failed: %v", u, err)
-				continue
+				result := handler(payload)
+				if result != nil {
+					// Send response back if handler returned data.
+					resp := wsMessage{
+						Type:    "response",
+						Topic:   msg.Topic,
+						Payload: base64.StdEncoding.EncodeToString(result),
+					}
+					respData, err := json.Marshal(resp)
+					if err == nil {
+						t.mu.RLock()
+						_ = t.conn.WriteMessage(websocket.TextMessage, respData)
+						t.mu.RUnlock()
+					}
+				}
 			}
-			connected = true
-			break
 		}
-		if !connected {
-			backoff = min(backoff*2, maxBackoff)
-			continue
-		}
-
-		// Re-subscribe to all topics
-		t.mu.Lock()
-		topics := make([]string, 0, len(t.handlers))
-		for topic := range t.handlers {
-			topics = append(topics, topic)
-		}
-		t.mu.Unlock()
-
-		for _, topic := range topics {
-			t.wsSend(map[string]string{"action": "subscribe", "topic": topic})
-		}
-
-		log.Printf("remote transport: reconnected, re-subscribed to %d topics", len(topics))
-
-		// Notify caller so they can recover (e.g. fetch missed messages)
-		t.mu.Lock()
-		cb := t.reconnectCb
-		t.mu.Unlock()
-		if cb != nil {
-			go cb()
-		}
-		return
 	}
 }
 
-func (t *RemoteTransport) wsSend(v any) error {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	if t.conn == nil {
+// Publish sends a message to a topic over the WebSocket connection.
+func (t *RemoteTransport) Publish(topic string, data []byte) error {
+	msg := wsMessage{
+		Type:    "publish",
+		Topic:   topic,
+		Payload: base64.StdEncoding.EncodeToString(data),
+	}
+
+	raw, err := json.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("failed to marshal publish message: %w", err)
+	}
+
+	t.mu.RLock()
+	conn := t.conn
+	t.mu.RUnlock()
+
+	if conn == nil {
 		return fmt.Errorf("not connected")
 	}
-	return t.conn.WriteJSON(v)
+
+	return conn.WriteMessage(websocket.TextMessage, raw)
 }
 
-func (t *RemoteTransport) wsURL() string {
-	url := t.url
-	if strings.HasPrefix(url, "http://") {
-		return "ws://" + url[7:]
+// Subscribe sends a subscribe message over the WebSocket and registers the local handler.
+func (t *RemoteTransport) Subscribe(topic string, handler func(data []byte) []byte) error {
+	t.mu.Lock()
+	t.handlers[topic] = handler
+	conn := t.conn
+	t.mu.Unlock()
+
+	if conn == nil {
+		return fmt.Errorf("not connected")
 	}
-	if strings.HasPrefix(url, "https://") {
-		return "wss://" + url[8:]
+
+	msg := wsMessage{
+		Type:  "subscribe",
+		Topic: topic,
 	}
-	return url
+
+	raw, err := json.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("failed to marshal subscribe message: %w", err)
+	}
+
+	return conn.WriteMessage(websocket.TextMessage, raw)
+}
+
+// Request sends an HTTP POST request to the node and waits for the response.
+func (t *RemoteTransport) Request(ctx context.Context, topic string, data []byte, timeout time.Duration) ([]byte, error) {
+	body := httpRequestBody{
+		Topic:   topic,
+		Payload: base64.StdEncoding.EncodeToString(data),
+		Timeout: int(timeout.Milliseconds()),
+	}
+
+	raw, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request body: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/request", t.baseURL)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(raw))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create HTTP request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: timeout + 5*time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("HTTP request to %s failed: %w", url, err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("request failed with status %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var httpResp httpResponseBody
+	if err := json.Unmarshal(respBody, &httpResp); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	if httpResp.Error != "" {
+		return nil, fmt.Errorf("remote error: %s", httpResp.Error)
+	}
+
+	payload, err := base64.StdEncoding.DecodeString(httpResp.Payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode response payload: %w", err)
+	}
+
+	return payload, nil
+}
+
+// Close shuts down the WebSocket connection.
+func (t *RemoteTransport) Close() error {
+	t.cancel()
+
+	t.mu.Lock()
+	conn := t.conn
+	t.conn = nil
+	t.mu.Unlock()
+
+	if conn == nil {
+		return nil
+	}
+
+	// Send close message to server.
+	_ = conn.WriteMessage(
+		websocket.CloseMessage,
+		websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""),
+	)
+
+	return conn.Close()
 }

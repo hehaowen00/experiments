@@ -1,5 +1,5 @@
 import { createMemo, For, Show } from 'solid-js';
-import Icon from './Icon';
+import Icon from '../lib/Icon';
 import { useWorkspace } from '../context/WorkspaceContext';
 import { statusClass } from '../utils/status';
 import { allFilesInTree } from '../utils/tree';

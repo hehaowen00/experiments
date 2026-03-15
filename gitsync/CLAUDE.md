@@ -28,7 +28,9 @@ No test runner is configured.
 
 ### Backend (`main/`)
 
-- `ipc-git.js` — All git operations via `child_process.execFile`. Helper `git(repoPath, args)` wraps calls with 10MB buffer. Also handles repo/category CRUD, identity management, conflict resolution, and patch import/export against SQLite.
+- `ipc-git.js` — Thin orchestrator that defines `git()` and `gitRaw()` helpers and delegates to `main/git/` modules.
+- `main/git/` — Modular IPC handlers split by domain: `repos.js`, `categories.js`, `identities.js`, `dialogs.js`, `status.js`, `staging.js`, `commit.js`, `log.js`, `sync.js`, `remotes.js`, `branches.js`, `merge-rebase.js`, `tags.js`, `stash.js`, `submodules.js`, `worktrees.js`, `patches.js`, `conflicts.js`, `bisect.js`, `watcher.js`. Each exports `register({ mainWindow, git, gitRaw })`.
+- `ipc-p2p.js` — P2P networking IPC handlers (LAN discovery, SSH server, friend requests).
 - `store.js` — SQLite database (`~/.config/gitsync/gitsync.db`) with tables: `settings`, `git_repos`, `git_categories`, `git_identities`. Uses better-sqlite3 with WAL mode.
 - `ksuid.js` — Timestamp-sortable unique ID generation (base62, 27 chars).
 
@@ -36,7 +38,8 @@ No test runner is configured.
 
 **State management:** Solid.js stores and signals, shared via context.
 
-- `context/WorkspaceContext.jsx` — Central provider for all git workspace state and operations. Components call `useWorkspace()` to access state/actions. Handles staging, committing, pulling, pushing, conflict resolution, patch export, and more.
+- `context/WorkspaceContext.jsx` — Central provider that declares stores/signals and composes operation modules from `context/ops/`. Components call `useWorkspace()` to access state/actions.
+- `context/ops/` — Modular operation creators split by domain: `staging.js`, `diff.js`, `commit.js`, `sync.js`, `branches.js`, `merge-rebase.js`, `log.js`, `remotes.js`, `tags.js`, `stash.js`, `worktrees.js`, `hunk.js`, `discard.js`, `conflicts.js`, `file-history.js`, `bisect.js`, `patches.js`. Each exports a `create*Ops(deps)` function that receives stores/signals and returns an object of functions.
 - `pages/GitClient.jsx` — Landing page: repo list, categories, drag-drop organization.
 - `pages/GitWorkspace.jsx` — Slim orchestrator wrapping `WorkspaceProvider` with header, tabs, panel routing, and merge/rebase operation banners.
 
@@ -45,16 +48,32 @@ No test runner is configured.
 - `panels/LogPanel.jsx` — Commit history with SVG graph visualization
 - `panels/RemotesPanel.jsx` — Remote and branch management (checkout, merge, rebase)
 
-**Shared components:** `FileTree.jsx` (hierarchical file display with section-scoped folder expansion), `ContextMenu.jsx`, `RepoSwitcher.jsx` (Ctrl+P), `Modal.jsx` (alert/confirm/prompt/tabbed settings with General/Identities/P2P tabs).
+**Shared UI library** (`ui/src/lib/`):
+- `Icon.jsx`, `Select.jsx`, `FormModal.jsx`, `ItemCard.jsx`, `CategoryList.jsx`, `ResizeHandle.jsx`
+- `index.js` — barrel export for all shared components
+- Import via `../lib/Icon` or `../lib` (barrel)
+
+**Domain components** (`ui/src/components/`):
+- `Modal.jsx` — Re-exports from `modal/state.js` (show* functions) and `modal/ModalDialog.jsx` (UI)
+- `modal/state.js` — Modal signal state and exported `showPrompt`, `showConfirm`, `showAlert`, etc.
+- `modal/ModalDialog.jsx` — Modal overlay/dialog rendering
+- `settings/GeneralTab.jsx`, `settings/IdentitiesTab.jsx`, `settings/P2PTab.jsx` — Settings panel tabs
+- `FileTree.jsx`, `ContextMenu.jsx`, `RepoSwitcher.jsx`, `FileHistory.jsx`, `InteractiveRebase.jsx`, `Titlebar.jsx`
 
 **Utilities:** `utils/graph.jsx` (commit graph algorithm with stable first-parent lane tracking + GraphCell SVG), `utils/diff.jsx` (diff parsing + DiffLine component), `utils/tree.js` (file tree building/compacting), `utils/status.js` (file categorization including conflict detection), `utils/path.js` (shared shortenPath).
 
 ### IPC Pattern
 
 Adding a new git operation requires changes in three places:
-1. `main/ipc-git.js` — `ipcMain.handle('git:operationName', ...)` handler
+1. `main/git/<domain>.js` — `ipcMain.handle('git:operationName', ...)` handler in the appropriate module
 2. `preload.js` — `gitOperationName: (...) => ipcRenderer.invoke('git:operationName', ...)`
 3. Frontend — call via `window.api.gitOperationName(...)`
+
+### Adding a new workspace operation
+
+1. Create or add to the appropriate `context/ops/<domain>.js` module
+2. Follow the `create*Ops(deps)` pattern — receive stores/signals, return functions
+3. Wire it up in `WorkspaceContext.jsx` by calling the creator and spreading the result into `ctx`
 
 ### Key Behaviors
 

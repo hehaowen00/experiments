@@ -1,5 +1,5 @@
 import { createSignal, onMount, Show } from 'solid-js';
-import Icon from './Icon';
+import Icon from '../lib/Icon';
 
 export default function Titlebar(props) {
   const [isMac, setIsMac] = createSignal(true);

@@ -1,6 +1,6 @@
 import { Show, For, createSignal } from 'solid-js';
-import FormModal, { FormField } from '../components/FormModal';
-import Icon from '../components/Icon';
+import FormModal, { FormField } from '../lib/FormModal';
+import Icon from '../lib/Icon';
 import { useWorkspace } from '../context/WorkspaceContext';
 
 export default function RemotesPanel() {

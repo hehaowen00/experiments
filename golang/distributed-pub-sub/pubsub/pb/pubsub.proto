@@ -1,0 +1,112 @@
+syntax = "proto3";
+
+package pb;
+
+option go_package = "distributed-pub-sub/pubsub/pb";
+
+service PubSubService {
+    rpc Forward(ForwardRequest) returns (ForwardResponse);
+    rpc Join(JoinRequest) returns (JoinResponse);
+    rpc Exchange(ExchangeRequest) returns (ExchangeResponse);
+    rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+    rpc PublishMessage(PublishRequest) returns (PublishResponse);
+    rpc SubscribeTopic(SubscribeRequest) returns (stream SubscribeMessage);
+    rpc Register(RegisterRequest) returns (RegisterResponse);
+    rpc Unregister(UnregisterRequest) returns (UnregisterResponse);
+}
+
+message ForwardRequest {
+    string id = 1;
+    string source = 2;
+    string destination = 3;
+    bytes payload = 4;
+    int64 timestamp = 5;
+    int64 sequence = 6;
+    string reply_to = 7;
+    string stream_id = 8;
+    int32 attempt = 9;
+}
+
+message ForwardResponse {
+    bool accepted = 1;
+}
+
+message JoinRequest {
+    string node_id = 1;
+    string address = 2;
+    repeated string topics = 3;
+}
+
+message JoinResponse {
+    string node_id = 1;
+    string address = 2;
+    repeated string topics = 3;
+    repeated PeerInfo peers = 4;
+}
+
+message PeerInfo {
+    string node_id = 1;
+    string address = 2;
+    repeated string topics = 3;
+}
+
+message ExchangeRequest {
+    string node_id = 1;
+    repeated string topics = 2;
+}
+
+message ExchangeResponse {
+    repeated string topics = 1;
+}
+
+message HealthCheckRequest {
+}
+
+message HealthCheckResponse {
+    string status = 1;
+    string node_id = 2;
+}
+
+message PublishRequest {
+    string topic = 1;
+    bytes payload = 2;
+    string reply_to = 3;
+}
+
+message PublishResponse {
+    string id = 1;
+}
+
+message SubscribeRequest {
+    string topic = 1;
+}
+
+message SubscribeMessage {
+    string id = 1;
+    string source = 2;
+    string topic = 3;
+    bytes payload = 4;
+    int64 timestamp = 5;
+    string reply_to = 6;
+    string stream_id = 7;
+}
+
+message RegisterRequest {
+    string service_name = 1;
+    string server_name = 2;
+}
+
+message RegisterResponse {
+    bool accepted = 1;
+    string redirect_address = 2;  // gRPC address to reconnect to (empty if accepted)
+    string redirect_node_id = 3;
+}
+
+message UnregisterRequest {
+    string service_name = 1;
+    string server_name = 2;
+}
+
+message UnregisterResponse {
+    bool success = 1;
+}

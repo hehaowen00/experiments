@@ -1,8 +1,8 @@
 import { Show, For, createSignal } from 'solid-js';
-import Icon from '../components/Icon';
+import Icon from '../lib/Icon';
 import FileTree from '../components/FileTree';
-import ResizeHandle from '../components/ResizeHandle';
-import Select from '../components/Select';
+import ResizeHandle from '../lib/ResizeHandle';
+import Select from '../lib/Select';
 import { useWorkspace } from '../context/WorkspaceContext';
 import { stagedFiles, unstagedFiles, untrackedFiles, conflictFiles } from '../utils/status';
 import { DiffLines, DiffHunks } from '../utils/diff';

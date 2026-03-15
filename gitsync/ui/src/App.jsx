@@ -4,7 +4,7 @@ import GitWorkspace from './pages/GitWorkspace';
 import PeersPage from './pages/PeersPage';
 import PeerReposPage from './pages/PeerReposPage';
 import Modal, { showSettings } from './components/Modal';
-import Icon from './components/Icon';
+import Icon from './lib/Icon';
 import Titlebar from './components/Titlebar';
 
 export default function App() {

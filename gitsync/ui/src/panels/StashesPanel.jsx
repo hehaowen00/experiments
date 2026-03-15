@@ -1,6 +1,6 @@
 import { Show, For, createSignal, createMemo } from 'solid-js';
-import Icon from '../components/Icon';
-import ResizeHandle from '../components/ResizeHandle';
+import Icon from '../lib/Icon';
+import ResizeHandle from '../lib/ResizeHandle';
 import { useWorkspace } from '../context/WorkspaceContext';
 import { parseDiffFiles, DiffLines } from '../utils/diff';
 import { buildTree, compactTree } from '../utils/tree';

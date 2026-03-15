@@ -1,9 +1,9 @@
 import { For, Show, createSignal, onCleanup, onMount } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
-import CategoryList from '../components/CategoryList';
-import FormModal, { FormField } from '../components/FormModal';
-import Icon from '../components/Icon';
-import ItemCard from '../components/ItemCard';
+import CategoryList from '../lib/CategoryList';
+import FormModal, { FormField } from '../lib/FormModal';
+import Icon from '../lib/Icon';
+import ItemCard from '../lib/ItemCard';
 import { showAlert, showConfirm, showConfirmTyped, showPrompt, showSettings } from '../components/Modal';
 import { initHomeDir, shortenPath } from '../utils/path';
 

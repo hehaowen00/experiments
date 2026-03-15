@@ -1,7 +1,7 @@
 import { Show, For, createSignal, onCleanup } from 'solid-js';
-import Icon from '../components/Icon';
-import Select from '../components/Select';
-import ResizeHandle from '../components/ResizeHandle';
+import Icon from '../lib/Icon';
+import Select from '../lib/Select';
+import ResizeHandle from '../lib/ResizeHandle';
 import { useWorkspace } from '../context/WorkspaceContext';
 import { GraphCell, parseRefs } from '../utils/graph';
 import { parseDiffFiles, DiffLines } from '../utils/diff';

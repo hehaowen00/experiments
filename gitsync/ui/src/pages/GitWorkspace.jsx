@@ -1,7 +1,7 @@
 import { onCleanup, onMount, Show, For } from 'solid-js';
 import ContextMenu from '../components/ContextMenu';
 import FileHistory from '../components/FileHistory';
-import Icon from '../components/Icon';
+import Icon from '../lib/Icon';
 import InteractiveRebase from '../components/InteractiveRebase';
 import Modal from '../components/Modal';
 import RepoSwitcher from '../components/RepoSwitcher';

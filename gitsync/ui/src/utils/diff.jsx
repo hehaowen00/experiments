@@ -1,5 +1,5 @@
 import { For, Show, createSignal, createMemo } from 'solid-js';
-import Icon from '../components/Icon';
+import Icon from '../lib/Icon';
 
 export function parseDiffFiles(rawDiff) {
   if (!rawDiff) return [];

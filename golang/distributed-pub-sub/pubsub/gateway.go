@@ -1,469 +1,735 @@
 package pubsub
 
 import (
-	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
+	"distributed-pub-sub/pubsub/storage"
+
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-var wsUpgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool { return true },
-}
-
-// HistoryProvider returns recent messages for a topic. Implement this
-// to back the gateway with a database or in-memory store.
-type HistoryProvider interface {
-	// Recent returns up to limit messages for the topic, in chronological order.
-	Recent(topic string, limit int) []*Message
-}
-
-// Gateway exposes a Node over HTTP. Use it as an http.Handler.
-//
-// Routes:
-//
-//	POST /publish         — publish a message
-//	POST /request         — request-response (blocks until reply)
-//	GET  /subscribe       — WebSocket: stream messages + send publishes/acks
-//	GET  /stats           — node stats + topology as JSON
-//	GET  /topics          — topic subscriber counts
-//	GET  /peers           — connected peer info
-//	GET  /sessions        — active gateway sessions
+// Gateway provides an HTTP and WebSocket API on top of a Node.
 type Gateway struct {
-	node    *Node
-	history HistoryProvider
-	mux     *http.ServeMux
-
-	sessionMu  sync.Mutex
-	sessions   map[string]*gwSession // clientID -> session
-	sessionTTL time.Duration         // how long sessions survive without a WS connection
+	node       *Node
+	upgrader   websocket.Upgrader
+	promRegistry *prometheus.Registry
 }
 
-// gwSession tracks a client's subscriptions across WebSocket reconnects.
-type gwSession struct {
-	id        string
-	topics    map[string]struct{} // subscribed topics
-	expiresAt time.Time           // when to clean up if no WS is attached
+// NewGateway creates a Gateway wrapping the given Node.
+func NewGateway(node *Node) *Gateway {
+	reg := prometheus.NewRegistry()
+	reg.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
+	reg.MustRegister(collectors.NewGoCollector())
+	reg.MustRegister(newStatsCollector(&node.stats))
 
-	mu      sync.Mutex
-	conn    *websocket.Conn // current WS connection, nil if disconnected
-	writeMu sync.Mutex      // serializes writes to conn
-}
-
-// GatewayOption configures a Gateway.
-type GatewayOption func(*Gateway)
-
-// WithHistory sets a history provider for the gateway.
-func WithHistory(hp HistoryProvider) GatewayOption {
-	return func(gw *Gateway) { gw.history = hp }
-}
-
-// WithSessionTTL sets how long sessions persist after WebSocket disconnect.
-// Default is 60 seconds.
-func WithSessionTTL(d time.Duration) GatewayOption {
-	return func(gw *Gateway) { gw.sessionTTL = d }
-}
-
-// NewGateway creates an HTTP gateway for the given node.
-func NewGateway(node *Node, opts ...GatewayOption) *Gateway {
-	gw := &Gateway{
-		node:       node,
-		mux:        http.NewServeMux(),
-		sessions:   make(map[string]*gwSession),
-		sessionTTL: 60 * time.Second,
+	return &Gateway{
+		node: node,
+		upgrader: websocket.Upgrader{
+			CheckOrigin: func(r *http.Request) bool { return true },
+		},
+		promRegistry: reg,
 	}
-	for _, o := range opts {
-		o(gw)
+}
+
+// Handler returns an http.Handler with all gateway routes registered.
+func (g *Gateway) Handler() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/health", g.handleHealth)
+	mux.HandleFunc("/publish", g.handlePublish)
+	mux.HandleFunc("/subscribe", g.handleSubscribe)
+	mux.HandleFunc("/request", g.handleRequest)
+	mux.HandleFunc("/ws", g.handleWS)
+	mux.HandleFunc("/dlq/", g.handleDLQ)
+	mux.HandleFunc("/services", g.handleServices)
+	mux.HandleFunc("/topics/", g.handleTopics)
+	mux.HandleFunc("/svc/", g.handleSvc)
+	mux.HandleFunc("/routes", g.handleRoutes)
+	mux.Handle("/metrics", promhttp.HandlerFor(g.promRegistry, promhttp.HandlerOpts{}))
+	return mux
+}
+
+// --- Health ---
+
+func (g *Gateway) handleHealth(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
 	}
-	gw.mux.HandleFunc("POST /publish", gw.handlePublish)
-	gw.mux.HandleFunc("POST /request", gw.handleRequest)
-	gw.mux.HandleFunc("GET /subscribe", gw.handleSubscribe)
-	gw.mux.HandleFunc("GET /stats", gw.handleStats)
-	gw.mux.HandleFunc("GET /topics", gw.handleTopics)
-	gw.mux.HandleFunc("GET /peers", gw.handlePeers)
-	gw.mux.HandleFunc("GET /sessions", gw.handleSessions)
-
-	go gw.sessionCleanupLoop()
-
-	return gw
+	stats := g.node.GetStats()
+	resp := map[string]interface{}{
+		"status":  "ok",
+		"node_id": g.node.opts.NodeID,
+		"stats":   stats,
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
-func (gw *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	gw.mux.ServeHTTP(w, r)
-}
-
-// --- POST /publish ---
+// --- Publish ---
 
 type publishRequest struct {
-	Source  string          `json:"source"`
-	Topic   string          `json:"topic"`
-	Payload json.RawMessage `json:"payload"`
+	Topic   string `json:"topic"`
+	Payload string `json:"payload"` // base64-encoded
+	ReplyTo string `json:"reply_to"`
 }
 
 type publishResponse struct {
 	ID string `json:"id"`
 }
 
-func (gw *Gateway) handlePublish(w http.ResponseWriter, r *http.Request) {
+func (g *Gateway) handlePublish(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
 	var req publishRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error":"invalid JSON"}`, http.StatusBadRequest)
-		return
-	}
-	if req.Source == "" || req.Topic == "" {
-		http.Error(w, `{"error":"source and topic required"}`, http.StatusBadRequest)
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 
-	id, err := gw.node.Publish(r.Context(), req.Source, req.Topic, req.Payload)
+	payload, err := base64.StdEncoding.DecodeString(req.Payload)
 	if err != nil {
-		w.WriteHeader(http.StatusTooManyRequests)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid base64 payload"})
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(publishResponse{ID: id})
+	msg := &Message{
+		ID:          uuid.New().String(),
+		Source:      g.node.opts.NodeID,
+		Destination: req.Topic,
+		Payload:     payload,
+		Timestamp:   time.Now().UnixNano(),
+		ReplyTo:     req.ReplyTo,
+	}
+
+	if err := g.node.Publish(msg); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, publishResponse{ID: msg.ID})
 }
 
-// --- POST /request ---
+// --- Subscribe (WebSocket per-topic) ---
 
-type rpcRequest struct {
-	Source  string          `json:"source"`
-	Topic   string          `json:"topic"`
-	Payload json.RawMessage `json:"payload"`
+func (g *Gateway) handleSubscribe(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	topic := r.URL.Query().Get("topic")
+	if topic == "" {
+		http.Error(w, "missing topic query parameter", http.StatusBadRequest)
+		return
+	}
+
+	conn, err := g.upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		return // Upgrade writes the error response
+	}
+	defer conn.Close()
+
+	subID, err := g.node.Subscribe(topic, func(msg *Message) error {
+		data := wsMessage{
+			Type:     "message",
+			Topic:    msg.Destination,
+			Payload:  base64.StdEncoding.EncodeToString(msg.Payload),
+			ID:       msg.ID,
+			ReplyTo:  msg.ReplyTo,
+			StreamID: msg.StreamID,
+		}
+		return conn.WriteJSON(data)
+	})
+	if err != nil {
+		conn.WriteJSON(wsMessage{Type: "error", Message: err.Error()})
+		return
+	}
+	defer g.node.Unsubscribe(subID)
+
+	// Block until the client disconnects.
+	for {
+		if _, _, err := conn.ReadMessage(); err != nil {
+			break
+		}
+	}
 }
 
-func (gw *Gateway) handleRequest(w http.ResponseWriter, r *http.Request) {
-	var req rpcRequest
+// --- Request-Response ---
+
+type requestReq struct {
+	Topic   string `json:"topic"`
+	Payload string `json:"payload"` // base64
+	Timeout string `json:"timeout"` // e.g. "5s"
+}
+
+func (g *Gateway) handleRequest(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req requestReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error":"invalid JSON"}`, http.StatusBadRequest)
-		return
-	}
-	if req.Source == "" || req.Topic == "" {
-		http.Error(w, `{"error":"source and topic required"}`, http.StatusBadRequest)
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 
-	reply, err := gw.node.Request(r.Context(), req.Source, req.Topic, req.Payload)
+	payload, err := base64.StdEncoding.DecodeString(req.Payload)
 	if err != nil {
-		w.WriteHeader(http.StatusGatewayTimeout)
-		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid base64 payload"})
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(reply)
-}
+	timeout := 5 * time.Second
+	if req.Timeout != "" {
+		if d, err := time.ParseDuration(req.Timeout); err == nil {
+			timeout = d
+		}
+	}
 
-// --- GET /stats ---
+	resp, err := g.node.Request(r.Context(), req.Topic, payload, timeout)
+	if err != nil {
+		writeJSON(w, http.StatusGatewayTimeout, map[string]string{"error": err.Error()})
+		return
+	}
 
-func (gw *Gateway) handleStats(w http.ResponseWriter, r *http.Request) {
-	snap := gw.node.Stats()
-	topics := gw.node.TopicSubscriberCounts()
-	peers := gw.node.PeerInfo()
-
-	gw.sessionMu.Lock()
-	activeSessions := len(gw.sessions)
-	gw.sessionMu.Unlock()
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
-		"counters":        snap,
-		"topics":          topics,
-		"peer_count":      len(peers),
-		"active_sessions": activeSessions,
+	writeJSON(w, http.StatusOK, wsMessage{
+		Type:    "response",
+		ID:      resp.ID,
+		Payload: base64.StdEncoding.EncodeToString(resp.Payload),
 	})
 }
 
-// --- GET /topics ---
+// --- Full bidirectional WebSocket ---
 
-func (gw *Gateway) handleTopics(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(gw.node.TopicSubscriberCounts())
+type wsMessage struct {
+	Type     string `json:"type"`
+	Topic    string `json:"topic,omitempty"`
+	Payload  string `json:"payload,omitempty"`
+	ID       string `json:"id,omitempty"`
+	ReplyTo  string `json:"reply_to,omitempty"`
+	StreamID string `json:"stream_id,omitempty"`
+	Timeout  string `json:"timeout,omitempty"`
+	Message  string `json:"message,omitempty"`
 }
 
-// --- GET /peers ---
-
-func (gw *Gateway) handlePeers(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(gw.node.PeerInfo())
-}
-
-// --- GET /sessions ---
-
-func (gw *Gateway) handleSessions(w http.ResponseWriter, r *http.Request) {
-	gw.sessionMu.Lock()
-	type sessionInfo struct {
-		ID        string   `json:"id"`
-		Topics    []string `json:"topics"`
-		Connected bool     `json:"connected"`
-	}
-	result := make([]sessionInfo, 0, len(gw.sessions))
-	for _, s := range gw.sessions {
-		s.mu.Lock()
-		connected := s.conn != nil
-		topics := make([]string, 0, len(s.topics))
-		for t := range s.topics {
-			topics = append(topics, t)
-		}
-		s.mu.Unlock()
-		result = append(result, sessionInfo{
-			ID:        s.id,
-			Topics:    topics,
-			Connected: connected,
-		})
-	}
-	gw.sessionMu.Unlock()
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
-}
-
-// --- GET /subscribe (WebSocket) ---
-//
-// Query params:
-//   - topic (required): initial topic to subscribe to
-//   - id (optional): client ID for session resumption, auto-generated if empty
-//
-// Server pushes messages as JSON. Client can send:
-//
-//	{"action":"publish", "topic":"...", "payload":{...}}
-//	{"action":"subscribe", "topic":"..."}
-//	{"action":"unsubscribe", "topic":"..."}
-
-type wsClientMessage struct {
-	Action  string          `json:"action"`
-	Topic   string          `json:"topic"`
-	Payload json.RawMessage `json:"payload,omitempty"`
-}
-
-type wsServerMessage struct {
-	Type        string          `json:"type"`
-	ID          string          `json:"id,omitempty"`
-	Source      string          `json:"source,omitempty"`
-	Destination string          `json:"destination,omitempty"`
-	Payload     json.RawMessage `json:"payload,omitempty"`
-	Timestamp   int64           `json:"timestamp,omitempty"`
-	ReplyTo     string          `json:"reply_to,omitempty"`
-	Topic       string          `json:"topic,omitempty"`
-	Error       string          `json:"error,omitempty"`
-	Messages    []*Message      `json:"messages,omitempty"`
-}
-
-func (gw *Gateway) handleSubscribe(w http.ResponseWriter, r *http.Request) {
-	topic := r.URL.Query().Get("topic")
-	if topic == "" {
-		http.Error(w, `{"error":"topic query param required"}`, http.StatusBadRequest)
-		return
-	}
-
-	clientID := r.URL.Query().Get("id")
-	if clientID == "" {
-		clientID = uuid.New().String()
-	}
-
-	conn, err := wsUpgrader.Upgrade(w, r, nil)
+func (g *Gateway) handleWS(w http.ResponseWriter, r *http.Request) {
+	conn, err := g.upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Printf("gateway: websocket upgrade error: %v", err)
 		return
 	}
 	defer conn.Close()
 
-	// Keepalive: send pings every 30s, expect pong within 40s
-	conn.SetReadDeadline(time.Now().Add(40 * time.Second))
-	conn.SetPongHandler(func(string) error {
-		conn.SetReadDeadline(time.Now().Add(40 * time.Second))
-		return nil
-	})
-
-	// Get or create session
-	sess := gw.getOrCreateSession(clientID)
-
-	// Attach this WS connection to the session
-	sess.mu.Lock()
-	sess.conn = conn
-	sess.mu.Unlock()
-
-	// Ping goroutine
-	pingDone := make(chan struct{})
-	go func() {
-		ticker := time.NewTicker(30 * time.Second)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ticker.C:
-				sess.writeMu.Lock()
-				conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
-				err := conn.WriteMessage(websocket.PingMessage, nil)
-				sess.writeMu.Unlock()
-				if err != nil {
-					return
-				}
-			case <-pingDone:
-				return
-			}
-		}
-	}()
-	defer close(pingDone)
-
-	writeJSON := func(v any) error {
-		sess.writeMu.Lock()
-		defer sess.writeMu.Unlock()
-		conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+	var wsMu sync.Mutex
+	writeJSON := func(v interface{}) error {
+		wsMu.Lock()
+		defer wsMu.Unlock()
 		return conn.WriteJSON(v)
 	}
 
-	// Subscribe to initial topic (if not already subscribed via session)
-	gw.sessionSubscribe(sess, topic, writeJSON)
-	writeJSON(wsServerMessage{Type: "subscribed", Topic: topic})
+	subs := make(map[string]string)     // subID -> topic (for cleanup)
+	streams := make(map[string]*Stream) // streamID -> *Stream
 
-	// Read client messages
+	defer func() {
+		for subID := range subs {
+			g.node.Unsubscribe(subID)
+		}
+		for _, s := range streams {
+			s.Close()
+		}
+	}()
+
 	for {
-		_, raw, err := conn.ReadMessage()
-		if err != nil {
-			// Detach WS from session (session stays alive for TTL)
-			sess.mu.Lock()
-			if sess.conn == conn {
-				sess.conn = nil
-			}
-			sess.expiresAt = time.Now().Add(gw.sessionTTL)
-			sess.mu.Unlock()
-			return
+		var cmd wsMessage
+		if err := conn.ReadJSON(&cmd); err != nil {
+			break
 		}
 
-		var msg wsClientMessage
-		if err := json.Unmarshal(raw, &msg); err != nil {
-			writeJSON(wsServerMessage{Type: "error", Error: "invalid JSON"})
-			continue
-		}
-
-		switch msg.Action {
+		switch cmd.Type {
 		case "subscribe":
-			gw.sessionSubscribe(sess, msg.Topic, writeJSON)
-			writeJSON(wsServerMessage{Type: "subscribed", Topic: msg.Topic})
+			subID, err := g.node.Subscribe(cmd.Topic, func(msg *Message) error {
+				return writeJSON(wsMessage{
+					Type:     "message",
+					Topic:    msg.Destination,
+					Payload:  base64.StdEncoding.EncodeToString(msg.Payload),
+					ID:       msg.ID,
+					ReplyTo:  msg.ReplyTo,
+					StreamID: msg.StreamID,
+				})
+			})
+			if err != nil {
+				writeJSON(wsMessage{Type: "error", Message: err.Error()})
+				continue
+			}
+			subs[subID] = cmd.Topic
+			writeJSON(wsMessage{Type: "response", ID: subID, Message: "subscribed"})
 
 		case "unsubscribe":
-			gw.sessionUnsubscribe(sess, msg.Topic)
-			writeJSON(wsServerMessage{Type: "unsubscribed", Topic: msg.Topic})
+			if err := g.node.Unsubscribe(cmd.ID); err != nil {
+				writeJSON(wsMessage{Type: "error", Message: err.Error()})
+				continue
+			}
+			delete(subs, cmd.ID)
+			writeJSON(wsMessage{Type: "response", ID: cmd.ID, Message: "unsubscribed"})
 
 		case "publish":
-			if _, err := gw.node.Publish(r.Context(), clientID, msg.Topic, msg.Payload); err != nil {
-				writeJSON(wsServerMessage{Type: "error", Error: err.Error()})
+			payload, err := base64.StdEncoding.DecodeString(cmd.Payload)
+			if err != nil {
+				writeJSON(wsMessage{Type: "error", Message: "invalid base64 payload"})
+				continue
+			}
+			msg := &Message{
+				ID:          uuid.New().String(),
+				Source:      g.node.opts.NodeID,
+				Destination: cmd.Topic,
+				Payload:     payload,
+				Timestamp:   time.Now().UnixNano(),
+			}
+			if err := g.node.Publish(msg); err != nil {
+				writeJSON(wsMessage{Type: "error", Message: err.Error()})
+				continue
+			}
+			writeJSON(wsMessage{Type: "response", ID: msg.ID})
+
+		case "request":
+			payload, err := base64.StdEncoding.DecodeString(cmd.Payload)
+			if err != nil {
+				writeJSON(wsMessage{Type: "error", Message: "invalid base64 payload"})
+				continue
+			}
+			timeout := 5 * time.Second
+			if cmd.Timeout != "" {
+				if d, err := time.ParseDuration(cmd.Timeout); err == nil {
+					timeout = d
+				}
+			}
+			go func() {
+				resp, err := g.node.Request(r.Context(), cmd.Topic, payload, timeout)
+				if err != nil {
+					writeJSON(wsMessage{Type: "error", Message: err.Error()})
+					return
+				}
+				writeJSON(wsMessage{
+					Type:    "response",
+					ID:      resp.ID,
+					Payload: base64.StdEncoding.EncodeToString(resp.Payload),
+				})
+			}()
+
+		case "stream_open":
+			streamID := cmd.StreamID
+			if streamID == "" {
+				streamID = uuid.New().String()
+			}
+			s, err := g.node.OpenStream(cmd.Topic)
+			if err != nil {
+				writeJSON(wsMessage{Type: "error", Message: err.Error()})
+				continue
+			}
+			s.ID = streamID
+			streams[streamID] = s
+			// Forward incoming stream messages to the WS client.
+			go func(st *Stream) {
+				for {
+					msg, err := st.Receive()
+					if err != nil {
+						return
+					}
+					writeJSON(wsMessage{
+						Type:     "message",
+						Topic:    msg.Destination,
+						Payload:  base64.StdEncoding.EncodeToString(msg.Payload),
+						ID:       msg.ID,
+						StreamID: st.ID,
+					})
+				}
+			}(s)
+			writeJSON(wsMessage{Type: "response", StreamID: streamID, Message: "stream_opened"})
+
+		case "stream_data":
+			s, ok := streams[cmd.StreamID]
+			if !ok {
+				writeJSON(wsMessage{Type: "error", Message: "unknown stream_id"})
+				continue
+			}
+			payload, err := base64.StdEncoding.DecodeString(cmd.Payload)
+			if err != nil {
+				writeJSON(wsMessage{Type: "error", Message: "invalid base64 payload"})
+				continue
+			}
+			if err := s.Send(payload); err != nil {
+				writeJSON(wsMessage{Type: "error", Message: err.Error()})
 			}
 
+		case "stream_close":
+			s, ok := streams[cmd.StreamID]
+			if !ok {
+				writeJSON(wsMessage{Type: "error", Message: "unknown stream_id"})
+				continue
+			}
+			s.Close()
+			delete(streams, cmd.StreamID)
+			writeJSON(wsMessage{Type: "response", StreamID: cmd.StreamID, Message: "stream_closed"})
+
+		case "history":
+			msgs := g.node.History(cmd.Topic, 100)
+			var items []wsMessage
+			for _, msg := range msgs {
+				items = append(items, wsMessage{
+					Type:    "message",
+					Topic:   msg.Destination,
+					Payload: base64.StdEncoding.EncodeToString(msg.Payload),
+					ID:      msg.ID,
+				})
+			}
+			data, _ := json.Marshal(items)
+			writeJSON(wsMessage{
+				Type:    "response",
+				Topic:   cmd.Topic,
+				Payload: base64.StdEncoding.EncodeToString(data),
+				Message: "history",
+			})
+
 		default:
-			writeJSON(wsServerMessage{Type: "error", Error: "unknown action: " + msg.Action})
+			writeJSON(wsMessage{Type: "error", Message: fmt.Sprintf("unknown command type: %s", cmd.Type)})
 		}
 	}
 }
 
-// getOrCreateSession returns the existing session for clientID, or creates a new one.
-func (gw *Gateway) getOrCreateSession(clientID string) *gwSession {
-	gw.sessionMu.Lock()
-	defer gw.sessionMu.Unlock()
+// --- DLQ handlers ---
 
-	if s, ok := gw.sessions[clientID]; ok {
-		return s
-	}
-
-	s := &gwSession{
-		id:     clientID,
-		topics: make(map[string]struct{}),
-	}
-	gw.sessions[clientID] = s
-	return s
-}
-
-// sessionSubscribe subscribes the session to a topic if not already subscribed.
-func (gw *Gateway) sessionSubscribe(sess *gwSession, topic string, writeJSON func(any) error) {
-	sess.mu.Lock()
-	if _, ok := sess.topics[topic]; ok {
-		sess.mu.Unlock()
+func (g *Gateway) handleDLQ(w http.ResponseWriter, r *http.Request) {
+	// Parse topic from path: /dlq/{topic} or /dlq/{topic}/retry
+	path := strings.TrimPrefix(r.URL.Path, "/dlq/")
+	if path == "" {
+		http.Error(w, "missing topic in path", http.StatusBadRequest)
 		return
 	}
-	sess.topics[topic] = struct{}{}
-	sess.mu.Unlock()
 
-	// Send history before subscribing to live messages
-	if gw.history != nil {
-		if msgs := gw.history.Recent(topic, 100); len(msgs) > 0 {
-			writeJSON(wsServerMessage{
-				Type:     "history",
-				Topic:    topic,
-				Messages: msgs,
-			})
+	isRetry := strings.HasSuffix(path, "/retry")
+	topic := strings.TrimSuffix(path, "/retry")
+
+	dlq := g.node.GetDLQStore()
+	if dlq == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "DLQ store not configured"})
+		return
+	}
+
+	switch {
+	case r.Method == http.MethodGet && !isRetry:
+		g.handleDLQList(w, r, dlq, topic)
+
+	case r.Method == http.MethodPost && isRetry:
+		g.handleDLQRetry(w, r, dlq)
+
+	case r.Method == http.MethodDelete && !isRetry:
+		g.handleDLQPurge(w, dlq, topic)
+
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (g *Gateway) handleDLQList(w http.ResponseWriter, r *http.Request, dlq storage.DLQStore, topic string) {
+	limit := queryInt(r, "limit", 50)
+	offset := queryInt(r, "offset", 0)
+	letters, err := dlq.List(topic, limit, offset)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, letters)
+}
+
+func (g *Gateway) handleDLQRetry(w http.ResponseWriter, r *http.Request, dlq storage.DLQStore) {
+	var req struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	msg, err := dlq.Retry(req.ID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	pubMsg := &Message{
+		ID:          msg.ID,
+		Source:      msg.Source,
+		Destination: msg.Destination,
+		Payload:     msg.Payload,
+		Timestamp:   msg.Timestamp,
+		Sequence:    msg.Sequence,
+		ReplyTo:     msg.ReplyTo,
+		StreamID:    msg.StreamID,
+		Attempt:     msg.Attempt,
+	}
+	if err := g.node.Publish(pubMsg); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "retried", "id": msg.ID})
+}
+
+func (g *Gateway) handleDLQPurge(w http.ResponseWriter, dlq storage.DLQStore, topic string) {
+	count, err := dlq.Purge(topic)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"status": "purged", "count": count})
+}
+
+// --- Services ---
+
+func (g *Gateway) handleServices(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	writeJSON(w, http.StatusOK, g.node.GetServices())
+}
+
+// --- Routes ---
+
+func (g *Gateway) handleRoutes(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Collect service names from the local registry.
+	allSvcs := g.node.GetServices()
+	var services []string
+	if local, ok := allSvcs[g.node.opts.NodeID]; ok {
+		for svc := range local {
+			services = append(services, svc)
 		}
 	}
 
-	subID := fmt.Sprintf("%s:%s", sess.id, topic)
-	gw.node.Subscribe(topic, subID, func(ctx context.Context, m *Message) error {
-		sess.mu.Lock()
-		c := sess.conn
-		sess.mu.Unlock()
-
-		if c == nil {
-			return nil // no WS attached — drop (client uses catchup on reconnect)
-		}
-
-		sess.writeMu.Lock()
-		defer sess.writeMu.Unlock()
-		c.SetWriteDeadline(time.Now().Add(10 * time.Second))
-		return c.WriteJSON(wsServerMessage{
-			Type:        "message",
-			ID:          m.ID,
-			Source:      m.Source,
-			Destination: m.Destination,
-			Payload:     m.Payload,
-			Timestamp:   m.Timestamp,
-			ReplyTo:     m.ReplyTo,
-		})
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"node_id":  g.node.opts.NodeID,
+		"topics":   g.node.Topics(),
+		"services": services,
 	})
 }
 
-// sessionUnsubscribe removes a topic from the session and unsubscribes from the node.
-func (gw *Gateway) sessionUnsubscribe(sess *gwSession, topic string) {
-	sess.mu.Lock()
-	delete(sess.topics, topic)
-	sess.mu.Unlock()
+// --- Helpers ---
 
-	subID := fmt.Sprintf("%s:%s", sess.id, topic)
-	gw.node.Unsubscribe(topic, subID)
+func writeJSON(w http.ResponseWriter, status int, v interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(v)
 }
 
-// sessionCleanupLoop removes expired sessions that have no connected WebSocket.
-func (gw *Gateway) sessionCleanupLoop() {
-	ticker := time.NewTicker(10 * time.Second)
-	defer ticker.Stop()
+func queryInt(r *http.Request, key string, defaultVal int) int {
+	s := r.URL.Query().Get(key)
+	if s == "" {
+		return defaultVal
+	}
+	v, err := strconv.Atoi(s)
+	if err != nil {
+		return defaultVal
+	}
+	return v
+}
 
-	for range ticker.C {
-		now := time.Now()
-		gw.sessionMu.Lock()
-		for id, s := range gw.sessions {
-			s.mu.Lock()
-			expired := s.conn == nil && !s.expiresAt.IsZero() && now.After(s.expiresAt)
-			var topics []string
-			if expired {
-				for t := range s.topics {
-					topics = append(topics, t)
-				}
-			}
-			s.mu.Unlock()
+// --- URL-based topic routing ---
 
-			if expired {
-				for _, t := range topics {
-					subID := fmt.Sprintf("%s:%s", id, t)
-					gw.node.Unsubscribe(t, subID)
-				}
-				delete(gw.sessions, id)
-			}
+// topicMessage is the JSON format for /topics/ WebSocket messages.
+// Payloads are raw JSON (not base64).
+type topicMessage struct {
+	Type     string          `json:"type"`
+	Topic    string          `json:"topic,omitempty"`
+	Payload  json.RawMessage `json:"payload,omitempty"`
+	ID       string          `json:"id,omitempty"`
+	ReplyTo  string          `json:"reply_to,omitempty"`
+	StreamID string          `json:"stream_id,omitempty"`
+	Message  string          `json:"message,omitempty"`
+}
+
+// handleTopics handles /topics/{topic} requests.
+// GET upgrades to WebSocket and auto-subscribes. POST publishes a message.
+func (g *Gateway) handleTopics(w http.ResponseWriter, r *http.Request) {
+	topic := strings.TrimPrefix(r.URL.Path, "/topics/")
+	if topic == "" {
+		http.Error(w, "missing topic in path", http.StatusBadRequest)
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		g.handleTopicWS(w, r, topic)
+	case http.MethodPost:
+		g.handleTopicPublish(w, r, topic)
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleTopicPublish handles POST /topics/{topic} — REST publish.
+func (g *Gateway) handleTopicPublish(w http.ResponseWriter, r *http.Request, topic string) {
+	var req struct {
+		Payload json.RawMessage `json:"payload"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	msg := &Message{
+		ID:          uuid.New().String(),
+		Source:      g.node.opts.NodeID,
+		Destination: topic,
+		Payload:     req.Payload,
+		Timestamp:   time.Now().UnixNano(),
+	}
+
+	if err := g.node.Publish(msg); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, publishResponse{ID: msg.ID})
+}
+
+// handleTopicWS handles GET /topics/{topic} — WebSocket subscribe with history replay.
+func (g *Gateway) handleTopicWS(w http.ResponseWriter, r *http.Request, topic string) {
+	conn, err := g.upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		return
+	}
+	defer conn.Close()
+
+	var wsMu sync.Mutex
+	wsWrite := func(v interface{}) error {
+		wsMu.Lock()
+		defer wsMu.Unlock()
+		return conn.WriteJSON(v)
+	}
+
+	subID, err := g.node.Subscribe(topic, func(msg *Message) error {
+		return wsWrite(topicMessage{
+			Type:     "message",
+			Topic:    msg.Destination,
+			Payload:  json.RawMessage(msg.Payload),
+			ID:       msg.ID,
+			ReplyTo:  msg.ReplyTo,
+			StreamID: msg.StreamID,
+		})
+	})
+	if err != nil {
+		conn.WriteJSON(topicMessage{Type: "error", Message: err.Error()})
+		return
+	}
+	defer g.node.Unsubscribe(subID)
+
+	// Read loop: client can publish by sending JSON with payload.
+	for {
+		var cmd topicMessage
+		if err := conn.ReadJSON(&cmd); err != nil {
+			break
 		}
-		gw.sessionMu.Unlock()
+		if len(cmd.Payload) > 0 {
+			msg := &Message{
+				ID:          uuid.New().String(),
+				Source:      g.node.opts.NodeID,
+				Destination: topic,
+				Payload:     cmd.Payload,
+				Timestamp:   time.Now().UnixNano(),
+			}
+			if err := g.node.Publish(msg); err != nil {
+				wsWrite(topicMessage{Type: "error", Message: err.Error()})
+				continue
+			}
+			wsWrite(topicMessage{Type: "response", ID: msg.ID})
+		}
+	}
+}
+
+// --- URL-based service routing ---
+
+// serviceRequest mirrors service.Request to avoid import cycle.
+type serviceRequest struct {
+	Service string          `json:"service"`
+	Method  string          `json:"method"`
+	Payload json.RawMessage `json:"payload"`
+}
+
+// handleSvc handles POST /svc/{service}/{method} — REST request-response to a service.
+func (g *Gateway) handleSvc(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Parse /svc/{service}/{method}
+	path := strings.TrimPrefix(r.URL.Path, "/svc/")
+	parts := strings.SplitN(path, "/", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		http.Error(w, "path must be /svc/{service}/{method}", http.StatusBadRequest)
+		return
+	}
+	svcName := parts[0]
+	method := parts[1]
+
+	var req struct {
+		Payload json.RawMessage `json:"payload"`
+		Timeout string          `json:"timeout"` // e.g. "5s"
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
+	// Build a service request (same JSON format as service.Request).
+	svcReq := serviceRequest{
+		Service: svcName,
+		Method:  method,
+		Payload: req.Payload,
+	}
+	svcReqData, err := json.Marshal(svcReq)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to encode service request"})
+		return
+	}
+
+	timeout := 5 * time.Second
+	if req.Timeout != "" {
+		if d, err := time.ParseDuration(req.Timeout); err == nil {
+			timeout = d
+		}
+	}
+
+	topic := fmt.Sprintf("svc.%s", svcName)
+	resp, err := g.node.Request(r.Context(), topic, svcReqData, timeout)
+	if err != nil {
+		writeJSON(w, http.StatusGatewayTimeout, map[string]string{"error": err.Error()})
+		return
+	}
+
+	// Try to return payload as raw JSON; if it's not valid JSON, wrap it as a string.
+	if json.Valid(resp.Payload) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, `{"payload":%s}`, resp.Payload)
+	} else {
+		writeJSON(w, http.StatusOK, map[string]string{
+			"payload": string(resp.Payload),
+		})
 	}
 }

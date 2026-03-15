@@ -2,84 +2,81 @@ package service
 
 import (
 	"context"
-	"encoding/json"
+	"fmt"
+	"time"
 
 	"distributed-pub-sub/pubsub"
+
+	"github.com/google/uuid"
 )
 
-// Message is the service-layer message envelope, decoupled from pubsub internals.
-type Message struct {
-	ID        string          `json:"id"`
-	Source    string          `json:"source"`
-	Topic     string          `json:"topic"`
-	Payload   json.RawMessage `json:"payload"`
-	Timestamp int64           `json:"timestamp"`
-	ReplyTo   string          `json:"reply_to,omitempty"`
-}
-
-// MessageHandler processes a message delivered via a Transport.
-type MessageHandler func(ctx context.Context, msg *Message) error
-
-// Transport abstracts the connection to the pubsub mesh. Services use this
-// interface instead of embedding a pubsub.Node directly.
+// Transport abstracts the communication layer.
 type Transport interface {
-	// Publish sends a message to all subscribers of the topic.
-	Publish(ctx context.Context, source, topic string, payload json.RawMessage) (string, error)
-
+	// Publish sends a message to a topic.
+	Publish(topic string, data []byte) error
 	// Subscribe registers a handler for a topic.
-	Subscribe(topic, id string, handler MessageHandler) error
-
-	// Unsubscribe removes a subscription.
-	Unsubscribe(topic, id string) error
-
-	// Request sends a message and blocks until a reply is received.
-	Request(ctx context.Context, source, topic string, payload json.RawMessage) (*Message, error)
-
-	// Reply publishes a response to a message's ReplyTo topic.
-	Reply(ctx context.Context, replyTo, source string, payload json.RawMessage) (string, error)
+	// The handler receives data and returns a response (for request-response patterns).
+	Subscribe(topic string, handler func(data []byte) []byte) error
+	// Request sends a request and waits for a response.
+	Request(ctx context.Context, topic string, data []byte, timeout time.Duration) ([]byte, error)
+	// Close shuts down the transport.
+	Close() error
 }
 
-// EmbeddedTransport wraps a *pubsub.Node for in-process use. Good for tests
-// and single-binary deployments.
+// EmbeddedTransport wraps a pubsub.Node directly for in-process use.
 type EmbeddedTransport struct {
-	Node *pubsub.Node
+	node *pubsub.Node
 }
 
-func (t *EmbeddedTransport) Publish(ctx context.Context, source, topic string, payload json.RawMessage) (string, error) {
-	return t.Node.Publish(ctx, source, topic, payload)
+// NewEmbeddedTransport creates a new EmbeddedTransport wrapping the given node.
+func NewEmbeddedTransport(node *pubsub.Node) *EmbeddedTransport {
+	return &EmbeddedTransport{node: node}
 }
 
-func (t *EmbeddedTransport) Subscribe(topic, id string, handler MessageHandler) error {
-	return t.Node.Subscribe(topic, id, func(ctx context.Context, m *pubsub.Message) error {
-		return handler(ctx, &Message{
-			ID:        m.ID,
-			Source:    m.Source,
-			Topic:     m.Destination,
-			Payload:   m.Payload,
-			Timestamp: m.Timestamp,
-			ReplyTo:   m.ReplyTo,
-		})
-	})
-}
-
-func (t *EmbeddedTransport) Unsubscribe(topic, id string) error {
-	return t.Node.Unsubscribe(topic, id)
-}
-
-func (t *EmbeddedTransport) Request(ctx context.Context, source, topic string, payload json.RawMessage) (*Message, error) {
-	reply, err := t.Node.Request(ctx, source, topic, payload)
-	if err != nil {
-		return nil, err
+// Publish sends a message to the specified topic.
+func (t *EmbeddedTransport) Publish(topic string, data []byte) error {
+	msg := &pubsub.Message{
+		ID:          uuid.New().String(),
+		Destination: topic,
+		Payload:     data,
+		Timestamp:   time.Now().UnixNano(),
 	}
-	return &Message{
-		ID:        reply.ID,
-		Source:    reply.Source,
-		Topic:     reply.Destination,
-		Payload:   reply.Payload,
-		Timestamp: reply.Timestamp,
-	}, nil
+	return t.node.Publish(msg)
 }
 
-func (t *EmbeddedTransport) Reply(ctx context.Context, replyTo, source string, payload json.RawMessage) (string, error) {
-	return t.Node.Publish(ctx, source, replyTo, payload)
+// Subscribe registers a handler for messages on the specified topic.
+// When a message with ReplyTo set is received, the handler's response is
+// published to the ReplyTo topic.
+func (t *EmbeddedTransport) Subscribe(topic string, handler func(data []byte) []byte) error {
+	_, err := t.node.Subscribe(topic, func(msg *pubsub.Message) error {
+		result := handler(msg.Payload)
+		if msg.ReplyTo != "" && result != nil {
+			reply := &pubsub.Message{
+				ID:          uuid.New().String(),
+				Destination: msg.ReplyTo,
+				Payload:     result,
+				Timestamp:   time.Now().UnixNano(),
+			}
+			return t.node.Publish(reply)
+		}
+		return nil
+	})
+	return err
+}
+
+// Request sends a request to the specified topic and waits for a response.
+// It delegates to the underlying node's Request method, which handles
+// reply topic creation, subscription, and timeout internally.
+func (t *EmbeddedTransport) Request(ctx context.Context, topic string, data []byte, timeout time.Duration) ([]byte, error) {
+	resp, err := t.node.Request(ctx, topic, data, timeout)
+	if err != nil {
+		return nil, fmt.Errorf("request to %s failed: %w", topic, err)
+	}
+	return resp.Payload, nil
+}
+
+// Close is a no-op for EmbeddedTransport because the node's lifecycle
+// is managed externally.
+func (t *EmbeddedTransport) Close() error {
+	return nil
 }
