@@ -4,7 +4,7 @@ import Select from '../lib/Select';
 import ResizeHandle from '../lib/ResizeHandle';
 import { useWorkspace } from '../context/WorkspaceContext';
 import { GraphCell, parseRefs } from '../utils/graph';
-import { parseDiffFiles, DiffLines } from '../utils/diff';
+import { DiffLines } from '../utils/diff';
 
 export default function LogPanel() {
   const ws = useWorkspace();
@@ -14,6 +14,18 @@ export default function LogPanel() {
   const [logFlex, setLogFlex] = createSignal(1);
   const [detailFlex, setDetailFlex] = createSignal(1);
   const [commitMenu, setCommitMenu] = createSignal(null);
+  const [showCommitBody, setShowCommitBody] = createSignal(true);
+  const [bodyHeight, setBodyHeight] = createSignal(80);
+
+  const verticalMq = window.matchMedia('(max-aspect-ratio: 4/3)');
+  const [isVertical, setIsVertical] = createSignal(verticalMq.matches);
+  const onMqChange = (e) => setIsVertical(e.matches);
+  verticalMq.addEventListener('change', onMqChange);
+  onCleanup(() => verticalMq.removeEventListener('change', onMqChange));
+
+  function onResizeBody(delta) {
+    setBodyHeight((h) => Math.max(24, h + delta));
+  }
 
   function onCommitContextMenu(e, commit) {
     e.preventDefault();
@@ -48,7 +60,8 @@ export default function LogPanel() {
 
   function onResizeLog(delta) {
     if (!splitRef) return;
-    const total = splitRef.offsetWidth;
+    const vertical = isVertical();
+    const total = vertical ? splitRef.offsetHeight : splitRef.offsetWidth;
     if (total <= 0) return;
     const logRatio = logFlex();
     const detailRatio = detailFlex();
@@ -158,7 +171,7 @@ export default function LogPanel() {
         </div>
 
         <Show when={ws.commitDetail.hash}>
-          <ResizeHandle direction="col" onResize={onResizeLog} />
+          <ResizeHandle direction={isVertical() ? 'row' : 'col'} onResize={onResizeLog} />
           <div class="git-commit-detail" style={{ flex: detailFlex() }}>
             <div class="git-commit-detail-header">
               <div class="git-commit-detail-meta">
@@ -177,34 +190,53 @@ export default function LogPanel() {
                   </span>
                 </Show>
               </div>
-              <button class="btn btn-ghost btn-xs" onClick={() => ws.setCommitDetail({ hash: null })} title="Close">
-                <Icon name="fa-solid fa-xmark" />
-              </button>
+              <div style={{ display: 'flex', gap: '4px' }}>
+                <Show when={ws.commitDetail.body}>
+                  <button
+                    class="btn btn-ghost btn-xs"
+                    onClick={() => setShowCommitBody(!showCommitBody())}
+                    title={showCommitBody() ? 'Hide commit message' : 'Show commit message'}
+                  >
+                    <Icon name={showCommitBody() ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye'} />
+                  </button>
+                </Show>
+                <button class="btn btn-ghost btn-xs" onClick={() => ws.setCommitDetail({ hash: null })} title="Close">
+                  <Icon name="fa-solid fa-xmark" />
+                </button>
+              </div>
             </div>
-            <Show when={ws.commitDetail.body}>
-              <pre class="git-commit-detail-body">{ws.commitDetail.body}</pre>
+            <Show when={ws.commitDetail.body && showCommitBody()}>
+              <pre class="git-commit-detail-body" style={{ height: `${bodyHeight()}px`, overflow: 'auto' }}>{ws.commitDetail.body}</pre>
+              <ResizeHandle direction="row" onResize={onResizeBody} />
             </Show>
             <Show when={ws.commitDetail.loading}>
               <div class="git-empty">Loading...</div>
             </Show>
-            <Show when={ws.commitDetail.diff}>
+            <Show when={ws.commitDetail.files.length > 0}>
               <div class="git-commit-detail-files">
-                <For each={parseDiffFiles(ws.commitDetail.diff)}>{(file) => {
+                <For each={ws.commitDetail.files}>{(file) => {
+                  const isExpanded = () => file.filename in ws.expandedDetailFiles();
                   const toggleFile = () => {
-                    const s = new Set(ws.expandedDetailFiles());
-                    if (s.has(file.filename)) s.delete(file.filename);
-                    else s.add(file.filename);
-                    ws.setExpandedDetailFiles(s);
+                    if (isExpanded()) {
+                      const next = { ...ws.expandedDetailFiles() };
+                      delete next[file.filename];
+                      ws.setExpandedDetailFiles(next);
+                    } else {
+                      ws.loadFileDiff(ws.commitDetail.hash, file.filename);
+                    }
                   };
                   return (
                     <div class="git-detail-file">
                       <div class="git-detail-file-header" onClick={toggleFile}>
                         <Icon
-                          name={ws.expandedDetailFiles().has(file.filename) ? 'fa-solid fa-chevron-down' : 'fa-solid fa-chevron-right'}
+                          name={isExpanded() ? 'fa-solid fa-chevron-down' : 'fa-solid fa-chevron-right'}
                           class="git-section-chevron"
                         />
                         <span class="git-detail-file-name">{file.filename}</span>
                         <span class="git-detail-file-stats">
+                          <Show when={file.binary}>
+                            <span class="git-detail-stat-bin">binary</span>
+                          </Show>
                           <Show when={file.additions > 0}>
                             <span class="git-detail-stat-add">+{file.additions}</span>
                           </Show>
@@ -213,10 +245,10 @@ export default function LogPanel() {
                           </Show>
                         </span>
                       </div>
-                      <Show when={ws.expandedDetailFiles().has(file.filename)}>
+                      <Show when={isExpanded() && ws.expandedDetailFiles()[file.filename]}>
                         <pre class="git-diff-content git-detail-file-diff">
                           <div class="git-diff-inner">
-                            <DiffLines raw={file.diff} />
+                            <DiffLines raw={ws.expandedDetailFiles()[file.filename]} />
                           </div>
                         </pre>
                       </Show>

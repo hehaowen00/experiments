@@ -103,7 +103,7 @@ export function createLogOps({
         email: '',
         date: '',
         parents: [],
-        diff: '',
+        files: [],
         loading: false,
       });
       return;
@@ -112,20 +112,20 @@ export function createLogOps({
       hash,
       loading: true,
       body: '',
-      diff: '',
+      files: [],
       author: '',
       email: '',
       date: '',
       parents: [],
     });
-    setExpandedDetailFiles(new Set());
+    setExpandedDetailFiles({});
     const result = await window.api.gitShow(repoPath, hash);
     if (result.error) {
       setCommitDetail({
         hash,
         loading: false,
         body: result.error,
-        diff: '',
+        files: [],
         author: '',
         email: '',
         date: '',
@@ -139,11 +139,22 @@ export function createLogOps({
         email: result.email,
         date: result.date,
         parents: result.parents,
-        diff: result.diff,
+        files: result.files || [],
         loading: false,
       });
     }
   }
 
-  return { loadLog, loadMoreLog, loadLogBranches, selectCommit };
+  async function loadFileDiff(hash, filepath) {
+    const result = await window.api.gitShowFileDiff(
+      repoPath,
+      hash,
+      filepath,
+    );
+    if (!result.error) {
+      setExpandedDetailFiles((prev) => ({ ...prev, [filepath]: result.diff }));
+    }
+  }
+
+  return { loadLog, loadMoreLog, loadLogBranches, selectCommit, loadFileDiff };
 }

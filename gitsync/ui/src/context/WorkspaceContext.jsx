@@ -88,7 +88,7 @@ export function WorkspaceProvider(props) {
   });
   const [stashDetail, setStashDetail] = createStore({
     ref: null,
-    diff: '',
+    files: [],
   });
 
   const [commitDetail, setCommitDetail] = createStore({
@@ -98,7 +98,7 @@ export function WorkspaceProvider(props) {
     email: '',
     date: '',
     parents: [],
-    diff: '',
+    files: [],
     loading: false,
   });
 
@@ -130,9 +130,7 @@ export function WorkspaceProvider(props) {
   const [ctxMenu, setCtxMenu] = createSignal(null);
   const [opState, setOpState] = createSignal(null);
   const [submodules, setSubmodules] = createSignal([]);
-  const [expandedDetailFiles, setExpandedDetailFiles] = createSignal(
-    new Set(),
-  );
+  const [expandedDetailFiles, setExpandedDetailFiles] = createSignal({});
   const [logBranch, setLogBranch] = createSignal('__all__');
   const [logBranches, setLogBranches] = createSignal([]);
   const [logSearch, setLogSearch] = createSignal('');

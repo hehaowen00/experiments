@@ -46,6 +46,7 @@ No test runner is configured.
 **Panels** (tab content within GitWorkspace):
 - `panels/ChangesPanel.jsx` — Conflicts section, staged/unstaged/untracked files, diff viewer, commit box
 - `panels/LogPanel.jsx` — Commit history with SVG graph visualization
+- `panels/StashesPanel.jsx` — Stash management with file tree and lazy-loaded per-file diffs
 - `panels/RemotesPanel.jsx` — Remote and branch management (checkout, merge, rebase)
 
 **Shared UI library** (`ui/src/lib/`):
@@ -82,6 +83,7 @@ Adding a new git operation requires changes in three places:
 - **Batch operations:** Staging/unstaging folders and context menu operations batch all file paths into a single git command to avoid race conditions from multiple rapid refreshes.
 - **Conflict resolution:** Files with conflict status (`UU`, `AA`, `DD`, `AU`, `UA`, `DU`, `UD`) are filtered into a dedicated Conflicts section. Resolve with `git checkout --ours/--theirs` + `git add`.
 - **Git log:** Uses `--topo-order` and `--exclude=refs/stash` to prevent stash refs from appearing and to keep topological ordering stable for the graph.
+- **Lazy diff loading:** Commit detail and stash detail fetch only metadata + `--numstat` file lists upfront. Individual file diffs are loaded on demand via `git:showFileDiff` / `git:stashShowFileDiff` when the user expands a file. This prevents `maxBuffer` errors on commits with large diffs. The `git()` helper has a 10MB `maxBuffer` — avoid fetching unbounded diff output in a single call.
 
 ### Theming
 

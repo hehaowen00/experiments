@@ -249,7 +249,7 @@ th.git-log-graph {
   justify-content: space-between;
   padding: 8px 12px;
   border-bottom: 1px solid var(--border);
-  background: var(--bg-alt);
+  background: var(--surface);
   flex-shrink: 0;
 }
 
@@ -288,7 +288,6 @@ th.git-log-graph {
   white-space: pre-wrap;
   word-break: break-word;
   user-select: text;
-  border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
 
@@ -306,7 +305,7 @@ th.git-log-graph {
   align-items: center;
   gap: 6px;
   padding: 6px 12px;
-  background: var(--bg-alt);
+  background: var(--surface);
   cursor: pointer;
   font-size: var(--ui-font-size-sm);
   position: sticky;

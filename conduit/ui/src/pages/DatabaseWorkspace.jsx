@@ -3,7 +3,7 @@ import { createStore } from 'solid-js/store';
 import CodeEditor from '../components/CodeEditor';
 import FormModal, { FormField } from '../components/FormModal';
 import Icon from '../components/Icon';
-import Modal, { showConfirm, showPrompt } from '../components/Modal';
+import Modal, { showAlert, showConfirm, showPrompt } from '../components/Modal';
 import ResultsTable from '../components/ResultsTable';
 import SqlEditor from '../components/SqlEditor';
 import {
@@ -326,29 +326,37 @@ export default function DatabaseWorkspace(props) {
   }
 
   async function exportResults(format) {
-    const result = await window.api.dbQueryExport(connData.liveId);
-    if (result.error || !result.columns || !result.rows) return;
-    let content, ext;
-    if (format === 'json') {
-      content = JSON.stringify(result.rows, null, 2);
-      ext = 'json';
-    } else {
-      const escape = (v) => {
-        if (v === null || v === undefined) return '';
-        const s = String(v);
-        if (s.includes(',') || s.includes('"') || s.includes('\n')) {
-          return '"' + s.replace(/"/g, '""') + '"';
-        }
-        return s;
-      };
-      const header = result.columns.map(escape).join(',');
-      const rows = result.rows.map((r) =>
-        result.columns.map((c) => escape(r[c])).join(','),
-      );
-      content = [header, ...rows].join('\n');
-      ext = 'csv';
+    try {
+      const result = await window.api.dbQueryExport(connData.liveId);
+      if (result.error) {
+        showAlert('Export Failed', result.error);
+        return;
+      }
+      if (!result.columns || !result.rows) return;
+      let content, ext;
+      if (format === 'json') {
+        content = JSON.stringify(result.rows, null, 2);
+        ext = 'json';
+      } else {
+        const escape = (v) => {
+          if (v === null || v === undefined) return '';
+          const s = String(v);
+          if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+            return '"' + s.replace(/"/g, '""') + '"';
+          }
+          return s;
+        };
+        const header = result.columns.map(escape).join(',');
+        const rows = result.rows.map((r) =>
+          result.columns.map((c) => escape(r[c])).join(','),
+        );
+        content = [header, ...rows].join('\n');
+        ext = 'csv';
+      }
+      await window.api.saveFile(`export.${ext}`, content);
+    } catch (e) {
+      showAlert('Export Failed', e.message);
     }
-    window.api.saveFile(`export.${ext}`, content);
   }
 
   function activeTab() {

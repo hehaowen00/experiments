@@ -83,12 +83,21 @@ export function createStashOps({
 
   async function viewStashDiff(ref) {
     if (stashDetail.ref === ref) {
-      setStashDetail({ ref: null, diff: '' });
+      setStashDetail({ ref: null, files: [] });
       return;
     }
     const result = await window.api.gitStashShow(repoPath, ref);
     if (result.error) showAlert('Error', result.error);
-    else setStashDetail({ ref, diff: result.diff });
+    else setStashDetail({ ref, files: result.files || [] });
+  }
+
+  async function loadStashFileDiff(ref, filepath) {
+    const result = await window.api.gitStashShowFileDiff(
+      repoPath,
+      ref,
+      filepath,
+    );
+    return result.error ? null : result.diff;
   }
 
   return {
@@ -98,5 +107,6 @@ export function createStashOps({
     doStashApply,
     doStashDrop,
     viewStashDiff,
+    loadStashFileDiff,
   };
 }

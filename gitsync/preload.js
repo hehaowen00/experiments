@@ -79,6 +79,7 @@ contextBridge.exposeInMainWorld('api', {
   gitCheckoutRemote: (repoPath, localName, remoteBranch) => ipcRenderer.invoke('git:checkoutRemote', repoPath, localName, remoteBranch),
   gitCheckoutNewBranch: (repoPath, branch) => ipcRenderer.invoke('git:checkoutNewBranch', repoPath, branch),
   gitShow: (repoPath, hash) => ipcRenderer.invoke('git:show', repoPath, hash),
+  gitShowFileDiff: (repoPath, hash, filepath) => ipcRenderer.invoke('git:showFileDiff', repoPath, hash, filepath),
   gitLastCommitMessage: (repoPath) => ipcRenderer.invoke('git:lastCommitMessage', repoPath),
 
   // Tags
@@ -99,6 +100,7 @@ contextBridge.exposeInMainWorld('api', {
   gitStashDrop: (repoPath, ref) => ipcRenderer.invoke('git:stashDrop', repoPath, ref),
   gitListFiles: (repoPath) => ipcRenderer.invoke('git:listFiles', repoPath),
   gitStashShow: (repoPath, ref) => ipcRenderer.invoke('git:stashShow', repoPath, ref),
+  gitStashShowFileDiff: (repoPath, ref, filepath) => ipcRenderer.invoke('git:stashShowFileDiff', repoPath, ref, filepath),
 
   // Merge & rebase
   gitMerge: (repoPath, branch) => ipcRenderer.invoke('git:merge', repoPath, branch),
