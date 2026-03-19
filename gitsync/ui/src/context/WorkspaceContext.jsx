@@ -109,7 +109,10 @@ export function WorkspaceProvider(props) {
   const [outputOpen, setOutputOpen] = createSignal(false);
   function setOutput(msg, autoOpen) {
     if (!msg) return;
-    setOutputLog((prev) => [{ text: msg, time: new Date() }, ...prev]);
+    setOutputLog((prev) => {
+      const next = [{ text: msg, time: new Date() }, ...prev];
+      return next.length > 500 ? next.slice(0, 500) : next;
+    });
     if (autoOpen) setOutputOpen(true);
   }
   function clearOutputLog() {

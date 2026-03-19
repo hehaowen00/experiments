@@ -1,6 +1,7 @@
 import { buildGraph, resetGraphColors } from '../../utils/graph';
 
 const LOG_PAGE_SIZE = 100;
+const LOG_MAX_COMMITS = 5000;
 
 export function createLogOps({
   repoPath,
@@ -76,13 +77,16 @@ export function createLogOps({
         maxCols: newMaxCols,
         lanes,
       } = buildGraph(result.commits, log.lanes);
+      const allCommits = [...log.commits, ...result.commits];
+      const allGraph = [...log.graph, ...newGraph];
+      const atLimit = allCommits.length >= LOG_MAX_COMMITS;
       setLog({
-        commits: [...log.commits, ...result.commits],
-        graph: [...log.graph, ...newGraph],
+        commits: atLimit ? allCommits.slice(0, LOG_MAX_COMMITS) : allCommits,
+        graph: atLimit ? allGraph.slice(0, LOG_MAX_COMMITS) : allGraph,
         maxCols: Math.max(log.maxCols, newMaxCols),
         lanes,
         loadingMore: false,
-        hasMore: result.commits.length >= LOG_PAGE_SIZE,
+        hasMore: !atLimit && result.commits.length >= LOG_PAGE_SIZE,
       });
     } else {
       setLog('loadingMore', false);

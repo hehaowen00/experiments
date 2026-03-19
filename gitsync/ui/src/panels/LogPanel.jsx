@@ -270,32 +270,32 @@ export default function LogPanel() {
               style={{ left: `${menu.x}px`, top: `${menu.y}px` }}
               onClick={(e) => e.stopPropagation()}
             >
-              <button class="file-context-menu-item" onClick={() => {
+              <button class="file-context-menu-item" disabled={!!ws.operating()} onClick={() => {
                 dismissCommitMenu();
                 ws.checkoutCommit(menu.commit.hash);
               }}>
                 <Icon name="fa-solid fa-right-to-bracket" /> Checkout
               </button>
-              <button class="file-context-menu-item" onClick={() => {
+              <button class="file-context-menu-item" disabled={!!ws.operating()} onClick={() => {
                 dismissCommitMenu();
                 ws.doCherryPick(menu.commit.hash);
               }}>
                 <Icon name="fa-solid fa-circle-dot" /> Cherry-pick
               </button>
-              <button class="file-context-menu-item" onClick={() => {
+              <button class="file-context-menu-item" disabled={!!ws.operating()} onClick={() => {
                 dismissCommitMenu();
                 ws.doRevert(menu.commit.hash);
               }}>
                 <Icon name="fa-solid fa-rotate-left" /> Revert Commit
               </button>
-              <button class="file-context-menu-item" onClick={() => {
+              <button class="file-context-menu-item" disabled={!!ws.operating()} onClick={() => {
                 dismissCommitMenu();
                 ws.startInteractiveRebase(menu.commit.hash);
               }}>
                 <Icon name="fa-solid fa-list-check" /> Interactive Rebase...
               </button>
               <Show when={!ws.bisect.selecting && ws.opState() !== 'bisect'}>
-                <button class="file-context-menu-item" onClick={() => {
+                <button class="file-context-menu-item" disabled={!!ws.operating()} onClick={() => {
                   dismissCommitMenu();
                   ws.startBisectSelect(menu.commit);
                 }}>
@@ -303,14 +303,14 @@ export default function LogPanel() {
                 </button>
               </Show>
               <Show when={ws.bisect.selecting}>
-                <button class="file-context-menu-item" onClick={() => {
+                <button class="file-context-menu-item" disabled={!!ws.operating()} onClick={() => {
                   dismissCommitMenu();
                   ws.finishBisectSelect(menu.commit);
                 }}>
                   <Icon name="fa-solid fa-magnifying-glass-plus" /> Bisect (good)
                 </button>
               </Show>
-              <button class="file-context-menu-item danger" onClick={() => {
+              <button class="file-context-menu-item danger" disabled={!!ws.operating()} onClick={() => {
                 dismissCommitMenu();
                 ws.doDropCommit(menu.commit.hash);
               }}>

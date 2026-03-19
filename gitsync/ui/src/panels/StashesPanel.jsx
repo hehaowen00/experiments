@@ -191,7 +191,7 @@ export default function StashesPanel() {
       <div class="git-section">
         <div class="git-section-header">
           <span>Stashes</span>
-          <button class="btn btn-ghost btn-xs" onClick={ws.doStashPush}>
+          <button class="btn btn-ghost btn-xs" onClick={ws.doStashPush} disabled={!!ws.operating()}>
             <Icon name="fa-solid fa-plus" /> Stash
           </button>
           <button
@@ -226,6 +226,7 @@ export default function StashesPanel() {
                   class="btn btn-ghost btn-xs"
                   onClick={() => ws.doStashApply(s.ref)}
                   title="Apply (keep stash)"
+                  disabled={!!ws.operating()}
                 >
                   <Icon name="fa-solid fa-paste" />
                 </button>
@@ -233,6 +234,7 @@ export default function StashesPanel() {
                   class="btn btn-ghost btn-xs"
                   onClick={() => ws.doStashPop(s.ref)}
                   title="Pop (apply & drop)"
+                  disabled={!!ws.operating()}
                 >
                   <Icon name="fa-solid fa-arrow-up-from-bracket" />
                 </button>
@@ -240,6 +242,7 @@ export default function StashesPanel() {
                   class="btn btn-ghost btn-xs btn-danger-hover"
                   onClick={() => ws.doStashDrop(s.ref)}
                   title="Drop"
+                  disabled={!!ws.operating()}
                 >
                   <Icon name="fa-solid fa-trash" />
                 </button>

@@ -142,23 +142,23 @@ export default function RemotesPanel() {
               <Show when={b.behind > 0}>
                 <span class="git-branch-badge git-behind" title={`${b.behind} behind`}>{b.behind}<Icon name="fa-solid fa-arrow-down" /></span>
               </Show>
-              <button class="btn btn-ghost btn-xs git-branch-action" onClick={() => ws.doRenameBranch(b.name)} title={`Rename ${b.name}`}>
+              <button class="btn btn-ghost btn-xs git-branch-action" onClick={() => ws.doRenameBranch(b.name)} title={`Rename ${b.name}`} disabled={!!ws.operating()}>
                 <Icon name="fa-solid fa-pen" />
               </button>
-              <button class="btn btn-ghost btn-xs git-branch-action" onClick={() => ws.doPushBranch(b.name)} title={`Push ${b.name} to remote`}>
+              <button class="btn btn-ghost btn-xs git-branch-action" onClick={() => ws.doPushBranch(b.name)} title={`Push ${b.name} to remote`} disabled={!!ws.operating()}>
                 <Icon name="fa-solid fa-upload" />
               </button>
               <Show when={!b.current}>
-                <button class="btn btn-ghost btn-xs git-branch-action" onClick={() => ws.doMerge(b.name)} title={`Merge ${b.name} into ${ws.status.branch}`}>
+                <button class="btn btn-ghost btn-xs git-branch-action" onClick={() => ws.doMerge(b.name)} title={`Merge ${b.name} into ${ws.status.branch}`} disabled={!!ws.operating()}>
                   <Icon name="fa-solid fa-code-merge" />
                 </button>
-                <button class="btn btn-ghost btn-xs git-branch-action" onClick={() => ws.doRebase(b.name)} title={`Rebase ${ws.status.branch} onto ${b.name}`}>
+                <button class="btn btn-ghost btn-xs git-branch-action" onClick={() => ws.doRebase(b.name)} title={`Rebase ${ws.status.branch} onto ${b.name}`} disabled={!!ws.operating()}>
                   <Icon name="fa-solid fa-arrow-right-arrow-left" />
                 </button>
-                <button class="btn btn-ghost btn-xs git-branch-checkout" onClick={() => ws.checkoutBranch(b.name)} title={`Checkout ${b.name}`}>
+                <button class="btn btn-ghost btn-xs git-branch-checkout" onClick={() => ws.checkoutBranch(b.name)} title={`Checkout ${b.name}`} disabled={!!ws.operating()}>
                   <Icon name="fa-solid fa-right-to-bracket" />
                 </button>
-                <button class="btn btn-ghost btn-xs btn-danger-hover git-branch-action" onClick={() => ws.doDeleteBranch(b.name)} title={`Delete ${b.name}`}>
+                <button class="btn btn-ghost btn-xs btn-danger-hover git-branch-action" onClick={() => ws.doDeleteBranch(b.name)} title={`Delete ${b.name}`} disabled={!!ws.operating()}>
                   <Icon name="fa-solid fa-trash" />
                 </button>
               </Show>
@@ -185,7 +185,7 @@ export default function RemotesPanel() {
                 <button class="btn btn-ghost btn-xs git-branch-action" onClick={() => ws.doRebase(b.name)} title={`Rebase ${ws.status.branch} onto ${shortName}`}>
                   <Icon name="fa-solid fa-arrow-right-arrow-left" />
                 </button>
-                <button class="btn btn-ghost btn-xs git-branch-checkout" onClick={() => ws.checkoutRemoteBranch(b.name)} title={`Checkout ${shortName} to local`}>
+                <button class="btn btn-ghost btn-xs git-branch-checkout" onClick={() => ws.checkoutRemoteBranch(b.name)} title={`Checkout ${shortName} to local`} disabled={!!ws.operating()}>
                   <Icon name="fa-solid fa-download" />
                 </button>
               </div>
@@ -252,13 +252,13 @@ export default function RemotesPanel() {
                   <span class="git-tag-date">{formatDate(t.date)}</span>
                 </Show>
               </div>
-              <button class="btn btn-ghost btn-xs git-branch-action" onClick={() => handlePushTag(t.name)} title={`Push tag ${t.name}`}>
+              <button class="btn btn-ghost btn-xs git-branch-action" onClick={() => handlePushTag(t.name)} title={`Push tag ${t.name}`} disabled={!!ws.operating()}>
                 <Icon name="fa-solid fa-upload" />
               </button>
-              <button class="btn btn-ghost btn-xs btn-danger-hover git-branch-action" onClick={() => handleDeleteRemoteTag(t.name)} title={`Delete tag ${t.name} from remote`}>
+              <button class="btn btn-ghost btn-xs btn-danger-hover git-branch-action" onClick={() => handleDeleteRemoteTag(t.name)} title={`Delete tag ${t.name} from remote`} disabled={!!ws.operating()}>
                 <Icon name="fa-solid fa-cloud-arrow-down" />
               </button>
-              <button class="btn btn-ghost btn-xs btn-danger-hover git-branch-action" onClick={() => ws.doDeleteTag(t.name)} title={`Delete tag ${t.name}`}>
+              <button class="btn btn-ghost btn-xs btn-danger-hover git-branch-action" onClick={() => ws.doDeleteTag(t.name)} title={`Delete tag ${t.name}`} disabled={!!ws.operating()}>
                 <Icon name="fa-solid fa-trash" />
               </button>
             </div>
@@ -297,7 +297,7 @@ export default function RemotesPanel() {
                   <Icon name="fa-solid fa-arrow-up-right-from-square" />
                 </button>
               </Show>
-              <button class="btn btn-ghost btn-xs btn-danger-hover git-branch-action" onClick={() => ws.removeWorktree(wt.path)} title="Remove worktree">
+              <button class="btn btn-ghost btn-xs btn-danger-hover git-branch-action" onClick={() => ws.removeWorktree(wt.path)} title="Remove worktree" disabled={!!ws.operating()}>
                 <Icon name="fa-solid fa-trash" />
               </button>
             </div>
