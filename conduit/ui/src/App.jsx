@@ -1,4 +1,4 @@
-import { createSignal, For, Match, Show, Switch, onMount, onCleanup } from 'solid-js';
+import { createEffect, createSignal, For, Match, Show, Switch, onMount, onCleanup } from 'solid-js';
 import Icon from './components/Icon';
 import Modal, { showSettings } from './components/Modal';
 import NewTabPage from './components/NewTabPage';
@@ -98,6 +98,14 @@ function AppShell() {
   }
 
   const showingPinned = () => state.pinnedTab !== null;
+
+  createEffect(() => {
+    const pinned = state.pinnedTab;
+    const activeId = state.activeTabId;
+    const tab = pinned ? null : state.tabs.find((t) => t.id === activeId);
+    if (!tab || tab.type === 'collection' || tab.type === 'database') return;
+    document.title = 'Conduit';
+  });
 
   return (
     <div class="app-shell">

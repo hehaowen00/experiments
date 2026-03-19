@@ -126,7 +126,8 @@ export default function DatabaseWorkspace(props) {
 
   function saveTabState(tabId) {
     tabStateCache[tabId] = {
-      selectedTable: sidebar.selectedTable ? { schema: sidebar.selectedTable.schema, table: sidebar.selectedTable.table } : null,
+      selectedTable: sidebar.selectedTable ? { database: sidebar.selectedTable.database, schema: sidebar.selectedTable.schema, table: sidebar.selectedTable.table } : null,
+      activeDatabase: sidebar.activeDatabase,
       table: {
         columns: JSON.parse(JSON.stringify(table.columns)),
         indexes: JSON.parse(JSON.stringify(table.indexes)),
@@ -148,6 +149,7 @@ export default function DatabaseWorkspace(props) {
       return;
     }
     setSidebar('selectedTable', c.selectedTable);
+    if (c.activeDatabase) setSidebar('activeDatabase', c.activeDatabase);
     setTable(c.table);
     setQuery({ text: c.query.text, result: c.query.result, running: false });
     setCell({ open: false, panel: null, editValue: '', dirty: false, saving: false });
@@ -207,7 +209,7 @@ export default function DatabaseWorkspace(props) {
   }
 
   onMount(async () => {
-    document.title = connData.name;
+    document.title = `Conduit - ${connData.name}`;
     addTab();
     await loadSidebarData();
   });
@@ -261,11 +263,15 @@ export default function DatabaseWorkspace(props) {
     setSidebar('expandedDatabases', next);
   }
 
-  async function selectTable(schema, tableName) {
-    setSidebar('selectedTable', { schema, table: tableName });
+  async function selectTable(database, schema, tableName) {
+    setSidebar('selectedTable', { database, schema, table: tableName });
     setTable({ tab: 'data', dataPage: 0, columnFormats: {} });
     setDataSortCols([]);
     setPending({ edits: {}, deletes: {} });
+    const qualified = connData.type === 'sqlite'
+      ? `"${tableName}"`
+      : `"${schema}"."${tableName}"`;
+    setQuery('text', `SELECT * FROM ${qualified};`);
     const id = activeTabId();
     if (id) setTabs(prev => prev.map(t => t.id === id ? { ...t, label: tabLabel(tableName) } : t));
     const [colResult, idxResult] = await Promise.all([
@@ -532,7 +538,7 @@ export default function DatabaseWorkspace(props) {
     if (result.error) return alert(result.error);
     if (sidebar.selectedTable?.schema === schema && sidebar.selectedTable?.table === oldName) {
       const trimmed = newName.trim();
-      setSidebar('selectedTable', { schema, table: trimmed });
+      setSidebar('selectedTable', { database: sidebar.selectedTable.database, schema, table: trimmed });
       const id = activeTabId();
       if (id) setTabs(prev => prev.map(t => t.id === id ? { ...t, label: tabLabel(trimmed) } : t));
     }
@@ -650,23 +656,23 @@ export default function DatabaseWorkspace(props) {
   }
 
   function TableTreeItem(treeProps) {
-    const { schema, table: t } = treeProps;
+    const { database, schema, table: t } = treeProps;
     const key = `${schema}.${t.table_name}`;
     const isSelected = () =>
-      sidebar.selectedTable?.schema === schema && sidebar.selectedTable?.table === t.table_name;
+      sidebar.selectedTable?.database === database && sidebar.selectedTable?.schema === schema && sidebar.selectedTable?.table === t.table_name;
     const isExpanded = () => sidebar.expandedTables.has(key);
     return (
       <div>
         <div
           class={`db-tree-item ${isSelected() ? 'active' : ''}`}
-          onClick={() => selectTable(schema, t.table_name)}
+          onClick={() => selectTable(database, schema, t.table_name)}
         >
           <button
             class="db-tree-expand"
             onClick={(e) => {
               e.stopPropagation();
               toggleTableExpand(key);
-              if (!isSelected()) selectTable(schema, t.table_name);
+              if (!isSelected()) selectTable(database, schema, t.table_name);
             }}
           >
             <Icon name={isExpanded() ? 'fa-solid fa-caret-down' : 'fa-solid fa-caret-right'} />
@@ -775,7 +781,7 @@ export default function DatabaseWorkspace(props) {
                                     <div class="db-tree-schema">{schema}</div>
                                   </Show>
                                   <For each={schemaTables}>
-                                    {(t) => <TableTreeItem schema={schema} table={t} />}
+                                    {(t) => <TableTreeItem database={dbName} schema={schema} table={t} />}
                                   </For>
                                 </>
                               )}
@@ -815,7 +821,7 @@ export default function DatabaseWorkspace(props) {
                         <div class="db-tree-schema">{schema}</div>
                       </Show>
                       <For each={schemaTables}>
-                        {(t) => <TableTreeItem schema={schema} table={t} />}
+                        {(t) => <TableTreeItem database="_default" schema={schema} table={t} />}
                       </For>
                     </>
                   )}

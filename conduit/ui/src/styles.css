@@ -669,11 +669,11 @@ select {
 }
 
 .sidebar-header {
-  padding: 8px;
+  padding: 4px 8px;
   border-bottom: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
 }
 
 .sidebar-header .back-row {
@@ -2692,8 +2692,7 @@ select {
   background: var(--surface);
   flex-shrink: 0;
   padding: 0;
-  /* Match sidebar-header: 8px padding + back-row content */
-  min-height: 37px;
+  min-height: 29px;
 }
 
 .db-tab-bar::-webkit-scrollbar {
@@ -2823,7 +2822,7 @@ select {
 }
 
 .db-tab {
-  padding: 6px 14px;
+  padding: 3px 10px;
   font-size: var(--ui-font-size);
   color: var(--text-dim);
   background: none;
@@ -4099,11 +4098,14 @@ tr:hover .db-row-actions .btn:hover {
 
 .rfc-meta-sidebar-header {
   flex-shrink: 0;
-  padding: 8px 12px;
+  padding: 6px 12px;
   font-size: var(--ui-font-size-sm);
   font-weight: 600;
   border-bottom: 1px solid var(--border);
   user-select: none;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
 }
 
 .rfc-meta-sidebar-body {
