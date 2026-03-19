@@ -898,6 +898,28 @@
   font-weight: 600;
 }
 
+/* Image preview */
+.git-image-preview {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  overflow: auto;
+  background: color-mix(in srgb, var(--bg) 80%, transparent);
+}
+
+.git-image-preview-img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: repeating-conic-gradient(
+    var(--surface2) 0% 25%, var(--surface) 0% 50%
+  ) 50% / 16px 16px;
+}
+
 /* Branch tracking badges */
 .git-branch-badge {
   display: inline-flex;

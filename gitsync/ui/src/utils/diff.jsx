@@ -1,5 +1,44 @@
-import { For, Show, createSignal, createMemo } from 'solid-js';
+import { For, Show, createSignal, createMemo, onMount } from 'solid-js';
 import Icon from '../lib/Icon';
+
+const IMAGE_EXTS = new Set([
+  'png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'ico', 'avif',
+]);
+
+export function isImageFile(filepath) {
+  if (!filepath) return false;
+  const ext = filepath.split('.').pop().toLowerCase();
+  return IMAGE_EXTS.has(ext);
+}
+
+export function ImagePreview(props) {
+  const [src, setSrc] = createSignal(null);
+  const [error, setError] = createSignal(null);
+
+  onMount(async () => {
+    const result = await window.api.gitImageBlob(
+      props.repoPath,
+      props.filepath,
+      props.gitRef || null,
+    );
+    if (result.error) setError(result.error);
+    else setSrc(result.data);
+  });
+
+  return (
+    <div class="git-image-preview">
+      <Show when={error()}>
+        <div class="git-empty">{error()}</div>
+      </Show>
+      <Show when={src()}>
+        <img src={src()} alt={props.filepath} class="git-image-preview-img" />
+      </Show>
+      <Show when={!src() && !error()}>
+        <div class="git-empty">Loading image...</div>
+      </Show>
+    </div>
+  );
+}
 
 export function parseDiffFiles(rawDiff) {
   if (!rawDiff) return [];

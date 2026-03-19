@@ -99,6 +99,35 @@ function register({ mainWindow, git, gitRaw }) {
       return { error: e.message };
     }
   });
+
+  ipcMain.handle('git:imageBlob', async (_, repoPath, filepath, ref) => {
+    try {
+      const ext = filepath.split('.').pop().toLowerCase();
+      const mimeMap = {
+        png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',
+        gif: 'image/gif', svg: 'image/svg+xml', webp: 'image/webp',
+        bmp: 'image/bmp', ico: 'image/x-icon', avif: 'image/avif',
+      };
+      const mime = mimeMap[ext];
+      if (!mime) return { error: 'Not an image' };
+
+      if (ref) {
+        const { execFile } = require('child_process');
+        const buf = await new Promise((resolve, reject) => {
+          execFile('git', ['-C', repoPath, 'show', `${ref}:${filepath}`],
+            { encoding: 'buffer', maxBuffer: 10 * 1024 * 1024 },
+            (err, stdout) => err ? reject(err) : resolve(stdout));
+        });
+        return { data: `data:${mime};base64,${buf.toString('base64')}` };
+      } else {
+        const fullPath = path.join(repoPath, filepath);
+        const buf = fs.readFileSync(fullPath);
+        return { data: `data:${mime};base64,${buf.toString('base64')}` };
+      }
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
 }
 
 module.exports = { register };

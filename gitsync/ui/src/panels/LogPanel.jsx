@@ -4,7 +4,7 @@ import Select from '../lib/Select';
 import ResizeHandle from '../lib/ResizeHandle';
 import { useWorkspace } from '../context/WorkspaceContext';
 import { GraphCell, parseRefs } from '../utils/graph';
-import { DiffLines } from '../utils/diff';
+import { DiffLines, isImageFile, ImagePreview } from '../utils/diff';
 
 export default function LogPanel() {
   const ws = useWorkspace();
@@ -216,11 +216,14 @@ export default function LogPanel() {
               <div class="git-commit-detail-files">
                 <For each={ws.commitDetail.files}>{(file) => {
                   const isExpanded = () => file.filename in ws.expandedDetailFiles();
+                  const isImage = () => isImageFile(file.filename);
                   const toggleFile = () => {
                     if (isExpanded()) {
                       const next = { ...ws.expandedDetailFiles() };
                       delete next[file.filename];
                       ws.setExpandedDetailFiles(next);
+                    } else if (isImage()) {
+                      ws.setExpandedDetailFiles((prev) => ({ ...prev, [file.filename]: '__image__' }));
                     } else {
                       ws.loadFileDiff(ws.commitDetail.hash, file.filename);
                     }
@@ -246,11 +249,15 @@ export default function LogPanel() {
                         </span>
                       </div>
                       <Show when={isExpanded() && ws.expandedDetailFiles()[file.filename]}>
-                        <pre class="git-diff-content git-detail-file-diff">
-                          <div class="git-diff-inner">
-                            <DiffLines raw={ws.expandedDetailFiles()[file.filename]} />
-                          </div>
-                        </pre>
+                        <Show when={isImage()} fallback={
+                          <pre class="git-diff-content git-detail-file-diff">
+                            <div class="git-diff-inner">
+                              <DiffLines raw={ws.expandedDetailFiles()[file.filename]} />
+                            </div>
+                          </pre>
+                        }>
+                          <ImagePreview repoPath={ws.repoPath} filepath={file.filename} gitRef={ws.commitDetail.hash} />
+                        </Show>
                       </Show>
                     </div>
                   );

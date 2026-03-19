@@ -5,7 +5,7 @@ import ResizeHandle from '../lib/ResizeHandle';
 import Select from '../lib/Select';
 import { useWorkspace } from '../context/WorkspaceContext';
 import { stagedFiles, unstagedFiles, untrackedFiles, conflictFiles } from '../utils/status';
-import { DiffLines, DiffHunks } from '../utils/diff';
+import { DiffLines, DiffHunks, isImageFile, ImagePreview } from '../utils/diff';
 
 export default function ChangesPanel() {
   const ws = useWorkspace();
@@ -199,18 +199,22 @@ export default function ChangesPanel() {
               <span class="git-diff-filepath">{ws.diff.filepath}</span>
               <span class="git-diff-label">{ws.diff.staged ? 'Staged' : 'Working'}</span>
             </div>
-            <pre class="git-diff-content">
-              <div class="git-diff-inner">
-                <Show when={ws.diff.header} fallback={<DiffLines raw={ws.diff.content} />}>
-                  <DiffHunks
-                    raw={ws.diff.content}
-                    onStageHunk={!ws.diff.staged ? (idx) => ws.stageHunk(idx) : undefined}
-                    onUnstageHunk={ws.diff.staged ? (idx) => ws.unstageHunk(idx) : undefined}
-                    onDiscardHunk={!ws.diff.staged ? (idx) => ws.discardHunk(idx) : undefined}
-                  />
-                </Show>
-              </div>
-            </pre>
+            <Show when={isImageFile(ws.diff.filepath)} fallback={
+              <pre class="git-diff-content">
+                <div class="git-diff-inner">
+                  <Show when={ws.diff.header} fallback={<DiffLines raw={ws.diff.content} />}>
+                    <DiffHunks
+                      raw={ws.diff.content}
+                      onStageHunk={!ws.diff.staged ? (idx) => ws.stageHunk(idx) : undefined}
+                      onUnstageHunk={ws.diff.staged ? (idx) => ws.unstageHunk(idx) : undefined}
+                      onDiscardHunk={!ws.diff.staged ? (idx) => ws.discardHunk(idx) : undefined}
+                    />
+                  </Show>
+                </div>
+              </pre>
+            }>
+              <ImagePreview repoPath={ws.repoPath} filepath={ws.diff.filepath} />
+            </Show>
           </Show>
         </div>
 

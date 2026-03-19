@@ -145,6 +145,9 @@ contextBridge.exposeInMainWorld('api', {
   gitWorktreeRemove: (repoPath, wtPath, force) => ipcRenderer.invoke('git:worktreeRemove', repoPath, wtPath, force),
   gitWorktreePrune: (repoPath) => ipcRenderer.invoke('git:worktreePrune', repoPath),
 
+  // Images
+  gitImageBlob: (repoPath, filepath, ref) => ipcRenderer.invoke('git:imageBlob', repoPath, filepath, ref),
+
   // Filesystem watching
   gitWatchRepo: (repoPath) => ipcRenderer.invoke('git:watchRepo', repoPath),
   gitUnwatchRepo: (repoPath) => ipcRenderer.invoke('git:unwatchRepo', repoPath),

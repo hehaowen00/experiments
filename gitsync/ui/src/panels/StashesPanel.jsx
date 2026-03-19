@@ -2,7 +2,7 @@ import { Show, For, createSignal, createMemo } from 'solid-js';
 import Icon from '../lib/Icon';
 import ResizeHandle from '../lib/ResizeHandle';
 import { useWorkspace } from '../context/WorkspaceContext';
-import { DiffLines } from '../utils/diff';
+import { DiffLines, isImageFile, ImagePreview } from '../utils/diff';
 import { buildTree, compactTree } from '../utils/tree';
 
 function StashTreeDir(props) {
@@ -305,17 +305,21 @@ export default function StashesPanel() {
                     {selectedFile()}
                   </span>
                 </div>
-                <Show
-                  when={selectedDiff()}
-                  fallback={
-                    <div class="git-empty">Loading...</div>
-                  }
-                >
-                  <pre class="git-diff-content git-detail-file-diff">
-                    <div class="git-diff-inner">
-                      <DiffLines raw={selectedDiff()} />
-                    </div>
-                  </pre>
+                <Show when={isImageFile(selectedFile())} fallback={
+                  <Show
+                    when={selectedDiff()}
+                    fallback={
+                      <div class="git-empty">Loading...</div>
+                    }
+                  >
+                    <pre class="git-diff-content git-detail-file-diff">
+                      <div class="git-diff-inner">
+                        <DiffLines raw={selectedDiff()} />
+                      </div>
+                    </pre>
+                  </Show>
+                }>
+                  <ImagePreview repoPath={ws.repoPath} filepath={selectedFile()} gitRef={ws.stashDetail.ref} />
                 </Show>
               </Show>
             </div>
