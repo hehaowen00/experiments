@@ -9,7 +9,7 @@ import DateTimeTool from './pages/DateTimeTool';
 import Drop from './pages/Drop';
 import Landing from './pages/Landing';
 import RfcViewer from './pages/RfcViewer';
-import { TabProvider, useTabs, PINNED_TOOLS } from './store/tabs';
+import { TabProvider, useTabs, TAB_TYPES, PINNED_TOOLS } from './store/tabs';
 
 export default function App() {
   return (
@@ -101,10 +101,18 @@ function AppShell() {
 
   createEffect(() => {
     const pinned = state.pinnedTab;
-    const activeId = state.activeTabId;
-    const tab = pinned ? null : state.tabs.find((t) => t.id === activeId);
-    if (!tab || tab.type === 'collection' || tab.type === 'database') return;
-    document.title = 'Conduit';
+    if (pinned) {
+      const def = TAB_TYPES[pinned];
+      document.title = def ? `Conduit - ${def.label}` : 'Conduit';
+      return;
+    }
+    const tab = state.tabs.find((t) => t.id === state.activeTabId);
+    if (!tab) return;
+    if (tab.type === 'collection' || tab.type === 'database') {
+      document.title = `Conduit - ${tab.label}`;
+    } else {
+      document.title = 'Conduit';
+    }
   });
 
   return (

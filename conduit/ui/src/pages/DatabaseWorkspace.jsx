@@ -209,7 +209,6 @@ export default function DatabaseWorkspace(props) {
   }
 
   onMount(async () => {
-    document.title = `Conduit - ${connData.name}`;
     addTab();
     await loadSidebarData();
   });

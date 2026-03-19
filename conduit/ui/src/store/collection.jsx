@@ -622,7 +622,7 @@ export function CollectionProvider(props) {
     );
     if (name && name.trim()) {
       setState('collection', 'name', name.trim());
-      document.title = `${t.app.name} - ${name.trim()}`;
+      document.title = `Conduit - ${name.trim()}`;
       save();
     }
   }
@@ -1238,7 +1238,6 @@ export function CollectionProvider(props) {
       collection: c,
       variables: [{ ...EMPTY_VARIABLE }],
     });
-    document.title = `${t.app.name} - ${c.name}`;
     setupEventListeners();
   });
 
