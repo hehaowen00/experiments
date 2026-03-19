@@ -59,6 +59,10 @@ export function parseDiffFiles(rawDiff) {
   return files;
 }
 
+function isHeaderLine(line) {
+  return line.startsWith('diff ') || line.startsWith('---') || line.startsWith('+++') || line.startsWith('index ') || line.startsWith('new file') || line.startsWith('deleted file') || line.startsWith('similarity') || line.startsWith('rename') || line.startsWith('old mode') || line.startsWith('new mode');
+}
+
 export function parseDiffLines(raw) {
   const lines = raw.split('\n');
   const result = [];
@@ -74,8 +78,7 @@ export function parseDiffLines(raw) {
     } else if (line.startsWith('-') && !line.startsWith('---')) {
       result.push({ cls: 'git-diff-line git-diff-del', text: line, oldN: oldNum, newN: '' });
       oldNum++;
-    } else if (line.startsWith('diff ') || line.startsWith('---') || line.startsWith('+++') || line.startsWith('index ') || line.startsWith('new file') || line.startsWith('deleted file') || line.startsWith('similarity') || line.startsWith('rename') || line.startsWith('old mode') || line.startsWith('new mode')) {
-      // Skip diff header metadata — filename already shown in the UI
+    } else if (isHeaderLine(line)) {
       continue;
     } else {
       result.push({ cls: 'git-diff-line', text: line, oldN: oldNum, newN: newNum });
@@ -84,6 +87,49 @@ export function parseDiffLines(raw) {
     }
   }
   return result;
+}
+
+/**
+ * Incremental diff parser — only parses up to `maxLines` from raw input,
+ * returning parsed lines and state needed to resume parsing.
+ */
+export function parseDiffLinesIncremental(raw, maxLines, prev) {
+  const lines = prev ? prev.rawLines : raw.split('\n');
+  const result = prev ? prev.parsed.slice() : [];
+  let oldNum = prev ? prev.oldNum : 0;
+  let newNum = prev ? prev.newNum : 0;
+  let i = prev ? prev.nextIndex : 0;
+
+  while (i < lines.length && result.length < maxLines) {
+    const line = lines[i++];
+    if (line.startsWith('@@')) {
+      const m = line.match(/@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+      if (m) { oldNum = parseInt(m[1]); newNum = parseInt(m[2]); }
+      result.push({ cls: 'git-diff-line git-diff-hunk', text: line, oldN: '', newN: '', hunk: true });
+    } else if (line.startsWith('+') && !line.startsWith('+++')) {
+      result.push({ cls: 'git-diff-line git-diff-add', text: line, oldN: '', newN: newNum });
+      newNum++;
+    } else if (line.startsWith('-') && !line.startsWith('---')) {
+      result.push({ cls: 'git-diff-line git-diff-del', text: line, oldN: oldNum, newN: '' });
+      oldNum++;
+    } else if (isHeaderLine(line)) {
+      continue;
+    } else {
+      result.push({ cls: 'git-diff-line', text: line, oldN: oldNum, newN: newNum });
+      oldNum++;
+      newNum++;
+    }
+  }
+
+  return {
+    parsed: result,
+    rawLines: lines,
+    nextIndex: i,
+    oldNum,
+    newNum,
+    done: i >= lines.length,
+    totalRawLines: lines.length,
+  };
 }
 
 // Parse hunks as separate groups with their raw text preserved
@@ -102,7 +148,7 @@ export function parseDiffHunks(raw) {
       current.newNum = current.newStart;
       current.parsedLines.push({ cls: 'git-diff-line git-diff-hunk', text: line, oldN: '', newN: '', hunk: true });
     } else if (current) {
-      if (line.startsWith('diff ') || line.startsWith('---') || line.startsWith('+++') || line.startsWith('index ') || line.startsWith('new file') || line.startsWith('deleted file') || line.startsWith('similarity') || line.startsWith('rename') || line.startsWith('old mode') || line.startsWith('new mode')) {
+      if (isHeaderLine(line)) {
         continue;
       }
       current.rawLines.push(line);
@@ -141,21 +187,36 @@ export function DiffLine(props) {
   );
 }
 
-const DIFF_LINE_LIMIT = 3000;
-const DIFF_LINE_CHUNK = 3000;
+const DIFF_LINE_LIMIT = 500;
+const DIFF_LINE_CHUNK = 1000;
 
 export function DiffLines(props) {
-  const allLines = createMemo(() => parseDiffLines(props.raw));
-  const [limit, setLimit] = createSignal(DIFF_LINE_LIMIT);
-  const visible = () => allLines().slice(0, limit());
-  const remaining = () => Math.max(0, allLines().length - limit());
+  const [parseState, setParseState] = createSignal(null);
+
+  // Reset when raw input changes, parse initial chunk
+  const initial = createMemo(() => {
+    setParseState(null);
+    return parseDiffLinesIncremental(props.raw, DIFF_LINE_LIMIT, null);
+  });
+
+  const current = () => parseState() || initial();
+
+  function showMore() {
+    const cur = current();
+    const next = parseDiffLinesIncremental(
+      props.raw,
+      cur.parsed.length + DIFF_LINE_CHUNK,
+      cur,
+    );
+    setParseState(next);
+  }
 
   return (
     <>
-      <For each={visible()}>{(l) => <DiffLine line={l} />}</For>
-      <Show when={remaining() > 0}>
-        <div class="git-diff-truncated" onClick={() => setLimit(l => l + DIFF_LINE_CHUNK)}>
-          {remaining()} more lines — click to show more
+      <For each={current().parsed}>{(l) => <DiffLine line={l} />}</For>
+      <Show when={!current().done}>
+        <div class="git-diff-truncated" onClick={showMore}>
+          Show more lines
         </div>
       </Show>
     </>
