@@ -50,46 +50,6 @@ function initDb() {
       email TEXT NOT NULL
     );
 
-    CREATE TABLE IF NOT EXISTS p2p_peers (
-      id TEXT PRIMARY KEY,
-      peer_id TEXT NOT NULL UNIQUE,
-      name TEXT NOT NULL,
-      host TEXT DEFAULT NULL,
-      http_port INTEGER DEFAULT NULL,
-      ssh_port INTEGER DEFAULT 22,
-      status TEXT NOT NULL DEFAULT 'discovered',
-      last_seen TEXT DEFAULT NULL,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-
-    CREATE TABLE IF NOT EXISTS p2p_shared_repos (
-      id TEXT PRIMARY KEY,
-      repo_id TEXT NOT NULL REFERENCES git_repos(id) ON DELETE CASCADE,
-      UNIQUE(repo_id)
-    );
-
-    CREATE TABLE IF NOT EXISTS p2p_peer_repos (
-      id TEXT PRIMARY KEY,
-      peer_id TEXT NOT NULL REFERENCES p2p_peers(id) ON DELETE CASCADE,
-      name TEXT NOT NULL,
-      remote_path TEXT NOT NULL,
-      local_repo_id TEXT DEFAULT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS p2p_pull_requests (
-      id TEXT PRIMARY KEY,
-      from_peer_id TEXT NOT NULL,
-      from_peer_name TEXT NOT NULL,
-      repo_export_name TEXT NOT NULL,
-      repo_name TEXT NOT NULL,
-      branch TEXT NOT NULL,
-      target_branch TEXT NOT NULL DEFAULT 'main',
-      title TEXT NOT NULL,
-      message TEXT DEFAULT '',
-      status TEXT NOT NULL DEFAULT 'open',
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
   `);
 
   // Add identity_id column to git_repos if missing
@@ -98,17 +58,6 @@ function initDb() {
     db.exec('ALTER TABLE git_repos ADD COLUMN identity_id TEXT DEFAULT NULL');
   }
 
-  // Add ssh_user column to p2p_peers if missing
-  const peerCols = db.pragma('table_info(p2p_peers)').map(c => c.name);
-  if (!peerCols.includes('ssh_user')) {
-    db.exec('ALTER TABLE p2p_peers ADD COLUMN ssh_user TEXT DEFAULT NULL');
-  }
-
-  // Add remote_name column to p2p_peer_repos if missing
-  const peerRepoCols = db.pragma('table_info(p2p_peer_repos)').map(c => c.name);
-  if (!peerRepoCols.includes('remote_name')) {
-    db.exec("ALTER TABLE p2p_peer_repos ADD COLUMN remote_name TEXT DEFAULT 'origin'");
-  }
 }
 
 function closeDb() {

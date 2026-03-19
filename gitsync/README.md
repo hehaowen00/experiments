@@ -15,7 +15,6 @@ A desktop Git client built with Electron and Solid.js.
 - **Git bisect** — interactive good/bad marking to find regressions
 - **File history** — per-file commit log with diff at each revision
 - **Identity management** — per-repo git author name/email configuration
-- **P2P sharing** — discover peers on the local network via mDNS, share and clone repositories over SSH
 - **Theming** — 5 built-in themes with CSS custom properties
 - **Commit message persistence** — drafts are saved across repo switches and app restarts
 - **Keyboard shortcuts** — Ctrl+P repo switcher
@@ -57,7 +56,6 @@ npm run dist:linux # Linux AppImage
 - **better-sqlite3** — local database (WAL mode)
 - **CodeMirror** — code editor components
 - **Font Awesome** — iconography
-- **Go** — P2P SSH git server (`main/git-server/`)
 
 ## Project Structure
 
@@ -68,10 +66,8 @@ main.js              # Electron main process entry
 preload.js           # Context bridge (IPC API)
 main/
   ipc-git.js         # Git operations + IPC handlers
-  ipc-p2p.js         # P2P networking IPC handlers
   store.js           # SQLite database
   ksuid.js           # ID generation
-  git-server/        # Go SSH server for P2P
 ui/
   src/
     App.jsx           # Root component + routing

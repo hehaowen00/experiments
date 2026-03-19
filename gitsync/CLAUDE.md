@@ -30,7 +30,6 @@ No test runner is configured.
 
 - `ipc-git.js` — Thin orchestrator that defines `git()` and `gitRaw()` helpers and delegates to `main/git/` modules.
 - `main/git/` — Modular IPC handlers split by domain: `repos.js`, `categories.js`, `identities.js`, `dialogs.js`, `status.js`, `staging.js`, `commit.js`, `log.js`, `sync.js`, `remotes.js`, `branches.js`, `merge-rebase.js`, `tags.js`, `stash.js`, `submodules.js`, `worktrees.js`, `patches.js`, `conflicts.js`, `bisect.js`, `watcher.js`. Each exports `register({ mainWindow, git, gitRaw })`.
-- `ipc-p2p.js` — P2P networking IPC handlers (LAN discovery, SSH server, friend requests).
 - `store.js` — SQLite database (`~/.config/gitsync/gitsync.db`) with tables: `settings`, `git_repos`, `git_categories`, `git_identities`. Uses better-sqlite3 with WAL mode.
 - `ksuid.js` — Timestamp-sortable unique ID generation (base62, 27 chars).
 
@@ -58,7 +57,7 @@ No test runner is configured.
 - `Modal.jsx` — Re-exports from `modal/state.js` (show* functions) and `modal/ModalDialog.jsx` (UI)
 - `modal/state.js` — Modal signal state and exported `showPrompt`, `showConfirm`, `showAlert`, etc.
 - `modal/ModalDialog.jsx` — Modal overlay/dialog rendering
-- `settings/GeneralTab.jsx`, `settings/IdentitiesTab.jsx`, `settings/P2PTab.jsx` — Settings panel tabs
+- `settings/GeneralTab.jsx`, `settings/IdentitiesTab.jsx` — Settings panel tabs
 - `FileTree.jsx`, `ContextMenu.jsx`, `RepoSwitcher.jsx`, `FileHistory.jsx`, `InteractiveRebase.jsx`, `Titlebar.jsx`
 
 **Utilities:** `utils/graph.jsx` (commit graph algorithm with stable first-parent lane tracking + GraphCell SVG), `utils/diff.jsx` (diff parsing + DiffLine component), `utils/tree.js` (file tree building/compacting), `utils/status.js` (file categorization including conflict detection), `utils/path.js` (shared shortenPath).

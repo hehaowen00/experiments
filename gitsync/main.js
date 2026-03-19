@@ -3,7 +3,6 @@ const { execFile } = require('child_process');
 const path = require('path');
 const store = require('./main/store');
 const ipcGit = require('./main/ipc-git');
-const ipcP2p = require('./main/ipc-p2p');
 
 let mainWindow;
 
@@ -54,7 +53,6 @@ app.whenReady().then(async () => {
   createWindow();
 
   ipcGit.register(mainWindow);
-  ipcP2p.register(mainWindow);
 
   ipcMain.handle('app:homeDir', () => require('os').homedir());
   ipcMain.handle('app:platform', () => process.platform);
@@ -92,6 +90,5 @@ app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) createWindow();
 });
 app.on('will-quit', () => {
-  ipcP2p.shutdown();
   store.closeDb();
 });

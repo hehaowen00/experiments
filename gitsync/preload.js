@@ -154,35 +154,4 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('git:fs-changed', handler);
   },
 
-  // P2P
-  p2pGetIdentity: () => ipcRenderer.invoke('p2p:getIdentity'),
-  p2pSetDisplayName: (name) => ipcRenderer.invoke('p2p:setDisplayName', name),
-  p2pSetEnabled: (enabled) => ipcRenderer.invoke('p2p:setEnabled', enabled),
-  p2pPeerList: () => ipcRenderer.invoke('p2p:peerList'),
-  p2pSendFriendRequest: (peerId) => ipcRenderer.invoke('p2p:sendFriendRequest', peerId),
-  p2pRespondFriendRequest: (peerId, accepted) => ipcRenderer.invoke('p2p:respondFriendRequest', peerId, accepted),
-  p2pBlockPeer: (peerId) => ipcRenderer.invoke('p2p:blockPeer', peerId),
-  p2pUnblockPeer: (peerId) => ipcRenderer.invoke('p2p:unblockPeer', peerId),
-  p2pRemovePeer: (peerId) => ipcRenderer.invoke('p2p:removePeer', peerId),
-  p2pGetAllPeerRepos: () => ipcRenderer.invoke('p2p:getAllPeerRepos'),
-  p2pGetSharedRepos: () => ipcRenderer.invoke('p2p:getSharedRepos'),
-  p2pSetRepoShared: (repoId, shared) => ipcRenderer.invoke('p2p:setRepoShared', repoId, shared),
-  p2pFetchPeerRepos: (peerId) => ipcRenderer.invoke('p2p:fetchPeerRepos', peerId),
-  p2pCloneFromPeer: (peerId, remotePath, repoName, originUrl) => ipcRenderer.invoke('p2p:cloneFromPeer', peerId, remotePath, repoName, originUrl),
-  p2pAddPeerRemote: (repoPath, peerId, remotePath, remoteName) => ipcRenderer.invoke('p2p:addPeerRemote', repoPath, peerId, remotePath, remoteName),
-  onP2pPeersChanged: (cb) => {
-    const handler = () => cb();
-    ipcRenderer.on('p2p:peers-changed', handler);
-    return () => ipcRenderer.removeListener('p2p:peers-changed', handler);
-  },
-  onP2pCloneProgress: (cb) => {
-    const handler = (_, data) => cb(data);
-    ipcRenderer.on('p2p:clone-progress', handler);
-    return () => ipcRenderer.removeListener('p2p:clone-progress', handler);
-  },
-  onP2pFriendRequest: (cb) => {
-    const handler = (_, data) => cb(data);
-    ipcRenderer.on('p2p:friend-request', handler);
-    return () => ipcRenderer.removeListener('p2p:friend-request', handler);
-  },
 });

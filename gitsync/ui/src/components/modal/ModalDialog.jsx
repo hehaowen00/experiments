@@ -5,7 +5,7 @@ import { getStoredThemeId } from '../../themes';
 import t from '../../locale';
 import GeneralTab from '../settings/GeneralTab';
 import IdentitiesTab from '../settings/IdentitiesTab';
-import P2PTab from '../settings/P2PTab';
+
 import {
   modalVisible,
   modalTitle,
@@ -35,10 +35,6 @@ export default function Modal() {
   const [identityName, setIdentityName] = createSignal('');
   const [identityEmail, setIdentityEmail] = createSignal('');
 
-  // P2P settings
-  const [p2pIdentity, setP2pIdentity] = createSignal(null);
-  const [p2pDisplayName, setP2pDisplayName] = createSignal('');
-
   createEffect(() => {
     if (modalVisible() && modalType() === 'settings') {
       setSettingsTab('general');
@@ -47,10 +43,6 @@ export default function Modal() {
         if (s.editorFontSize) setEditorFontSize(parseInt(s.editorFontSize));
       });
       window.api.identityList().then((list) => setIdentities(list));
-      window.api.p2pGetIdentity().then((id) => {
-        setP2pIdentity(id);
-        setP2pDisplayName(id.displayName);
-      });
     }
   });
 
@@ -169,7 +161,6 @@ export default function Modal() {
             <div class="settings-tabs">
               <button class={`settings-tab ${settingsTab() === 'general' ? 'active' : ''}`} onClick={() => setSettingsTab('general')}>General</button>
               <button class={`settings-tab ${settingsTab() === 'identities' ? 'active' : ''}`} onClick={() => setSettingsTab('identities')}>Identities</button>
-              <button class={`settings-tab ${settingsTab() === 'p2p' ? 'active' : ''}`} onClick={() => setSettingsTab('p2p')}>P2P</button>
             </div>
             <div class="settings-tab-content">
               <Show when={settingsTab() === 'general'}>
@@ -177,9 +168,6 @@ export default function Modal() {
               </Show>
               <Show when={settingsTab() === 'identities'}>
                 <IdentitiesTab identities={identities} editingIdentity={editingIdentity} identityName={identityName} setIdentityName={setIdentityName} identityEmail={identityEmail} setIdentityEmail={setIdentityEmail} saveIdentity={saveIdentity} startEditIdentity={startEditIdentity} deleteIdentity={deleteIdentity} resetIdentityForm={resetIdentityForm} importGlobalIdentity={importGlobalIdentity} importRepoIdentities={importRepoIdentities} />
-              </Show>
-              <Show when={settingsTab() === 'p2p'}>
-                <P2PTab p2pIdentity={p2pIdentity} setP2pIdentity={setP2pIdentity} p2pDisplayName={p2pDisplayName} setP2pDisplayName={setP2pDisplayName} />
               </Show>
             </div>
           </Show>
