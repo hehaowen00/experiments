@@ -105,6 +105,7 @@ export function WorkspaceProvider(props) {
   // --- Signals ---
   const [tab, setTab] = createSignal('changes');
   const [operating, setOperating] = createSignal('');
+  const [progressLine, setProgressLine] = createSignal('');
   const [outputLog, setOutputLog] = createSignal([]);
   const [outputOpen, setOutputOpen] = createSignal(false);
   function setOutput(msg, autoOpen) {
@@ -530,6 +531,7 @@ export function WorkspaceProvider(props) {
 
   // --- Lifecycle ---
   let removeFsListener;
+  let removeProgressListener;
 
   onMount(() => {
     restoreCommitMessage();
@@ -544,6 +546,9 @@ export function WorkspaceProvider(props) {
     removeFsListener = window.api.onFsChanged((changedPath) => {
       if (changedPath === repoPath) reloadRepo();
     });
+    removeProgressListener = window.api.onGitProgress((line) => {
+      setProgressLine(line);
+    });
   });
 
   onCleanup(() => {
@@ -552,6 +557,7 @@ export function WorkspaceProvider(props) {
     document.removeEventListener('click', dismissCtxMenu);
     window.api.gitUnwatchRepo(repoPath);
     if (removeFsListener) removeFsListener();
+    if (removeProgressListener) removeProgressListener();
   });
 
   const ctx = {
@@ -581,6 +587,7 @@ export function WorkspaceProvider(props) {
     tab,
     setTab,
     operating,
+    progressLine,
     outputLog,
     outputOpen,
     setOutputOpen,

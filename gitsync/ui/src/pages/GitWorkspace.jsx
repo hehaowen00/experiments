@@ -53,7 +53,12 @@ function WorkspaceInner() {
         </Show>
         <div style={{ flex: 1 }} />
         <Show when={ws.operating()}>
-          <span class="git-operating">{ws.operating()}</span>
+          <span class="git-operating">
+            {ws.operating()}
+            <Show when={ws.progressLine()}>
+              <span class="git-progress-line">{ws.progressLine()}</span>
+            </Show>
+          </span>
         </Show>
         <button class="btn btn-ghost btn-sm titlebar-no-drag" onClick={ws.doStashPush} disabled={!!ws.operating()} title="Stash">
           <Icon name="fa-solid fa-box-archive" />

@@ -73,16 +73,10 @@ function register({ mainWindow, git, gitRaw }) {
   ipcMain.handle('git:stashShow', async (_, repoPath, ref) => {
     try {
       const stashRef = ref || 'stash@{0}';
-      const out = await git(repoPath, [
-        'stash',
-        'show',
-        '--numstat',
-        '-u',
-        '--no-color',
-        stashRef,
-      ]);
       const files = [];
-      if (out.trim()) {
+
+      function parseNumstat(out) {
+        if (!out.trim()) return;
         for (const line of out.trim().split('\n')) {
           const m = line.match(/^(-|\d+)\t(-|\d+)\t(.+)$/);
           if (m) {
@@ -96,6 +90,31 @@ function register({ mainWindow, git, gitRaw }) {
           }
         }
       }
+
+      // Tracked file changes (fast plumbing command)
+      const tracked = await git(repoPath, [
+        'diff-tree',
+        '-r',
+        '--numstat',
+        '--no-commit-id',
+        `${stashRef}^`,
+        stashRef,
+      ]);
+      parseNumstat(tracked);
+
+      // Untracked files — stash^3 only exists if stashed with -u or -a
+      try {
+        const untracked = await git(repoPath, [
+          'diff-tree',
+          '-r',
+          '--numstat',
+          '--no-commit-id',
+          '--root',
+          `${stashRef}^3`,
+        ]);
+        parseNumstat(untracked);
+      } catch {}
+
       return { files };
     } catch (e) {
       return { error: e.message };
@@ -107,8 +126,7 @@ function register({ mainWindow, git, gitRaw }) {
     async (_, repoPath, ref, filepath) => {
       try {
         const stashRef = ref || 'stash@{0}';
-        // Show full stash diff and extract the relevant file's portion
-        // For stash we need to diff against the parent
+        // Try tracked diff first (stash^ vs stash)
         const out = await git(repoPath, [
           'diff',
           '--no-color',
@@ -117,6 +135,34 @@ function register({ mainWindow, git, gitRaw }) {
           '--',
           filepath,
         ]);
+        if (out.trim()) return { diff: out };
+
+        // File may be untracked (lives under stash^3)
+        try {
+          const untracked = await git(repoPath, [
+            'diff',
+            '--no-color',
+            '--no-index',
+            '/dev/null',
+            filepath,
+          ]);
+          return { diff: untracked };
+        } catch {
+          // --no-index exits non-zero when files differ, use gitRaw
+          const result = await gitRaw(repoPath, [
+            'show',
+            '--no-color',
+            `${stashRef}^3:${filepath}`,
+          ]);
+          if (result.stdout) {
+            // Synthesize a simple diff showing the full file as added
+            const lines = result.stdout.split('\n');
+            const header = `diff --git a/${filepath} b/${filepath}\nnew file mode 100644\n--- /dev/null\n+++ b/${filepath}\n@@ -0,0 +1,${lines.length} @@\n`;
+            return {
+              diff: header + lines.map((l) => '+' + l).join('\n'),
+            };
+          }
+        }
         return { diff: out };
       } catch (e) {
         return { error: e.message };

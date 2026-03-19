@@ -1,4 +1,9 @@
-import { showAlert, showConfirm, showPrompt } from '../../components/Modal';
+import {
+  showAlert,
+  showChoice,
+  showConfirm,
+  showPrompt,
+} from '../../components/Modal';
 
 export function createBranchOps({
   repoPath,
@@ -10,17 +15,92 @@ export function createBranchOps({
   loadBranches,
   pickRemote,
 }) {
-  async function checkoutBranch(name) {
-    setOperating('Checking out...');
-    const result = await window.api.gitCheckout(repoPath, name);
-    setOperating('');
-    if (result.error) {
-      showAlert('Checkout Failed', result.error);
-    } else {
-      setOutput(result.output || `Switched to ${name}`);
-      await reloadRepo();
-      loadBranches();
+  async function promptStashIfDirty() {
+    if (status.files.length === 0) return 'clean';
+    const choice = await showChoice(
+      'Unsaved Changes',
+      'You have uncommitted changes. What would you like to do?',
+      [
+        {
+          label: 'Stash & reapply',
+          value: 'stash',
+          description:
+            'Stash changes before switching, then reapply after',
+        },
+        {
+          label: 'Switch anyway',
+          value: 'force',
+          description:
+            'Carry uncommitted changes to the new branch',
+        },
+      ],
+    );
+    return choice;
+  }
+
+  async function doCheckout(checkoutFn, label) {
+    const action = await promptStashIfDirty();
+    if (!action) return;
+
+    const didStash = action === 'stash';
+    if (didStash) {
+      setOperating('Stashing changes...');
+      const stashResult = await window.api.gitStashPush(
+        repoPath,
+        'auto-stash before checkout',
+        true,
+      );
+      if (stashResult.error) {
+        setOperating('');
+        showAlert('Stash Failed', stashResult.error);
+        return;
+      }
     }
+
+    setOperating('Checking out...');
+    const result = await checkoutFn();
+    setOperating('');
+
+    if (result.error) {
+      if (didStash) {
+        await window.api.gitStashPop(repoPath, 'stash@{0}');
+      }
+      showAlert('Checkout Failed', result.error);
+      return;
+    }
+
+    setOutput(result.output || label);
+
+    if (didStash) {
+      setOperating('Reapplying stash...');
+      const popResult = await window.api.gitStashPop(
+        repoPath,
+        'stash@{0}',
+      );
+      setOperating('');
+      if (popResult.error) {
+        showAlert(
+          'Stash Reapply Failed',
+          popResult.error +
+            '\n\nYour changes are still in the stash.',
+        );
+      } else if (popResult.conflict) {
+        setOutput(
+          'Stash reapplied with conflicts — resolve them manually',
+          true,
+        );
+      }
+    }
+
+    await reloadRepo();
+    loadBranches();
+  }
+
+  async function checkoutBranch(name) {
+    await doCheckout(
+      () => window.api.gitCheckout(repoPath, name),
+      `Switched to ${name}`,
+    );
   }
 
   async function checkoutRemoteBranch(remoteBranch) {
@@ -32,22 +112,11 @@ export function createBranchOps({
       (b) => !b.remote && b.name === localName,
     );
     if (localExists) return checkoutBranch(localName);
-    setOperating('Checking out...');
-    const result = await window.api.gitCheckoutRemote(
-      repoPath,
-      localName,
-      trackRef,
+    await doCheckout(
+      () =>
+        window.api.gitCheckoutRemote(repoPath, localName, trackRef),
+      `Checked out ${localName} tracking ${trackRef}`,
     );
-    setOperating('');
-    if (result.error) {
-      showAlert('Checkout Failed', result.error);
-    } else {
-      setOutput(
-        result.output || `Checked out ${localName} tracking ${trackRef}`,
-      );
-      await reloadRepo();
-      loadBranches();
-    }
   }
 
   async function createBranch() {

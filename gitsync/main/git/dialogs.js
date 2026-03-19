@@ -2,7 +2,7 @@ const { ipcMain, dialog } = require('electron');
 const fs = require('fs');
 const path = require('path');
 
-function register({ mainWindow, git, gitRaw }) {
+function register({ mainWindow, git, gitRaw, gitProgress }) {
   ipcMain.handle('git:pickFolder', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {
       properties: ['openDirectory'],
@@ -29,9 +29,9 @@ function register({ mainWindow, git, gitRaw }) {
 
   ipcMain.handle('git:clone', async (_, url, parentDir, dirName) => {
     try {
-      const args = ['clone', url];
+      const args = ['clone', '--progress', url];
       if (dirName) args.push(dirName);
-      await git(parentDir, args, { timeout: 5 * 60 * 1000 });
+      await gitProgress(parentDir, args);
       const clonedName = dirName || url.replace(/\.git$/, '').split('/').pop();
       const clonedPath = path.join(parentDir, clonedName);
       return { ok: true, path: clonedPath, name: clonedName };

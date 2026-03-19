@@ -1,4 +1,4 @@
-const { execFile } = require('child_process');
+const { execFile, spawn } = require('child_process');
 
 function git(repoPath, args, opts = {}) {
   return new Promise((resolve, reject) => {
@@ -14,6 +14,49 @@ function git(repoPath, args, opts = {}) {
         }
       },
     );
+  });
+}
+
+function gitWithProgress(mainWindow, repoPath, args, opts = {}) {
+  return new Promise((resolve, reject) => {
+    const proc = spawn('git', args, { cwd: repoPath, ...opts });
+    let stdout = '';
+    let stderr = '';
+
+    function sendProgress(line) {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('git:progress', line);
+      }
+    }
+
+    proc.stdout.on('data', (chunk) => {
+      stdout += chunk;
+    });
+
+    proc.stderr.on('data', (chunk) => {
+      const text = chunk.toString();
+      stderr += text;
+      // Send the last meaningful line as progress
+      const lines = text.split(/[\r\n]+/).filter(Boolean);
+      if (lines.length > 0) {
+        sendProgress(lines[lines.length - 1].trim());
+      }
+    });
+
+    proc.on('close', (code) => {
+      // Clear progress when done
+      sendProgress('');
+      if (code !== 0) {
+        reject(new Error(stderr || `git exited with code ${code}`));
+      } else {
+        resolve(stdout);
+      }
+    });
+
+    proc.on('error', (err) => {
+      sendProgress('');
+      reject(err);
+    });
   });
 }
 
@@ -36,7 +79,9 @@ function gitRaw(repoPath, args, opts = {}) {
 }
 
 function register(mainWindow) {
-  const ctx = { mainWindow, git, gitRaw };
+  const gitProgress = (repoPath, args, opts) =>
+    gitWithProgress(mainWindow, repoPath, args, opts);
+  const ctx = { mainWindow, git, gitRaw, gitProgress };
   require('./git/repos').register(ctx);
   require('./git/categories').register(ctx);
   require('./git/identities').register(ctx);

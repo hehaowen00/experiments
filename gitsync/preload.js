@@ -156,5 +156,10 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('git:fs-changed', handler);
     return () => ipcRenderer.removeListener('git:fs-changed', handler);
   },
+  onGitProgress: (cb) => {
+    const handler = (_, line) => cb(line);
+    ipcRenderer.on('git:progress', handler);
+    return () => ipcRenderer.removeListener('git:progress', handler);
+  },
 
 });
