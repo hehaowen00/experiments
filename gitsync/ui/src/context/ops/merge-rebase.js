@@ -1,5 +1,5 @@
 import { createSignal } from 'solid-js';
-import { showAlert, showConfirm } from '../../components/Modal';
+import { showAlert, showChoice, showConfirm } from '../../components/Modal';
 
 export function createMergeRebaseOps({
   repoPath,
@@ -12,15 +12,26 @@ export function createMergeRebaseOps({
   const [interactiveRebase, setInteractiveRebase] = createSignal(null);
 
   async function doMerge(branch) {
-    if (
-      !(await showConfirm(
-        `Merge "${branch}" into "${status.branch}"?`,
-        '',
-      ))
-    )
-      return;
+    const strategy = await showChoice(
+      `Merge "${branch}" into "${status.branch}"?`,
+      '',
+      [
+        {
+          label: 'Merge',
+          description: 'Allow fast-forward if possible',
+          value: 'ff',
+        },
+        {
+          label: 'Merge (no ff)',
+          description: 'Always create a merge commit',
+          value: 'no-ff',
+        },
+      ],
+    );
+    if (!strategy) return;
     setOperating('Merging...');
-    const result = await window.api.gitMerge(repoPath, branch);
+    const opts = strategy === 'no-ff' ? { noFf: true } : {};
+    const result = await window.api.gitMerge(repoPath, branch, opts);
     setOperating('');
     if (result.error) showAlert('Merge Failed', result.error);
     else if (result.conflict)

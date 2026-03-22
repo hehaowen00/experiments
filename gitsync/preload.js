@@ -103,7 +103,7 @@ contextBridge.exposeInMainWorld('api', {
   gitStashShowFileDiff: (repoPath, ref, filepath) => ipcRenderer.invoke('git:stashShowFileDiff', repoPath, ref, filepath),
 
   // Merge & rebase
-  gitMerge: (repoPath, branch) => ipcRenderer.invoke('git:merge', repoPath, branch),
+  gitMerge: (repoPath, branch, opts) => ipcRenderer.invoke('git:merge', repoPath, branch, opts),
   gitMergeAbort: (repoPath) => ipcRenderer.invoke('git:mergeAbort', repoPath),
   gitRebase: (repoPath, branch) => ipcRenderer.invoke('git:rebase', repoPath, branch),
   gitRebaseContinue: (repoPath) => ipcRenderer.invoke('git:rebaseContinue', repoPath),

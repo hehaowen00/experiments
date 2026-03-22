@@ -408,6 +408,7 @@
 .git-changes-panel {
   display: flex;
   height: 100%;
+  position: relative;
 }
 
 .git-files-panel {
@@ -416,6 +417,52 @@
   display: flex;
   flex-direction: column;
   overflow-y: auto;
+}
+
+.git-files-panel > .git-stashes-sidebar {
+  margin-top: auto;
+}
+
+/* Sidebar toggle buttons */
+.sidebar-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0;
+  transition: color 0.15s, background 0.15s;
+}
+
+.sidebar-toggle:hover {
+  color: var(--text);
+  background: var(--surface2);
+}
+
+.sidebar-toggle-closed {
+  width: 24px;
+  border-right: 1px solid var(--border);
+}
+
+.sidebar-toggle-inside {
+  width: 100%;
+  height: 26px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+/* Portrait overlay: sidebar floats above content */
+.portrait-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 20;
+  background: var(--bg);
+  box-shadow: 4px 0 12px rgba(0, 0, 0, 0.25);
 }
 
 .git-section {

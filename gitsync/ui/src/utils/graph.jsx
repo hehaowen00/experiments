@@ -89,17 +89,20 @@ export function buildGraph(commits, initialLanes) {
     nextLanes[col] = null;
     nextColors[col] = 0;
 
-    // First parent: ALWAYS stays in the same column as the commit.
+    // First parent: stays in the same column unless already claimed by
+    // another lane (e.g. the merge commit's first-parent line). In that
+    // case, converge toward the existing lane instead of stealing it.
     if (parents.length > 0) {
       const p0 = parents[0];
       const existing = nextLanes.indexOf(p0);
       if (existing !== -1 && existing !== col) {
-        nextLanes[existing] = null;
-        nextColors[existing] = 0;
+        // Parent already tracked in another lane — merge toward it
+        botPipes.push({ from: col, to: existing, color: myColor });
+      } else {
+        nextLanes[col] = p0;
+        nextColors[col] = myColor;
+        botPipes.push({ from: col, to: col, color: myColor });
       }
-      nextLanes[col] = p0;
-      nextColors[col] = myColor;
-      botPipes.push({ from: col, to: col, color: myColor });
     }
 
     // Additional parents (merge edges) — prefer closest free slot

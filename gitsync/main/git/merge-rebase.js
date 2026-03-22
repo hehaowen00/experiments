@@ -4,9 +4,12 @@ const fs = require('fs');
 const path = require('path');
 
 function register({ mainWindow, git, gitRaw }) {
-  ipcMain.handle('git:merge', async (_, repoPath, branch) => {
+  ipcMain.handle('git:merge', async (_, repoPath, branch, opts = {}) => {
     try {
-      const out = await git(repoPath, ['merge', branch]);
+      const args = ['merge'];
+      if (opts.noFf) args.push('--no-ff');
+      args.push(branch);
+      const out = await git(repoPath, args);
       return { ok: true, output: out };
     } catch (e) {
       if (e.message.includes('CONFLICT') || e.message.includes('Automatic merge failed')) {

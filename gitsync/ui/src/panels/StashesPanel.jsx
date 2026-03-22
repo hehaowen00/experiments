@@ -1,9 +1,10 @@
-import { Show, For, createSignal, createMemo } from 'solid-js';
+import { Show, For, createSignal, createMemo, onMount, onCleanup } from 'solid-js';
 import Icon from '../lib/Icon';
 import ResizeHandle from '../lib/ResizeHandle';
 import { useWorkspace } from '../context/WorkspaceContext';
 import { DiffLines, isImageFile, ImagePreview } from '../utils/diff';
 import { buildTree, compactTree } from '../utils/tree';
+import { usePortrait } from '../utils/usePortrait';
 
 function StashTreeDir(props) {
   const [expanded, setExpanded] = createSignal(true);
@@ -140,9 +141,21 @@ function StashTreeRoot(props) {
 
 export default function StashesPanel() {
   const ws = useWorkspace();
+  const portrait = usePortrait();
   const [selectedFile, setSelectedFile] = createSignal(null);
   const [selectedDiff, setSelectedDiff] = createSignal(null);
-  const [listWidth, setListWidth] = createSignal(280);
+  const [sidebarWidth, setSidebarWidth] = createSignal(260);
+  const [sidebarOpen, setSidebarOpen] = createSignal(true);
+  const [fileListWidth, setFileListWidth] = createSignal(280);
+
+  const onKeyDown = (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'b') {
+      e.preventDefault();
+      setSidebarOpen((v) => !v);
+    }
+  };
+  onMount(() => window.addEventListener('keydown', onKeyDown));
+  onCleanup(() => window.removeEventListener('keydown', onKeyDown));
 
   const files = () => ws.stashDetail.files || [];
 
@@ -181,80 +194,105 @@ export default function StashesPanel() {
     if (diff !== null) setSelectedDiff(diff);
   }
 
-  function onResizeList(delta) {
-    setListWidth((w) => Math.max(180, Math.min(w + delta, 500)));
+  function onResizeSidebar(delta) {
+    setSidebarWidth((w) => Math.max(180, Math.min(w + delta, 400)));
+  }
+
+  function onResizeFileList(delta) {
+    setFileListWidth((w) => Math.max(180, Math.min(w + delta, 500)));
   }
 
   return (
     <div class="git-stashes-panel">
-      {/* Stash list */}
-      <div class="git-section">
+      {/* Collapsed toggle */}
+      <Show when={!sidebarOpen()}>
+        <button class="sidebar-toggle sidebar-toggle-closed" onClick={() => setSidebarOpen(true)} title="Show stash list">
+          <Icon name="fa-solid fa-chevron-right" />
+        </button>
+      </Show>
+      {/* Stash list sidebar */}
+      <Show when={sidebarOpen()}>
+      <div
+        class={`git-stashes-sidebar ${portrait() ? 'portrait-overlay' : ''}`}
+        style={{ width: `${sidebarWidth()}px` }}
+      >
         <div class="git-section-header">
           <span>Stashes</span>
           <button class="btn btn-ghost btn-xs" onClick={ws.doStashPush} disabled={!!ws.operating()}>
-            <Icon name="fa-solid fa-plus" /> Stash
+            <Icon name="fa-solid fa-plus" />
           </button>
-          <button
-            class="btn btn-ghost btn-xs"
-            onClick={ws.loadStashes}
-          >
+          <button class="btn btn-ghost btn-xs" onClick={ws.loadStashes}>
             <Icon name="fa-solid fa-rotate" />
           </button>
         </div>
-        <Show
-          when={ws.stashes.list.length === 0 && !ws.stashes.loading}
-        >
-          <div class="git-empty">No stashes</div>
-        </Show>
-        <For each={ws.stashes.list}>
-          {(s) => (
-            <div
-              class={`git-stash-item ${ws.stashDetail.ref === s.ref ? 'git-stash-selected' : ''}`}
-            >
+        <div class="git-stashes-sidebar-list">
+          <Show
+            when={ws.stashes.list.length === 0 && !ws.stashes.loading}
+          >
+            <div class="git-empty">No stashes</div>
+          </Show>
+          <For each={ws.stashes.list}>
+            {(s) => (
               <div
-                class="git-stash-info"
-                onClick={() => onViewStash(s.ref)}
+                class={`git-stash-item ${ws.stashDetail.ref === s.ref ? 'git-stash-selected' : ''}`}
               >
-                <span class="git-stash-ref">{s.ref}</span>
-                <span class="git-stash-message">{s.message}</span>
-                <span class="git-stash-date">
-                  {new Date(s.date).toLocaleDateString()}
-                </span>
+                <div
+                  class="git-stash-info"
+                  onClick={() => onViewStash(s.ref)}
+                >
+                  <span class="git-stash-ref">{s.ref}</span>
+                  <span class="git-stash-message">{s.message}</span>
+                  <span class="git-stash-date">
+                    {new Date(s.date).toLocaleDateString()}
+                  </span>
+                </div>
+                <div class="git-stash-actions">
+                  <button
+                    class="btn btn-ghost btn-xs"
+                    onClick={() => ws.doStashApply(s.ref)}
+                    title="Apply (keep stash)"
+                    disabled={!!ws.operating()}
+                  >
+                    <Icon name="fa-solid fa-paste" />
+                  </button>
+                  <button
+                    class="btn btn-ghost btn-xs"
+                    onClick={() => ws.doStashPop(s.ref)}
+                    title="Pop (apply & drop)"
+                    disabled={!!ws.operating()}
+                  >
+                    <Icon name="fa-solid fa-arrow-up-from-bracket" />
+                  </button>
+                  <button
+                    class="btn btn-ghost btn-xs btn-danger-hover"
+                    onClick={() => ws.doStashDrop(s.ref)}
+                    title="Drop"
+                    disabled={!!ws.operating()}
+                  >
+                    <Icon name="fa-solid fa-trash" />
+                  </button>
+                </div>
               </div>
-              <div class="git-stash-actions">
-                <button
-                  class="btn btn-ghost btn-xs"
-                  onClick={() => ws.doStashApply(s.ref)}
-                  title="Apply (keep stash)"
-                  disabled={!!ws.operating()}
-                >
-                  <Icon name="fa-solid fa-paste" />
-                </button>
-                <button
-                  class="btn btn-ghost btn-xs"
-                  onClick={() => ws.doStashPop(s.ref)}
-                  title="Pop (apply & drop)"
-                  disabled={!!ws.operating()}
-                >
-                  <Icon name="fa-solid fa-arrow-up-from-bracket" />
-                </button>
-                <button
-                  class="btn btn-ghost btn-xs btn-danger-hover"
-                  onClick={() => ws.doStashDrop(s.ref)}
-                  title="Drop"
-                  disabled={!!ws.operating()}
-                >
-                  <Icon name="fa-solid fa-trash" />
-                </button>
-              </div>
-            </div>
-          )}
-        </For>
+            )}
+          </For>
+        </div>
+        <button class="sidebar-toggle sidebar-toggle-inside" onClick={() => setSidebarOpen(false)} title="Hide stash list">
+          <Icon name="fa-solid fa-chevron-left" />
+        </button>
       </div>
+      <Show when={!portrait()}>
+        <ResizeHandle direction="col" onResize={onResizeSidebar} />
+      </Show>
+      </Show>
 
-      {/* Stash contents: file tree + diff */}
-      <Show when={ws.stashDetail.ref}>
-        <div class="git-stash-preview">
+      {/* Stash detail: file tree + diff */}
+      <div class="git-stash-detail">
+        <Show
+          when={ws.stashDetail.ref}
+          fallback={
+            <div class="git-empty">Select a stash to view its contents</div>
+          }
+        >
           <div class="git-stash-preview-header">
             <span class="git-stash-preview-title">
               {ws.stashDetail.ref}
@@ -277,7 +315,7 @@ export default function StashesPanel() {
           <div class="git-stash-preview-split">
             <div
               class="git-stash-file-list"
-              style={{ width: `${listWidth()}px` }}
+              style={{ width: `${fileListWidth()}px` }}
             >
               <Show when={tree()}>
                 {(t) => (
@@ -290,7 +328,7 @@ export default function StashesPanel() {
                 )}
               </Show>
             </div>
-            <ResizeHandle direction="col" onResize={onResizeList} />
+            <ResizeHandle direction="col" onResize={onResizeFileList} />
             <div class="git-stash-file-diff">
               <Show
                 when={selectedFile()}
@@ -324,8 +362,8 @@ export default function StashesPanel() {
               </Show>
             </div>
           </div>
-        </div>
-      </Show>
+        </Show>
+      </div>
     </div>
   );
 }

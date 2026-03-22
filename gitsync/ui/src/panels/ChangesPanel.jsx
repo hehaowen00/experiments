@@ -1,4 +1,4 @@
-import { Show, For, createSignal } from 'solid-js';
+import { Show, For, createSignal, onMount, onCleanup } from 'solid-js';
 import Icon from '../lib/Icon';
 import FileTree from '../components/FileTree';
 import ResizeHandle from '../lib/ResizeHandle';
@@ -6,10 +6,22 @@ import Select from '../lib/Select';
 import { useWorkspace } from '../context/WorkspaceContext';
 import { stagedFiles, unstagedFiles, untrackedFiles, conflictFiles } from '../utils/status';
 import { DiffLines, DiffHunks, isImageFile, ImagePreview } from '../utils/diff';
+import { usePortrait } from '../utils/usePortrait';
 
 export default function ChangesPanel() {
   const ws = useWorkspace();
+  const portrait = usePortrait();
   const [filesWidth, setFilesWidth] = createSignal(320);
+  const [sidebarOpen, setSidebarOpen] = createSignal(true);
+
+  const onKeyDown = (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'b') {
+      e.preventDefault();
+      setSidebarOpen((v) => !v);
+    }
+  };
+  onMount(() => window.addEventListener('keydown', onKeyDown));
+  onCleanup(() => window.removeEventListener('keydown', onKeyDown));
 
   const conflicts = () => conflictFiles(ws.status.files);
   const staged = () => stagedFiles(ws.status.files);
@@ -22,7 +34,13 @@ export default function ChangesPanel() {
 
   return (
     <div class="git-changes-panel">
-      <div class="git-files-panel" style={{ width: `${filesWidth()}px` }}>
+      <Show when={!sidebarOpen()}>
+        <button class="sidebar-toggle sidebar-toggle-closed" onClick={() => setSidebarOpen(true)} title="Show file list">
+          <Icon name="fa-solid fa-chevron-right" />
+        </button>
+      </Show>
+      <Show when={sidebarOpen()}>
+      <div class={`git-files-panel ${portrait() ? 'portrait-overlay' : ''}`} style={{ width: `${filesWidth()}px` }}>
         <Show when={conflicts().length > 0}>
           <div class="git-section git-section-conflicts">
             <div class="git-section-header" onClick={() => ws.toggleSection('conflicts')}>
@@ -186,9 +204,14 @@ export default function ChangesPanel() {
             )}</For>
           </Show>
         </div>
+        <button class="sidebar-toggle sidebar-toggle-inside" onClick={() => setSidebarOpen(false)} title="Hide file list">
+          <Icon name="fa-solid fa-chevron-left" />
+        </button>
       </div>
-
-      <ResizeHandle direction="col" onResize={onResizeFiles} />
+      <Show when={!portrait()}>
+        <ResizeHandle direction="col" onResize={onResizeFiles} />
+      </Show>
+      </Show>
 
       <div class="git-right-panel">
         <div class="git-diff-panel">

@@ -1,20 +1,32 @@
 /* Stashes */
 .git-stashes-panel {
-  padding: 12px;
-  overflow: auto;
-  height: 100%;
   display: flex;
-  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  position: relative;
 }
 
-.git-stashes-panel > .git-section {
+.git-stashes-sidebar {
+  display: flex;
+  flex-direction: column;
   flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.git-stashes-sidebar > .git-section-header {
+  flex-shrink: 0;
+}
+
+.git-stashes-sidebar-list {
+  flex: 1;
+  overflow-y: auto;
 }
 
 .git-stash-item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
   padding: 6px 10px;
   border-bottom: 1px solid var(--border);
 }
@@ -26,8 +38,8 @@
 .git-stash-info {
   flex: 1;
   display: flex;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  gap: 2px;
   cursor: pointer;
   min-width: 0;
   overflow: hidden;
@@ -47,7 +59,6 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  flex: 1;
   min-width: 0;
 }
 
@@ -63,6 +74,7 @@
   gap: 2px;
   opacity: 0;
   transition: opacity 0.15s;
+  flex-shrink: 0;
 }
 
 .git-stash-item:hover .git-stash-actions {
@@ -79,36 +91,13 @@
   opacity: 1;
 }
 
-.git-stashes-sidebar {
-  margin-top: auto;
-  border-top: 1px solid var(--border);
-}
-
-.git-stashes-sidebar .git-stash-item {
-  padding: 4px 10px;
-}
-
-.git-stashes-sidebar .git-stash-info {
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 1px;
-}
-
-.git-stash-diff {
-  flex: 1;
-  overflow: auto;
-  border-top: 1px solid var(--border);
-  min-height: 0;
-}
-
-/* Stash preview split layout */
-.git-stash-preview {
+/* Detail area */
+.git-stash-detail {
   flex: 1;
   display: flex;
   flex-direction: column;
-  border-top: 1px solid var(--border);
-  min-height: 0;
-  margin-top: 8px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .git-stash-preview-header {
@@ -142,41 +131,6 @@
   flex-shrink: 0;
   overflow-y: auto;
   border-right: 1px solid var(--border);
-}
-
-.git-stash-file-item {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px;
-  padding: 5px 10px;
-  cursor: pointer;
-  border-bottom: 1px solid var(--border);
-}
-
-.git-stash-file-item:hover {
-  background: var(--surface);
-}
-
-.git-stash-file-item.active {
-  background: var(--surface2);
-}
-
-.git-stash-file-name {
-  font-size: var(--ui-font-size-sm);
-  color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.git-stash-file-path {
-  font-size: var(--ui-font-size-xs);
-  color: var(--text-dim);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  width: 100%;
 }
 
 .git-stash-file-diff {
