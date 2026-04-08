@@ -1,6 +1,7 @@
 import { createEffect, createSignal, For, onCleanup, onMount, Show } from 'solid-js';
 import { createStore } from 'solid-js/store';
 import Icon from '../../lib/Icon';
+import Select from '../../lib/Select';
 import { getStoredThemeId } from '../../themes';
 import t from '../../locale';
 import GeneralTab from '../settings/GeneralTab';
@@ -218,15 +219,15 @@ export default function Modal() {
           <Show when={modalType() === 'push'}>
             <div class="modal-field">
               <label>Remote</label>
-              <select
+              <Select
                 value={modalSelectedRemote()}
-                onChange={(e) => setModalSelectedRemote(e.target.value)}
-                autofocus
-              >
-                <For each={modalRemotes()}>{(r) => (
-                  <option value={r.name}>{r.name} ({r.push || r.fetch})</option>
-                )}</For>
-              </select>
+                options={modalRemotes().map((r) => ({
+                  value: r.name,
+                  label: `${r.name} (${r.push || r.fetch || 'no url'})`,
+                }))}
+                onChange={setModalSelectedRemote}
+                class="select-sm select-full"
+              />
             </div>
             <div class="modal-field modal-field-inline">
               <label>
