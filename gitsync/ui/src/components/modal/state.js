@@ -78,6 +78,28 @@ export function showChoice(title, description = '', choices = []) {
   });
 }
 
+export const [modalRemotes, setModalRemotes] = createSignal([]);
+export const [modalSelectedRemote, setModalSelectedRemote] = createSignal('');
+export const [modalForce, setModalForce] = createSignal(false);
+
+export function showPush(remotes, lastRemote) {
+  return new Promise((resolve) => {
+    modalResolve = resolve;
+    setModalTitle('Push to Remote');
+    setModalDescription('');
+    setModalRemotes(remotes);
+    const defaultRemote = lastRemote && remotes.find((r) => r.name === lastRemote)
+      ? lastRemote
+      : remotes.length > 0
+        ? remotes[0].name
+        : '';
+    setModalSelectedRemote(defaultRemote);
+    setModalForce(false);
+    setModalType('push');
+    setModalVisible(true);
+  });
+}
+
 export function showAlert(title, description = '') {
   return new Promise((resolve) => {
     modalResolve = resolve;

@@ -6,6 +6,7 @@ export {
   showChoice,
   showAlert,
   showSettings,
+  showPush,
 } from './modal/state';
 
 export { default } from './modal/ModalDialog';

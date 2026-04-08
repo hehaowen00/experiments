@@ -18,6 +18,11 @@ import {
   modalConfirmStyle,
   modalExpectedName,
   modalChoices,
+  modalRemotes,
+  modalSelectedRemote,
+  setModalSelectedRemote,
+  modalForce,
+  setModalForce,
   close,
 } from './state';
 
@@ -105,6 +110,8 @@ export default function Modal() {
       if (modalType() === 'alert') close(null);
       else if (modalType() === 'confirm-type') {
         if (modalValue() === modalExpectedName()) close(true);
+      } else if (modalType() === 'push') {
+        close({ remote: modalSelectedRemote(), force: modalForce() });
       } else if (modalType() !== 'textarea' && modalType() !== 'settings' && modalType() !== 'choice')
         close(modalType() === 'prompt' ? modalValue() : true);
     }
@@ -207,6 +214,39 @@ export default function Modal() {
               )}</For>
             </div>
             <button class="btn btn-ghost modal-choice-cancel" onClick={() => close(null)}>{t.modal.cancelButton}</button>
+          </Show>
+          <Show when={modalType() === 'push'}>
+            <div class="modal-field">
+              <label>Remote</label>
+              <select
+                value={modalSelectedRemote()}
+                onChange={(e) => setModalSelectedRemote(e.target.value)}
+                autofocus
+              >
+                <For each={modalRemotes()}>{(r) => (
+                  <option value={r.name}>{r.name} ({r.push || r.fetch})</option>
+                )}</For>
+              </select>
+            </div>
+            <div class="modal-field modal-field-inline">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={modalForce()}
+                  onChange={(e) => setModalForce(e.target.checked)}
+                />
+                Force push (--force-with-lease)
+              </label>
+            </div>
+            <div class="modal-buttons">
+              <button class="btn btn-ghost" onClick={() => close(null)}>{t.modal.cancelButton}</button>
+              <button
+                class={`btn ${modalForce() ? 'btn-danger' : 'btn-primary'}`}
+                onClick={() => close({ remote: modalSelectedRemote(), force: modalForce() })}
+              >
+                {modalForce() ? 'Force Push' : 'Push'}
+              </button>
+            </div>
           </Show>
         </div>
       </div>

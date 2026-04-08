@@ -47,6 +47,14 @@ function register({ mainWindow, git, gitRaw }) {
     }
   });
 
+  ipcMain.handle('git:revParseHead', async (_, repoPath) => {
+    try {
+      return { hash: (await git(repoPath, ['rev-parse', 'HEAD'])).trim() };
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
+
   ipcMain.handle('git:diff', async (_, repoPath, filepath, staged) => {
     try {
       const args = ['diff', '--no-color'];

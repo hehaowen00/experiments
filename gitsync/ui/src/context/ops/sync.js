@@ -1,4 +1,4 @@
-import { showAlert, showChoice } from '../../components/Modal';
+import { showAlert, showChoice, showPush } from '../../components/Modal';
 
 export function createSyncOps({
   repoPath,
@@ -78,12 +78,44 @@ export function createSyncOps({
   }
 
   async function doPush() {
-    const remote = await pickRemote(
-      'Push to Remote',
-      'Select which remote to push to.',
-    );
-    if (!remote) return;
+    const remoteResult = await window.api.gitRemoteList(repoPath);
+    const remoteList = remoteResult.remotes || [];
+    if (remoteList.length === 0) {
+      showAlert('No Remotes', 'No remotes configured for this repository.');
+      return;
+    }
+
+    const choice = await showPush(remoteList, lastRemote);
+    if (!choice) return;
+    const { remote, force } = choice;
     lastRemote = remote;
+
+    if (force) {
+      setOperating('Force pushing...');
+      const result = await window.api.gitPushForce(repoPath, remote);
+      setOperating('');
+      if (result.error) showAlert('Force Push Failed', result.error);
+      else setOutput(result.output || 'Force push complete');
+      await reloadRepo();
+      return;
+    }
+
+    // Auto-pull before pushing; abort if remote had new changes
+    const headBefore = await window.api.gitRevParseHead(repoPath);
+    setOperating('Pulling...');
+    const pullResult = await window.api.gitPull(repoPath, null, remote);
+    setOperating('');
+    if (pullResult.error) {
+      showAlert('Pull Failed', pullResult.error);
+      await reloadRepo();
+      return;
+    }
+    const headAfter = await window.api.gitRevParseHead(repoPath);
+    if (!headBefore.error && !headAfter.error && headBefore.hash !== headAfter.hash) {
+      setOutput('Pull brought in new changes — push aborted. Review the changes before pushing again.');
+      await reloadRepo();
+      return;
+    }
 
     setOperating('Pushing...');
     let result;
@@ -98,51 +130,7 @@ export function createSyncOps({
     }
     setOperating('');
     if (result.error) {
-      if (result.divergent) {
-        const choice = await showChoice(
-          'Push Rejected',
-          "The remote has changes you don't have locally.",
-          [
-            {
-              label: 'Pull (rebase) then push',
-              value: 'pull-rebase',
-              description:
-                'Rebase local commits on top of remote, then push',
-            },
-            {
-              label: 'Pull (merge) then push',
-              value: 'pull-merge',
-              description: 'Merge remote changes locally, then push',
-            },
-            {
-              label: 'Force push',
-              value: 'force',
-              style: 'danger',
-              description:
-                'Overwrite remote with local (uses --force-with-lease)',
-            },
-          ],
-        );
-        if (choice === 'pull-rebase') {
-          await doPull('rebase', remote);
-          const retry = await window.api.gitPush(repoPath, remote);
-          if (retry.error) showAlert('Push Failed', retry.error);
-          else setOutput(retry.output || 'Push complete');
-        } else if (choice === 'pull-merge') {
-          await doPull('merge', remote);
-          const retry = await window.api.gitPush(repoPath, remote);
-          if (retry.error) showAlert('Push Failed', retry.error);
-          else setOutput(retry.output || 'Push complete');
-        } else if (choice === 'force') {
-          setOperating('Force pushing...');
-          const retry = await window.api.gitPushForce(repoPath, remote);
-          setOperating('');
-          if (retry.error) showAlert('Force Push Failed', retry.error);
-          else setOutput(retry.output || 'Force push complete');
-        }
-      } else {
-        showAlert('Push Failed', result.error);
-      }
+      showAlert('Push Failed', result.error);
     } else {
       setOutput(result.output || 'Push complete');
     }

@@ -1236,7 +1236,8 @@
 }
 
 .modal-field input[type="text"],
-.modal-field input[type="password"] {
+.modal-field input[type="password"],
+.modal-field select {
   width: 100%;
   padding: 6px 8px;
   font-size: var(--ui-font-size);
@@ -1248,7 +1249,8 @@
 }
 
 .modal-field input[type="text"]:focus,
-.modal-field input[type="password"]:focus {
+.modal-field input[type="password"]:focus,
+.modal-field select:focus {
   outline: none;
   border-color: var(--accent);
 }

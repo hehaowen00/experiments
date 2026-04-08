@@ -49,6 +49,7 @@ contextBridge.exposeInMainWorld('api', {
   gitInit: (dirPath) => ipcRenderer.invoke('git:init', dirPath),
   gitClone: (url, parentDir, dirName) => ipcRenderer.invoke('git:clone', url, parentDir, dirName),
   gitStatus: (repoPath) => ipcRenderer.invoke('git:status', repoPath),
+  gitRevParseHead: (repoPath) => ipcRenderer.invoke('git:revParseHead', repoPath),
   gitDiff: (repoPath, filepath, staged) => ipcRenderer.invoke('git:diff', repoPath, filepath, staged),
   gitDiffRaw: (repoPath, filepath, staged) => ipcRenderer.invoke('git:diffRaw', repoPath, filepath, staged),
   gitStageHunk: (repoPath, patchText) => ipcRenderer.invoke('git:stageHunk', repoPath, patchText),
