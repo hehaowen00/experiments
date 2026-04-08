@@ -5,3 +5,4 @@ __pycache__
 env/
 undo/
 target/
+gitsync/dist/
