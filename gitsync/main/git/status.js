@@ -1,6 +1,34 @@
 const { ipcMain } = require('electron');
+const { execFile } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+
+let difftAvailable = null;
+
+function checkDifft() {
+  if (difftAvailable !== null) return Promise.resolve(difftAvailable);
+  return new Promise((resolve) => {
+    execFile('difft', ['--version'], (err) => {
+      difftAvailable = !err;
+      resolve(difftAvailable);
+    });
+  });
+}
+
+function runDifft(repoPath, args) {
+  return new Promise((resolve, reject) => {
+    execFile('git', args, {
+      cwd: repoPath,
+      maxBuffer: 10 * 1024 * 1024,
+      env: { ...process.env, GIT_EXTERNAL_DIFF: 'difft --color always --display inline' },
+    }, (err, stdout, stderr) => {
+      // git with external diff exits non-zero when there are differences
+      if (stdout) resolve(stdout);
+      else if (err) reject(new Error(stderr || err.message));
+      else resolve('');
+    });
+  });
+}
 
 function register({ mainWindow, git, gitRaw }) {
   ipcMain.handle('git:status', async (_, repoPath) => {
@@ -50,6 +78,20 @@ function register({ mainWindow, git, gitRaw }) {
   ipcMain.handle('git:revParseHead', async (_, repoPath) => {
     try {
       return { hash: (await git(repoPath, ['rev-parse', 'HEAD'])).trim() };
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
+
+  ipcMain.handle('git:diffStructural', async (_, repoPath, filepath, staged) => {
+    try {
+      const hasDifft = await checkDifft();
+      if (!hasDifft) return { error: 'difft not installed' };
+      const args = ['diff'];
+      if (staged) args.push('--cached');
+      if (filepath) args.push('--', filepath);
+      const out = await runDifft(repoPath, args);
+      return { diff: out };
     } catch (e) {
       return { error: e.message };
     }

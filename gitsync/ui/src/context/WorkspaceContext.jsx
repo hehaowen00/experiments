@@ -54,6 +54,7 @@ export function WorkspaceProvider(props) {
     filepath: null,
     staged: false,
     header: '',
+    structural: false,
   });
 
   const [commit, setCommit] = createStore({
@@ -543,8 +544,15 @@ export function WorkspaceProvider(props) {
     document.addEventListener('click', dismissCtxMenu);
     window.addEventListener('beforeunload', saveCommitMessage);
     window.api.gitWatchRepo(repoPath);
+    let fsDebounce = null;
+    let refreshing = false;
     removeFsListener = window.api.onFsChanged((changedPath) => {
-      if (changedPath === repoPath) refresh();
+      if (changedPath !== repoPath || operating() || refreshing) return;
+      clearTimeout(fsDebounce);
+      fsDebounce = setTimeout(() => {
+        refreshing = true;
+        refresh().finally(() => { refreshing = false; });
+      }, 300);
     });
     removeProgressListener = window.api.onGitProgress((line) => {
       setProgressLine(line);

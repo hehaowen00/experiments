@@ -918,6 +918,16 @@
   min-width: 100%;
 }
 
+.git-diff-structural {
+  white-space: pre;
+  font-family: var(--mono);
+  font-size: var(--editor-font-size, 12px);
+  line-height: 1.5;
+  padding: 4px 8px;
+  min-width: 100%;
+  display: inline-block;
+}
+
 .git-diff-line {
   display: flex;
   white-space: pre;
