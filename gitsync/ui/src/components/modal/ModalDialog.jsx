@@ -113,6 +113,8 @@ export default function Modal() {
         if (modalValue() === modalExpectedName()) close(true);
       } else if (modalType() === 'push') {
         close({ remote: modalSelectedRemote(), force: modalForce() });
+      } else if (modalType() === 'pull') {
+        close(modalSelectedRemote());
       } else if (modalType() !== 'textarea' && modalType() !== 'settings' && modalType() !== 'choice')
         close(modalType() === 'prompt' ? modalValue() : true);
     }
@@ -184,7 +186,7 @@ export default function Modal() {
               <button class="btn btn-primary" onClick={() => close(null)} autofocus>{t.modal.okButton}</button>
             </div>
           </Show>
-          <Show when={modalType() !== 'settings' && modalType() !== 'alert' && modalType() !== 'confirm-type' && modalType() !== 'choice' && modalType() !== 'push'}>
+          <Show when={modalType() !== 'settings' && modalType() !== 'alert' && modalType() !== 'confirm-type' && modalType() !== 'choice' && modalType() !== 'push' && modalType() !== 'pull'}>
             <div class="modal-buttons">
               <button class="btn btn-ghost" onClick={() => close(modalType() === 'prompt' ? null : false)}>{t.modal.cancelButton}</button>
               <Show when={modalType() === 'prompt' || modalType() === 'textarea'}>
@@ -247,6 +249,24 @@ export default function Modal() {
               >
                 {modalForce() ? 'Force Push' : 'Push'}
               </button>
+            </div>
+          </Show>
+          <Show when={modalType() === 'pull'}>
+            <div class="modal-field">
+              <label>Remote</label>
+              <Select
+                value={modalSelectedRemote()}
+                options={modalRemotes().map((r) => ({
+                  value: r.name,
+                  label: `${r.name} (${r.push || r.fetch || 'no url'})`,
+                }))}
+                onChange={setModalSelectedRemote}
+                class="select-sm select-full"
+              />
+            </div>
+            <div class="modal-buttons">
+              <button class="btn btn-ghost" onClick={() => close(null)}>{t.modal.cancelButton}</button>
+              <button class="btn btn-primary" onClick={() => close(modalSelectedRemote())}>Pull</button>
             </div>
           </Show>
         </div>

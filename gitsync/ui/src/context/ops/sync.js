@@ -1,4 +1,4 @@
-import { showAlert, showChoice, showPush } from '../../components/Modal';
+import { showAlert, showChoice, showPush, showPull } from '../../components/Modal';
 
 export function createSyncOps({
   repoPath,
@@ -30,11 +30,18 @@ export function createSyncOps({
 
   async function doPull(strategy, remote) {
     if (!remote) {
-      remote = await pickRemote(
-        'Pull from Remote',
-        'Select which remote to pull from.',
-      );
-      if (!remote) return;
+      const remoteResult = await window.api.gitRemoteList(repoPath);
+      const remoteList = remoteResult.remotes || [];
+      if (remoteList.length === 0) {
+        showAlert('No Remotes', 'No remotes configured for this repository.');
+        return;
+      }
+      if (remoteList.length === 1) {
+        remote = remoteList[0].name;
+      } else {
+        remote = await showPull(remoteList, lastRemote);
+        if (!remote) return;
+      }
     }
     lastRemote = remote;
 

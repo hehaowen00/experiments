@@ -100,6 +100,23 @@ export function showPush(remotes, lastRemote) {
   });
 }
 
+export function showPull(remotes, lastRemote) {
+  return new Promise((resolve) => {
+    modalResolve = resolve;
+    setModalTitle('Pull from Remote');
+    setModalDescription('');
+    setModalRemotes(remotes);
+    const defaultRemote = lastRemote && remotes.find((r) => r.name === lastRemote)
+      ? lastRemote
+      : remotes.length > 0
+        ? remotes[0].name
+        : '';
+    setModalSelectedRemote(defaultRemote);
+    setModalType('pull');
+    setModalVisible(true);
+  });
+}
+
 export function showAlert(title, description = '') {
   return new Promise((resolve) => {
     modalResolve = resolve;
