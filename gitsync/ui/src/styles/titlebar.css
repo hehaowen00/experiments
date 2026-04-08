@@ -63,3 +63,108 @@
   background: var(--danger);
   color: white;
 }
+
+/* Repo tab bar — matches conduit app-tabbar pattern */
+.app-tabbar {
+  -webkit-app-region: drag;
+  display: flex;
+  align-items: center;
+  height: 38px;
+  padding: 0 6px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  flex-shrink: 0;
+  gap: 4px;
+  user-select: none;
+}
+
+.app-tabs {
+  -webkit-app-region: no-drag;
+  display: flex;
+  align-items: center;
+  overflow-x: auto;
+  flex: 1;
+  scrollbar-width: none;
+}
+
+.app-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.app-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: var(--ui-font-size);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s;
+  flex-shrink: 0;
+}
+
+.app-tab:hover {
+  color: var(--text);
+}
+
+.app-tab.active {
+  color: var(--accent);
+}
+
+.app-tab i {
+  width: 16px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.app-tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  opacity: 0.5;
+  cursor: pointer;
+}
+
+.app-tab-close:hover {
+  opacity: 1;
+  background: var(--surface2);
+}
+
+.app-tab-close i {
+  font-size: 8px;
+}
+
+.app-tab-add {
+  opacity: 0.5;
+  padding: 6px 8px;
+}
+
+.app-tab-add:hover {
+  opacity: 1;
+}
+
+.app-tab-pinned {
+  -webkit-app-region: no-drag;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.app-tab.dragging {
+  opacity: 0.4;
+}
+
+.app-tab.drag-over-left {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.app-tab.drag-over-right {
+  box-shadow: inset -2px 0 0 var(--accent);
+}

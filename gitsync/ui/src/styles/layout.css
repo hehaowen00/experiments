@@ -390,6 +390,7 @@ input, textarea {
   gap: 8px;
   cursor: pointer;
   padding: 6px 8px;
+  position: relative;
   border-radius: var(--radius);
   user-select: none;
   background: var(--surface);
@@ -440,21 +441,24 @@ input, textarea {
   margin-top: 4px;
 }
 
-.category-name {
-  flex: 1;
-}
-
 .category-count {
   font-size: var(--ui-font-size-sm);
   color: var(--text-dim);
   background: var(--surface2);
   padding: 1px 6px;
   border-radius: 8px;
+  margin-left: 4px;
 }
 
 .category-actions {
   display: flex;
   gap: 4px;
+  margin-left: auto;
+  visibility: hidden;
+}
+
+.category-header:hover .category-actions {
+  visibility: visible;
 }
 
 .landing-category {

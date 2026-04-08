@@ -48,6 +48,25 @@
   user-select: none;
 }
 
+.git-toolbar {
+  display: flex;
+  align-items: center;
+  height: 34px;
+  padding: 0 8px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  gap: 4px;
+}
+
+.git-toolbar-sep {
+  width: 1px;
+  height: 16px;
+  background: var(--border);
+  margin: 0 4px;
+  flex-shrink: 0;
+}
+
 .git-header-name {
   font-weight: 600;
   font-size: var(--ui-font-size-sm);
@@ -257,35 +276,29 @@
   max-width: 280px;
 }
 
-.git-tabs {
-  display: flex;
-  gap: 0;
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-  background: var(--bg);
-}
-
 .git-tab {
-  padding: 8px 16px;
+  padding: 3px 10px;
   border: none;
   background: transparent;
   color: var(--text-dim);
   cursor: pointer;
-  font-size: var(--ui-font-size);
-  border-bottom: 2px solid transparent;
+  font-size: var(--ui-font-size-sm);
+  border-radius: 4px;
   display: flex;
   align-items: center;
   gap: 6px;
-  transition: color 0.15s;
+  transition: color 0.15s, background 0.15s;
+  white-space: nowrap;
 }
 
 .git-tab:hover {
   color: var(--text);
+  background: var(--surface);
 }
 
 .git-tab.active {
   color: var(--accent);
-  border-bottom-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 .git-tab-badge {
@@ -505,9 +518,12 @@
   align-items: center;
   gap: 6px;
   padding: 4px 10px;
+  min-height: 26px;
+  box-sizing: border-box;
   cursor: pointer;
   font-size: var(--ui-font-size-sm);
   transition: background 0.1s;
+  position: relative;
 }
 
 .git-file-item:hover {
@@ -563,15 +579,19 @@
 }
 
 .git-file-actions {
-  display: flex;
+  display: none;
   gap: 2px;
-  opacity: 0;
-  transition: opacity 0.15s;
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--surface);
+  padding: 0 2px;
 }
 
 .git-file-item:hover .git-file-actions,
 .git-tree-dir-header:hover .git-file-actions {
-  opacity: 1;
+  display: flex;
 }
 
 /* Nested git repos in file tree */
@@ -714,11 +734,14 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 3px 10px;
+  padding: 4px 10px;
+  min-height: 26px;
+  box-sizing: border-box;
   cursor: pointer;
   font-size: var(--ui-font-size-sm);
   transition: background 0.1s;
   user-select: none;
+  position: relative;
 }
 
 .git-tree-dir-header:hover {
@@ -1047,8 +1070,8 @@
 .git-readme-content h4,
 .git-readme-content h5,
 .git-readme-content h6 {
-  margin-top: 1.5em;
-  margin-bottom: 0.5em;
+  margin-top: 0.8em;
+  margin-bottom: 0.3em;
   font-weight: 600;
   color: var(--text);
 }

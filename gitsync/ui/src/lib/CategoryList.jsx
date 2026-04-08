@@ -38,6 +38,7 @@ export default function CategoryList(props) {
                 {props.categoryExtras?.(cat)}
                 <Icon name={cat.collapsed ? 'fa-solid fa-caret-right' : 'fa-solid fa-caret-down'} />
                 <span class="category-name">{cat.name}</span>
+                <span class="category-count">{catItems().length}</span>
                 <div class="category-actions">
                   <button class="btn btn-ghost btn-sm" onClick={(e) => props.onRenameCategory?.(e, cat.id, cat.name)} title="Rename category">
                     <Icon name="fa-solid fa-pen" /> Rename
@@ -46,7 +47,6 @@ export default function CategoryList(props) {
                     <Icon name="fa-solid fa-trash" /> Delete
                   </button>
                 </div>
-                <span class="category-count">{catItems().length}</span>
               </div>
               <Show when={!cat.collapsed}>
                 <div class="collection-list">

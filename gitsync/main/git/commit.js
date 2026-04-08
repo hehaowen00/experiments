@@ -48,18 +48,16 @@ function register({ mainWindow, git, gitRaw }) {
   ipcMain.handle('git:show', async (_, repoPath, hash) => {
     try {
       const fmt = '%H%x00%B%x00%an%x00%ae%x00%at%x00%P';
-      const [metaOut, numstatOut] = await Promise.all([
-        git(repoPath, ['show', `--format=${fmt}`, '--no-patch', hash]),
-        git(repoPath, [
-          'show',
-          '--format=',
-          '--numstat',
-          '--no-color',
-          hash,
-        ]),
-      ]);
+      const metaOut = await git(repoPath, ['show', `--format=${fmt}`, '--no-patch', hash]);
       const parts = metaOut.split('\x00');
       const parents = (parts[5] || '').trim();
+      const parentList = parents ? parents.split(' ').filter(Boolean) : [];
+      const isMerge = parentList.length > 1;
+
+      // For merge commits, diff against first parent to show meaningful changes
+      const numstatOut = isMerge
+        ? await git(repoPath, ['diff', '--numstat', '--no-color', `${hash}^1`, hash])
+        : await git(repoPath, ['show', '--format=', '--numstat', '--no-color', hash]);
 
       // Parse --numstat: each line is "adds\tdels\tfilename" or "-\t-\tfilename" for binary
       const files = [];
@@ -84,7 +82,7 @@ function register({ mainWindow, git, gitRaw }) {
         author: parts[2] || '',
         email: parts[3] || '',
         date: new Date(parseInt(parts[4]) * 1000).toISOString(),
-        parents: parents ? parents.split(' ').filter(Boolean) : [],
+        parents: parentList,
         files,
       };
     } catch (e) {
@@ -94,17 +92,12 @@ function register({ mainWindow, git, gitRaw }) {
 
   ipcMain.handle(
     'git:showFileDiff',
-    async (_, repoPath, hash, filepath) => {
+    async (_, repoPath, hash, filepath, isMerge) => {
       try {
-        const diff = await git(repoPath, [
-          'show',
-          '--format=',
-          '--patch',
-          '--no-color',
-          hash,
-          '--',
-          filepath,
-        ]);
+        // For merge commits, diff against first parent to show meaningful changes
+        const diff = isMerge
+          ? await git(repoPath, ['diff', '--no-color', `${hash}^1`, hash, '--', filepath])
+          : await git(repoPath, ['show', '--format=', '--patch', '--no-color', hash, '--', filepath]);
         return { diff };
       } catch (e) {
         return { error: e.message };

@@ -1,4 +1,4 @@
-import { createSignal, For, onCleanup, onMount, Show } from 'solid-js';
+import { createEffect, createSignal, For, onCleanup, onMount, Show } from 'solid-js';
 import { createStore } from 'solid-js/store';
 import CodeEditor from '../components/CodeEditor';
 import FormModal, { FormField } from '../components/FormModal';
@@ -112,6 +112,29 @@ export default function DatabaseWorkspace(props) {
     addColumnError: '',
   });
 
+  // Connection lost / reconnect state
+  const [disconnected, setDisconnected] = createSignal(false);
+  const [reconnecting, setReconnecting] = createSignal(false);
+
+  // Sequence counter for selectTable race guard
+  let selectSeq = 0;
+
+  async function reconnect() {
+    setReconnecting(true);
+    const result = await window.api.dbConnect({
+      id: connData.liveId,
+      type: connData.type,
+      config: connData.config,
+    });
+    setReconnecting(false);
+    if (result.ok) {
+      setDisconnected(false);
+      await loadSidebarData();
+    } else {
+      showAlert('Reconnect Failed', result.error || 'Could not reconnect to the database.');
+    }
+  }
+
   // Pane sizing (keep as signals - simple independent values)
   const [sidebarOpen, setSidebarOpen] = createSignal(true);
   const [sidebarWidth, setSidebarWidth] = createSignal(260);
@@ -215,6 +238,8 @@ export default function DatabaseWorkspace(props) {
 
   onCleanup(() => {
     window.api.dbDisconnect(connData.liveId);
+    window.api.onDbConnectionLost(null);
+    window.api.onDbDownloadProgress(null);
   });
 
   async function loadSidebarData() {
@@ -263,6 +288,7 @@ export default function DatabaseWorkspace(props) {
   }
 
   async function selectTable(database, schema, tableName) {
+    const seq = ++selectSeq;
     setSidebar('selectedTable', { database, schema, table: tableName });
     setTable({ tab: 'data', dataPage: 0, columnFormats: {} });
     setDataSortCols([]);
@@ -277,6 +303,7 @@ export default function DatabaseWorkspace(props) {
       window.api.dbGetColumns(connData.liveId, schema, tableName),
       window.api.dbGetIndexes(connData.liveId, schema, tableName),
     ]);
+    if (seq !== selectSeq) return;
     if (colResult.columns) setTable('columns', colResult.columns);
     if (idxResult.indexes) setTable('indexes', idxResult.indexes);
     await loadTableData(0);
@@ -330,37 +357,71 @@ export default function DatabaseWorkspace(props) {
     return Math.max(1, Math.ceil(count / QUERY_PAGE_SIZE));
   }
 
-  async function exportResults(format) {
-    try {
-      const result = await window.api.dbQueryExport(connData.liveId);
-      if (result.error) {
-        showAlert('Export Failed', result.error);
-        return;
+  // Download / export state
+  const [exportOpen, setExportOpen] = createSignal(false);
+  const [exportCols, setExportCols] = createSignal({});
+  const [download, setDownload] = createStore({
+    active: false,
+    written: 0,
+    total: 0,
+    error: null,
+    filePath: null,
+  });
+
+  function openExportMenu() {
+    const cols = table.data?.columns || [];
+    const sel = {};
+    for (const c of cols) sel[c] = true;
+    setExportCols(sel);
+    setExportOpen(true);
+  }
+
+  function toggleExportCol(col) {
+    setExportCols((prev) => ({ ...prev, [col]: !prev[col] }));
+  }
+
+  function toggleAllExportCols() {
+    const cols = exportCols();
+    const allSelected = Object.values(cols).every(Boolean);
+    const next = {};
+    for (const c of Object.keys(cols)) next[c] = !allSelected;
+    setExportCols(next);
+  }
+
+  onMount(() => {
+    window.api.onDbConnectionLost((data) => {
+      if (data.id === connData.liveId) setDisconnected(true);
+    });
+    window.api.onDbDownloadProgress((data) => {
+      if (data.stage === 'start') {
+        setDownload({ active: true, written: 0, total: data.total, error: null, filePath: data.filePath });
+      } else if (data.stage === 'progress') {
+        setDownload({ written: data.written, total: data.total });
+      } else if (data.stage === 'done') {
+        setDownload({ active: false, written: data.written, total: data.total, filePath: data.filePath });
+      } else if (data.stage === 'error') {
+        setDownload({ active: false, error: data.error });
       }
-      if (!result.columns || !result.rows) return;
-      let content, ext;
-      if (format === 'json') {
-        content = JSON.stringify(result.rows, null, 2);
-        ext = 'json';
-      } else {
-        const escape = (v) => {
-          if (v === null || v === undefined) return '';
-          const s = String(v);
-          if (s.includes(',') || s.includes('"') || s.includes('\n')) {
-            return '"' + s.replace(/"/g, '""') + '"';
-          }
-          return s;
-        };
-        const header = result.columns.map(escape).join(',');
-        const rows = result.rows.map((r) =>
-          result.columns.map((c) => escape(r[c])).join(','),
-        );
-        content = [header, ...rows].join('\n');
-        ext = 'csv';
-      }
-      await window.api.saveFile(`export.${ext}`, content);
-    } catch (e) {
-      showAlert('Export Failed', e.message);
+    });
+  });
+
+  async function startDownload(mode, format) {
+    const selected = Object.entries(exportCols())
+      .filter(([, v]) => v)
+      .map(([k]) => k);
+    if (mode === 'table' && selected.length === 0) return;
+    setExportOpen(false);
+    const t = sidebar.selectedTable;
+    const result = await window.api.dbDownload({
+      connId: connData.liveId,
+      mode,
+      format,
+      schema: t?.schema,
+      table: t?.table,
+      columns: mode === 'table' ? selected : undefined,
+    });
+    if (result?.error) {
+      showAlert('Download Failed', result.error);
     }
   }
 
@@ -398,6 +459,28 @@ export default function DatabaseWorkspace(props) {
     });
   }
 
+  async function fetchCellInline(col, rowIndex) {
+    const src = tableSource();
+    if (!src.liveId || !src.schema || !src.table) return;
+    const rowOffset = (src.pageOffset || 0) + rowIndex;
+    const result = await window.api.dbGetCellValue(
+      src.liveId, src.schema, src.table, col, rowOffset,
+    );
+    if (!result.error && result.value !== undefined) {
+      setTable('data', 'rows', rowIndex, (prev) => ({ ...prev, [col]: result.value }));
+    }
+  }
+
+  async function fetchQueryCellInline(col, rowIndex) {
+    const rowOffset = queryPage() * QUERY_PAGE_SIZE + rowIndex;
+    const result = await window.api.dbQueryCellValue(
+      connData.liveId, col, rowOffset,
+    );
+    if (!result.error && result.value !== undefined) {
+      setQuery('result', 'rows', rowIndex, (prev) => ({ ...prev, [col]: result.value }));
+    }
+  }
+
   async function onCellDblClick(col, rowIndex, currentVal, source) {
     const isLarge = typeof currentVal === 'string' && currentVal.startsWith('[Payload:');
     setCell('dirty', false);
@@ -409,6 +492,15 @@ export default function DatabaseWorkspace(props) {
       const val = result.error ? `Error: ${result.error}` : result.value;
       const editVal = detectFormat(val) === 'json' ? prettifyJson(val) : val;
       setCell({ panel: { column: col, rowIndex, value: val, loading: false, source }, editValue: editVal ?? '' });
+      focusCellEditor();
+    } else if (isLarge && !source) {
+      // Query results: fetch via last-query subquery
+      setCell({ panel: { column: col, rowIndex, value: null, loading: true, source: null }, open: true });
+      const rowOffset = queryPage() * QUERY_PAGE_SIZE + rowIndex;
+      const result = await window.api.dbQueryCellValue(connData.liveId, col, rowOffset);
+      const val = result.error ? `Error: ${result.error}` : result.value;
+      const editVal = detectFormat(val) === 'json' ? prettifyJson(val) : val;
+      setCell({ panel: { column: col, rowIndex, value: val, loading: false, source: null }, editValue: editVal ?? '' });
       focusCellEditor();
     } else {
       const isNull = currentVal === null || currentVal === undefined;
@@ -433,7 +525,7 @@ export default function DatabaseWorkspace(props) {
   function saveCellEdit() {
     const p = cell.panel;
     if (!p) return;
-    const key = `${p.rowIndex}:${p.column}`;
+    const key = `${p.rowIndex}\0${p.column}`;
     setPending('edits', key, { rowIndex: p.rowIndex, col: p.column, value: cell.editValue });
     setCell({ panel: { ...p, value: cell.editValue }, dirty: false });
   }
@@ -585,24 +677,28 @@ export default function DatabaseWorkspace(props) {
     if (!t) return;
     const pageOffset = table.dataPage * PAGE_SIZE;
 
-    // Apply deletes first (in reverse order so offsets stay valid)
-    const deleteIndices = Object.keys(pending.deletes).map(Number).sort((a, b) => b - a);
-    for (const ri of deleteIndices) {
-      const absOffset = pageOffset + ri;
-      const result = await window.api.dbDeleteRow(connData.liveId, t.schema, t.table, absOffset);
-      if (result.error) { alert(`Delete row ${ri + 1}: ${result.error}`); return; }
-    }
+    try {
+      // Apply deletes first (in reverse order so offsets stay valid)
+      const deleteIndices = Object.keys(pending.deletes).map(Number).sort((a, b) => b - a);
+      for (const ri of deleteIndices) {
+        const absOffset = pageOffset + ri;
+        const result = await window.api.dbDeleteRow(connData.liveId, t.schema, t.table, absOffset);
+        if (result.error) { showAlert('Save Failed', `Delete row ${ri + 1}: ${result.error}`); return; }
+      }
 
-    // Apply edits (skip edits on deleted rows)
-    const editEntries = Object.values(pending.edits).filter((e) => !pending.deletes[e.rowIndex]);
-    for (const e of editEntries) {
-      const absOffset = pageOffset + e.rowIndex;
-      const result = await window.api.dbUpdateCell(connData.liveId, t.schema, t.table, e.col, absOffset, e.value);
-      if (result.error) { alert(`Edit ${e.col} row ${e.rowIndex + 1}: ${result.error}`); return; }
-    }
+      // Apply edits (skip edits on deleted rows)
+      const editEntries = Object.values(pending.edits).filter((e) => !pending.deletes[e.rowIndex]);
+      for (const e of editEntries) {
+        const absOffset = pageOffset + e.rowIndex;
+        const result = await window.api.dbUpdateCell(connData.liveId, t.schema, t.table, e.col, absOffset, e.value);
+        if (result.error) { showAlert('Save Failed', `Edit ${e.col} row ${e.rowIndex + 1}: ${result.error}`); return; }
+      }
 
-    setPending({ edits: {}, deletes: {} });
-    await loadTableData(table.dataPage);
+      setPending({ edits: {}, deletes: {} });
+      await loadTableData(table.dataPage);
+    } catch (e) {
+      showAlert('Save Failed', e.message || 'An unexpected error occurred while saving changes.');
+    }
   }
 
   // Refresh tables in sidebar
@@ -613,34 +709,35 @@ export default function DatabaseWorkspace(props) {
   }
 
   // Resize handlers
-  function onSidebarResizeStart(e) {
+  function startResize(e, onDrag) {
     e.preventDefault();
-    const startX = e.clientX;
-    const startWidth = sidebarWidth();
-    function onMove(e) { setSidebarWidth(Math.max(180, Math.min(500, startWidth + e.clientX - startX))); }
-    function onUp() { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); }
+    function onMove(ev) {
+      try { onDrag(ev); } catch {}
+    }
+    function onUp() {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    }
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
+  }
+
+  function onSidebarResizeStart(e) {
+    const startX = e.clientX;
+    const startWidth = sidebarWidth();
+    startResize(e, (ev) => setSidebarWidth(Math.max(180, Math.min(500, startWidth + ev.clientX - startX))));
   }
 
   function onEditorResizeStart(e) {
-    e.preventDefault();
     const startY = e.clientY;
     const startHeight = editorHeight();
-    function onMove(e) { setEditorHeight(Math.max(80, Math.min(600, startHeight + e.clientY - startY))); }
-    function onUp() { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); }
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
+    startResize(e, (ev) => setEditorHeight(Math.max(80, Math.min(600, startHeight + ev.clientY - startY))));
   }
 
   function onCellPanelResizeStart(e) {
-    e.preventDefault();
     const startX = e.clientX;
     const startWidth = cellPanelWidth();
-    function onMove(e) { setCellPanelWidth(Math.max(200, Math.min(600, startWidth - (e.clientX - startX)))); }
-    function onUp() { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); }
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
+    startResize(e, (ev) => setCellPanelWidth(Math.max(200, Math.min(600, startWidth - (ev.clientX - startX)))));
   }
 
   function tablesBySchemaForDb(dbName) {
@@ -721,6 +818,25 @@ export default function DatabaseWorkspace(props) {
 
   return (
     <div class="db-workspace-page" style={props.style}>
+      <Show when={disconnected()}>
+        <div class="db-reconnect-overlay">
+          <div class="db-reconnect-modal">
+            <Icon name="fa-solid fa-plug-circle-xmark" />
+            <h3>Connection Lost</h3>
+            <p>The database connection was terminated unexpectedly.</p>
+            <div class="db-reconnect-actions">
+              <button class="btn btn-ghost btn-sm" onClick={props.onBack}>Back</button>
+              <button class="btn btn-primary btn-sm" onClick={reconnect} disabled={reconnecting()}>
+                <Show when={reconnecting()} fallback={<>
+                  <Icon name="fa-solid fa-rotate-right" /> Reconnect
+                </>}>
+                  <Icon name="fa-solid fa-spinner fa-spin" /> Reconnecting...
+                </Show>
+              </button>
+            </div>
+          </div>
+        </div>
+      </Show>
       <div class="db-workspace">
         {/* Left sidebar: tables */}
         <Show when={sidebarOpen()}>
@@ -937,6 +1053,63 @@ export default function DatabaseWorkspace(props) {
                   <button class="btn btn-ghost btn-sm" onClick={openInsertRow} title="Insert row">
                     <Icon name="fa-solid fa-plus" /> Row
                   </button>
+                  <div class="db-export-wrap">
+                    <button class="btn btn-ghost btn-sm" onClick={openExportMenu} title="Export table data">
+                      <Icon name="fa-solid fa-download" /> Export
+                    </button>
+                    <Show when={exportOpen()}>
+                      <div class="db-ctx-backdrop" onClick={() => setExportOpen(false)} onContextMenu={(e) => { e.preventDefault(); setExportOpen(false); }} />
+                      <div class="db-export-popover">
+                        <div class="db-export-popover-header">Export Columns</div>
+                        <div class="db-export-col-toggle-all">
+                          <label>
+                            <input
+                              type="checkbox"
+                              checked={Object.values(exportCols()).every(Boolean)}
+                              ref={(el) => {
+                                createEffect(() => {
+                                  const vals = Object.values(exportCols());
+                                  el.indeterminate = !vals.every(Boolean) && vals.some(Boolean);
+                                });
+                              }}
+                              onChange={toggleAllExportCols}
+                            />
+                            Select All
+                          </label>
+                        </div>
+                        <div class="db-export-col-list">
+                          <For each={Object.keys(exportCols())}>
+                            {(col) => (
+                              <label class="db-export-col-item">
+                                <input
+                                  type="checkbox"
+                                  checked={exportCols()[col]}
+                                  onChange={() => toggleExportCol(col)}
+                                />
+                                {col}
+                              </label>
+                            )}
+                          </For>
+                        </div>
+                        <div class="db-export-actions">
+                          <button
+                            class="btn btn-ghost btn-sm"
+                            onClick={() => startDownload('table', 'csv')}
+                            disabled={download.active || !Object.values(exportCols()).some(Boolean)}
+                          >
+                            <Icon name="fa-solid fa-file-csv" /> CSV
+                          </button>
+                          <button
+                            class="btn btn-ghost btn-sm"
+                            onClick={() => startDownload('table', 'json')}
+                            disabled={download.active || !Object.values(exportCols()).some(Boolean)}
+                          >
+                            <Icon name="fa-solid fa-file-code" /> JSON
+                          </button>
+                        </div>
+                      </div>
+                    </Show>
+                  </div>
                   <Show when={totalPages() > 1}>
                     <div class="db-pagination">
                       <button class="btn btn-ghost btn-sm" disabled={table.dataPage === 0} onClick={() => loadTableData(table.dataPage - 1)}>
@@ -953,6 +1126,7 @@ export default function DatabaseWorkspace(props) {
                   columns={table.data.columns}
                   rows={getDisplayRows()}
                   onCellDblClick={(col, ri, val) => onCellDblClick(col, ri, val, tableSource())}
+                  onFetchCell={fetchCellInline}
                   cellPanel={cell.panel}
                   pkColumns={new Set(table.columns.filter(c => c.pk).map(c => c.column_name))}
                   onDeleteRow={deleteRow}
@@ -1050,10 +1224,10 @@ export default function DatabaseWorkspace(props) {
                     </span>
                     <span class="db-query-time">{query.result.time}ms</span>
                     <Show when={query.result.columns}>
-                      <button class="btn btn-ghost btn-sm" onClick={() => exportResults('csv')} title="Export as CSV">
+                      <button class="btn btn-ghost btn-sm" onClick={() => startDownload('query', 'csv')} title="Download as CSV" disabled={download.active}>
                         <Icon name="fa-solid fa-file-csv" />
                       </button>
-                      <button class="btn btn-ghost btn-sm" onClick={() => exportResults('json')} title="Export as JSON">
+                      <button class="btn btn-ghost btn-sm" onClick={() => startDownload('query', 'json')} title="Download as JSON" disabled={download.active}>
                         <Icon name="fa-solid fa-file-code" />
                       </button>
                     </Show>
@@ -1074,6 +1248,7 @@ export default function DatabaseWorkspace(props) {
                       columns={query.result.columns}
                       rows={query.result.rows}
                       onCellDblClick={(col, ri, val) => onCellDblClick(col, ri, val, null)}
+                      onFetchCell={fetchQueryCellInline}
                       cellPanel={cell.panel}
                     />
                   </Show>
@@ -1363,6 +1538,28 @@ export default function DatabaseWorkspace(props) {
             <input type="text" value={dialog.newColDef.defaultValue} onInput={(e) => setDialog('newColDef', 'defaultValue', e.target.value)} placeholder="" />
           </FormField>
         </FormModal>
+      </Show>
+
+      <Show when={download.active}>
+        <div class="db-download-overlay">
+          <div class="db-download-dialog">
+            <div class="db-download-title">
+              <Icon name="fa-solid fa-download" /> Downloading...
+            </div>
+            <div class="db-download-progress-bar">
+              <div
+                class="db-download-progress-fill"
+                style={{ width: (download.total > 0 ? (download.written / download.total) * 100 : 0) + '%' }}
+              />
+            </div>
+            <div class="db-download-stats">
+              {download.written.toLocaleString()} / {download.total.toLocaleString()} rows
+            </div>
+            <button class="btn btn-ghost btn-sm" onClick={() => window.api.dbCancelDownload(connData.liveId)}>
+              Cancel
+            </button>
+          </div>
+        </div>
       </Show>
 
       <Modal />

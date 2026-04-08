@@ -85,13 +85,19 @@ export default function DatabaseClient(props) {
 
     const data = { name, type: f.type, config, category_id: f.categoryId };
 
-    if (state.editingId) {
-      await window.api.dbConnUpdate(state.editingId, data);
-    } else {
-      await window.api.dbConnCreate(data);
+    try {
+      if (state.editingId) {
+        const result = await window.api.dbConnUpdate(state.editingId, data);
+        if (result.error) { setState('form', 'error', result.error); return; }
+      } else {
+        const result = await window.api.dbConnCreate(data);
+        if (result.error) { setState('form', 'error', result.error); return; }
+      }
+      await loadList();
+      setState('formOpen', false);
+    } catch (e) {
+      setState('form', 'error', e.message || 'Failed to save connection');
     }
-    await loadList();
-    setState('formOpen', false);
   }
 
   async function pickSqliteFile() {

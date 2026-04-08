@@ -114,6 +114,20 @@ contextBridge.exposeInMainWorld('api', {
   dbDeleteRow: (id, schema, tableName, rowOffset) =>
     ipcRenderer.invoke('db:deleteRow', id, schema, tableName, rowOffset),
   dbPickSqliteFile: () => ipcRenderer.invoke('db:pickSqliteFile'),
+  dbExportTableData: (id, schema, table, columns) =>
+    ipcRenderer.invoke('db:exportTableData', id, schema, table, columns),
+  dbQueryCellValue: (id, column, rowOffset) =>
+    ipcRenderer.invoke('db:queryCellValue', id, column, rowOffset),
+  dbDownload: (opts) => ipcRenderer.invoke('db:download', opts),
+  dbCancelDownload: (connId) => ipcRenderer.invoke('db:cancelDownload', connId),
+  onDbDownloadProgress: (cb) => {
+    ipcRenderer.removeAllListeners('db:downloadProgress');
+    if (cb) ipcRenderer.on('db:downloadProgress', (_, d) => cb(d));
+  },
+  onDbConnectionLost: (cb) => {
+    ipcRenderer.removeAllListeners('db:connectionLost');
+    if (cb) ipcRenderer.on('db:connectionLost', (_, d) => cb(d));
+  },
   // RFC Viewer
   rfcSyncIndex: () => ipcRenderer.invoke('rfc:syncIndex'),
   rfcSearch: (query, limit) => ipcRenderer.invoke('rfc:search', query, limit),
@@ -124,6 +138,7 @@ contextBridge.exposeInMainWorld('api', {
   rfcGetTitles: (numbers) => ipcRenderer.invoke('rfc:getTitles', numbers),
   onRfcSyncProgress: (cb) =>
     ipcRenderer.on('rfc:syncProgress', (_, d) => cb(d)),
+
 
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
   homeDir: () => ipcRenderer.invoke('app:homeDir'),

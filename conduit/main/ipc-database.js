@@ -6,7 +6,19 @@ const { generateKSUID } = require('./ksuid');
 const store = require('./store');
 
 const activeDbConnections = new Map();
+const activeDownloads = new Map();
 const LARGE_VALUE_THRESHOLD = 5120; // 5KB
+
+function sanitizeDefaultValue(val) {
+  if (!val || !val.trim()) return null;
+  const v = val.trim();
+  // Allow simple literals: numbers, quoted strings, booleans, NULL, function calls like now()
+  if (/^-?\d+(\.\d+)?$/.test(v)) return v;
+  if (/^'[^']*'$/.test(v)) return v;
+  if (/^(true|false|null|current_timestamp|current_date|now\(\))$/i.test(v)) return v;
+  // Quote it as a string literal
+  return `'${v.replace(/'/g, "''")}'`;
+}
 
 function register(mainWindow) {
   // Saved connections CRUD
@@ -29,27 +41,27 @@ function register(mainWindow) {
     store.getDb().prepare(
       'UPDATE db_connections SET name = ?, type = ?, config = ?, category_id = ? WHERE id = ?',
     ).run(data.name, data.type, JSON.stringify(data.config), data.category_id || null, id);
-    return true;
+    return { ok: true };
   });
 
   ipcMain.handle('dbConn:delete', (_, id) => {
     store.getDb().prepare('DELETE FROM db_connections WHERE id = ?').run(id);
-    return true;
+    return { ok: true };
   });
 
   ipcMain.handle('dbConn:pin', (_, id, pinned) => {
     store.getDb().prepare('UPDATE db_connections SET pinned = ? WHERE id = ?').run(pinned ? 1 : 0, id);
-    return true;
+    return { ok: true };
   });
 
   ipcMain.handle('dbConn:setCategory', (_, id, categoryId) => {
     store.getDb().prepare('UPDATE db_connections SET category_id = ? WHERE id = ?').run(categoryId || null, id);
-    return true;
+    return { ok: true };
   });
 
   ipcMain.handle('dbConn:touchLastUsed', (_, id) => {
     store.getDb().prepare("UPDATE db_connections SET last_used = datetime('now') WHERE id = ?").run(id);
-    return true;
+    return { ok: true };
   });
 
   // Database categories
@@ -69,19 +81,19 @@ function register(mainWindow) {
 
   ipcMain.handle('dbCat:rename', (_, id, name) => {
     store.getDb().prepare('UPDATE db_categories SET name = ? WHERE id = ?').run(name, id);
-    return true;
+    return { ok: true };
   });
 
   ipcMain.handle('dbCat:delete', (_, id) => {
     const db = store.getDb();
     db.prepare('UPDATE db_connections SET category_id = NULL WHERE category_id = ?').run(id);
     db.prepare('DELETE FROM db_categories WHERE id = ?').run(id);
-    return true;
+    return { ok: true };
   });
 
   ipcMain.handle('dbCat:toggleCollapse', (_, id, collapsed) => {
     store.getDb().prepare('UPDATE db_categories SET collapsed = ? WHERE id = ?').run(collapsed ? 1 : 0, id);
-    return true;
+    return { ok: true };
   });
 
   ipcMain.handle('dbCat:reorder', (_, orderedIds) => {
@@ -89,7 +101,7 @@ function register(mainWindow) {
     const stmt = db.prepare('UPDATE db_categories SET sort_order = ? WHERE id = ?');
     const tx = db.transaction(() => { orderedIds.forEach((id, i) => stmt.run(i, id)); });
     tx();
-    return true;
+    return { ok: true };
   });
 
   // Active connections
@@ -106,11 +118,16 @@ function register(mainWindow) {
         if (config.database) pgConfig.database = config.database;
         const client = new PgClient(pgConfig);
         await client.connect();
+        client.on('error', () => {
+          activeDbConnections.delete(id);
+          mainWindow?.webContents?.send('db:connectionLost', { id });
+        });
         activeDbConnections.set(id, { type: 'postgres', client, config: pgConfig });
         return { ok: true };
       } else if (type === 'sqlite') {
         const sqliteDb = new Database(config.path);
         sqliteDb.pragma('journal_mode = WAL');
+        sqliteDb.pragma('busy_timeout = 5000');
         activeDbConnections.set(id, { type: 'sqlite', client: sqliteDb });
         return { ok: true };
       }
@@ -128,6 +145,10 @@ function register(mainWindow) {
       const newConfig = { ...conn.config, database };
       const client = new PgClient(newConfig);
       await client.connect();
+      client.on('error', () => {
+        activeDbConnections.delete(id);
+        mainWindow?.webContents?.send('db:connectionLost', { id });
+      });
       activeDbConnections.set(id, { type: 'postgres', client, config: newConfig });
       return { ok: true };
     } catch (e) {
@@ -286,7 +307,7 @@ function register(mainWindow) {
           return `CASE WHEN octet_length(${q}::text) > ${LARGE_VALUE_THRESHOLD} THEN '[Payload: ' || ROUND(octet_length(${q}::text) / 1024.0, 1) || ' KB]' ELSE ${q}::text END AS ${q}`;
         });
         const countResult = await conn.client.query(`SELECT COUNT(*) as total FROM ${quotedTable}`);
-        const total = parseInt(countResult.rows[0].total);
+        const total = parseInt(countResult.rows[0]?.total ?? 0);
         const result = await conn.client.query(
           `SELECT ${selectCols.join(', ')} FROM ${quotedTable}${orderClause} LIMIT ${safeLimit} OFFSET ${safeOffset}`,
         );
@@ -418,7 +439,7 @@ function register(mainWindow) {
       ]);
       const columns = pageResult.fields.map((f) => f.name);
       const rows = processPostgresRows(pageResult.rows);
-      const total = parseInt(countResult.rows[0].total, 10);
+      const total = parseInt(countResult.rows[0]?.total ?? 0, 10);
       return { rows, columns, rowCount: total };
     } else {
       const rows = conn.client.prepare(pagedSql).all();
@@ -454,10 +475,10 @@ function register(mainWindow) {
           return { ...result, time: Date.now() - start };
         } catch {
           // Non-select or unsupported for wrapping — run directly
-          lastQuerySql.delete(id);
           const result = await conn.client.query(sql);
           const elapsed = Date.now() - start;
           if (result.fields && result.fields.length > 0) {
+            lastQuerySql.set(id, sql);
             return {
               rows: processPostgresRows(result.rows),
               columns: result.fields.map((f) => f.name),
@@ -465,6 +486,7 @@ function register(mainWindow) {
               time: elapsed,
             };
           }
+          lastQuerySql.delete(id);
           return { rowCount: result.rowCount, time: elapsed, command: result.command };
         }
       }
@@ -500,6 +522,201 @@ function register(mainWindow) {
       return { error: e.message };
     }
   });
+
+  ipcMain.handle('db:exportTableData', async (_, id, schema, table, columns) => {
+    const conn = activeDbConnections.get(id);
+    if (!conn) return { error: 'Not connected' };
+    try {
+      if (conn.type === 'postgres') {
+        const quotedTable = `"${schema.replace(/"/g, '""')}"."${table.replace(/"/g, '""')}"`;
+        const colList = columns.map((c) => `"${c.replace(/"/g, '""')}"`).join(', ');
+        const result = await conn.client.query(`SELECT ${colList} FROM ${quotedTable}`);
+        return {
+          rows: result.rows.map((row) => {
+            const out = {};
+            for (const key of Object.keys(row)) {
+              let val = row[key];
+              if (val !== null && typeof val === 'object') val = JSON.stringify(val);
+              out[key] = val;
+            }
+            return out;
+          }),
+          columns: result.fields.map((f) => f.name),
+        };
+      } else if (conn.type === 'sqlite') {
+        const quotedTable = `"${table.replace(/"/g, '""')}"`;
+        const colList = columns.map((c) => `"${c.replace(/"/g, '""')}"`).join(', ');
+        const rows = conn.client.prepare(`SELECT ${colList} FROM ${quotedTable}`).all();
+        return { rows, columns };
+      }
+      return { error: 'Unsupported database type' };
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
+
+  ipcMain.handle('db:queryCellValue', async (_, id, column, rowOffset) => {
+    const conn = activeDbConnections.get(id);
+    const sql = lastQuerySql.get(id);
+    if (!conn || !sql) return { error: 'No query result' };
+    try {
+      const quotedCol = `"${column.replace(/"/g, '""')}"`;
+      const wrappedSql = `SELECT ${quotedCol} AS val FROM (${sql}) AS _q LIMIT 1 OFFSET ${parseInt(rowOffset) || 0}`;
+      if (conn.type === 'postgres') {
+        const result = await conn.client.query(wrappedSql);
+        let val = result.rows[0]?.val ?? null;
+        if (val !== null && typeof val === 'object') val = JSON.stringify(val);
+        return { value: val };
+      } else {
+        const row = conn.client.prepare(wrappedSql).get();
+        return { value: row?.val ?? null };
+      }
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
+
+  ipcMain.handle('db:cancelDownload', (_, connId) => {
+    const ctrl = activeDownloads.get(connId);
+    if (ctrl) ctrl.aborted = true;
+    return { ok: true };
+  });
+
+  ipcMain.handle('db:download', async (_, opts) => {
+    const { connId, mode, format, schema, table, columns } = opts;
+    // mode: 'table' | 'query'
+    const conn = activeDbConnections.get(connId);
+    if (!conn) return { error: 'Not connected' };
+
+    let sql;
+    if (mode === 'table') {
+      if (!schema || !table || !columns?.length) return { error: 'Missing table info' };
+      const colList = columns.map((c) => `"${c.replace(/"/g, '""')}"`).join(', ');
+      if (conn.type === 'postgres') {
+        sql = `SELECT ${colList} FROM "${schema.replace(/"/g, '""')}"."${table.replace(/"/g, '""')}"`;
+      } else {
+        sql = `SELECT ${colList} FROM "${table.replace(/"/g, '""')}"`;
+      }
+    } else {
+      sql = lastQuerySql.get(connId);
+      if (!sql) return { error: 'No query to export' };
+    }
+
+    const ext = format === 'json' ? 'json' : 'csv';
+    const defaultName = mode === 'table'
+      ? `${table.replace(/[^a-zA-Z0-9_-]/g, '_')}.${ext}`
+      : `query_export.${ext}`;
+    const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+      defaultPath: defaultName,
+      filters: [
+        { name: ext.toUpperCase(), extensions: [ext] },
+        { name: 'All Files', extensions: ['*'] },
+      ],
+    });
+    if (canceled || !filePath) return { canceled: true };
+
+    const fs = require('fs');
+    const CHUNK = 5000;
+    const send = (data) => mainWindow.webContents.send('db:downloadProgress', data);
+
+    try {
+      // Count total rows
+      let total;
+      const countSql = `SELECT COUNT(*) AS total FROM (${sql}) AS _cnt`;
+      if (conn.type === 'postgres') {
+        const cr = await conn.client.query(countSql);
+        total = parseInt(cr.rows[0]?.total ?? 0, 10);
+      } else {
+        const cr = conn.client.prepare(countSql).get();
+        total = cr?.total ?? 0;
+      }
+
+      send({ stage: 'start', total, filePath });
+
+      const ctrl = { aborted: false };
+      activeDownloads.set(connId, ctrl);
+
+      const ws = fs.createWriteStream(filePath, { encoding: 'utf-8' });
+      let written = 0;
+      let headerWritten = false;
+
+      if (format === 'json') ws.write('[\n');
+
+      for (let offset = 0; offset < total; offset += CHUNK) {
+        if (ctrl.aborted) {
+          ws.destroy();
+          activeDownloads.delete(connId);
+          try { fs.unlinkSync(filePath); } catch {}
+          send({ stage: 'error', error: 'Download cancelled' });
+          return { error: 'Download cancelled' };
+        }
+        const pageSql = `SELECT * FROM (${sql}) AS _p LIMIT ${CHUNK} OFFSET ${offset}`;
+        let rows, cols;
+        if (conn.type === 'postgres') {
+          const result = await conn.client.query(pageSql);
+          cols = result.fields.map((f) => f.name);
+          rows = result.rows.map((row) => {
+            const out = {};
+            for (const key of Object.keys(row)) {
+              let val = row[key];
+              if (val !== null && typeof val === 'object') val = JSON.stringify(val);
+              out[key] = val;
+            }
+            return out;
+          });
+        } else {
+          rows = conn.client.prepare(pageSql).all();
+          cols = rows.length > 0 ? Object.keys(rows[0]) : [];
+        }
+
+        if (format === 'json') {
+          for (let i = 0; i < rows.length; i++) {
+            if (written > 0) ws.write(',\n');
+            ws.write(JSON.stringify(rows[i]));
+            written++;
+          }
+        } else {
+          if (!headerWritten) {
+            ws.write(cols.map(csvEscape).join(',') + '\n');
+            headerWritten = true;
+          }
+          for (const row of rows) {
+            ws.write(cols.map((c) => csvEscape(row[c])).join(',') + '\n');
+            written++;
+          }
+        }
+
+        send({ stage: 'progress', written, total });
+
+        // Yield to event loop so progress events can be sent
+        await new Promise((r) => setImmediate(r));
+      }
+
+      if (format === 'json') ws.write('\n]');
+      await new Promise((resolve, reject) => {
+        ws.end(() => resolve());
+        ws.on('error', reject);
+      });
+
+      activeDownloads.delete(connId);
+      send({ stage: 'done', written, total, filePath });
+      return { ok: true, written, filePath };
+    } catch (e) {
+      activeDownloads.delete(connId);
+      send({ stage: 'error', error: e.message });
+      return { error: e.message };
+    }
+  });
+
+  function csvEscape(v) {
+    if (v === null || v === undefined) return '';
+    if (typeof v === 'boolean') return v ? 'true' : 'false';
+    const s = typeof v === 'object' ? JSON.stringify(v) : String(v);
+    if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+      return '"' + s.replace(/"/g, '""') + '"';
+    }
+    return s;
+  }
 
   ipcMain.handle('db:createDatabase', async (_, id, name) => {
     const conn = activeDbConnections.get(id);
@@ -605,7 +822,8 @@ function register(mainWindow) {
       const quotedCol = `"${column.name.replace(/"/g, '""')}"`;
       let colDef = `${quotedCol} ${column.type}`;
       if (!column.nullable) colDef += ' NOT NULL';
-      if (column.defaultValue) colDef += ` DEFAULT ${column.defaultValue}`;
+      const safeDefault = sanitizeDefaultValue(column.defaultValue);
+      if (safeDefault) colDef += ` DEFAULT ${safeDefault}`;
       if (conn.type === 'postgres') {
         const quotedTable = `"${schema.replace(/"/g, '""')}"."${tableName.replace(/"/g, '""')}"`;
         await conn.client.query(`ALTER TABLE ${quotedTable} ADD COLUMN ${colDef}`);
@@ -648,7 +866,8 @@ function register(mainWindow) {
         let def = `${q} ${c.type}`;
         if (c.pk) def += ' PRIMARY KEY';
         if (!c.nullable && !c.pk) def += ' NOT NULL';
-        if (c.defaultValue) def += ` DEFAULT ${c.defaultValue}`;
+        const safeDefault = sanitizeDefaultValue(c.defaultValue);
+        if (safeDefault) def += ` DEFAULT ${safeDefault}`;
         return def;
       });
       if (conn.type === 'postgres') {

@@ -8,6 +8,7 @@ import DatabaseWorkspace from './pages/DatabaseWorkspace';
 import DateTimeTool from './pages/DateTimeTool';
 import Drop from './pages/Drop';
 import Landing from './pages/Landing';
+
 import RfcViewer from './pages/RfcViewer';
 import { TabProvider, useTabs, TAB_TYPES, PINNED_TOOLS } from './store/tabs';
 
@@ -216,6 +217,7 @@ function AppShell() {
               <Match when={tab.type === 'rfc'}>
                 <RfcViewer style={style()} />
               </Match>
+
             </Switch>
           );
         }}

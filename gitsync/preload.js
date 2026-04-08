@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('api', {
   getAllSettings: () => ipcRenderer.invoke('settings:getAll'),
   setSetting: (key, value) => ipcRenderer.invoke('settings:set', key, value),
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
+  showItemInFolder: (fullPath) => ipcRenderer.invoke('shell:showItemInFolder', fullPath),
   homeDir: () => ipcRenderer.invoke('app:homeDir'),
 
   // Git identities
@@ -79,7 +80,7 @@ contextBridge.exposeInMainWorld('api', {
   gitCheckoutRemote: (repoPath, localName, remoteBranch) => ipcRenderer.invoke('git:checkoutRemote', repoPath, localName, remoteBranch),
   gitCheckoutNewBranch: (repoPath, branch) => ipcRenderer.invoke('git:checkoutNewBranch', repoPath, branch),
   gitShow: (repoPath, hash) => ipcRenderer.invoke('git:show', repoPath, hash),
-  gitShowFileDiff: (repoPath, hash, filepath) => ipcRenderer.invoke('git:showFileDiff', repoPath, hash, filepath),
+  gitShowFileDiff: (repoPath, hash, filepath, isMerge) => ipcRenderer.invoke('git:showFileDiff', repoPath, hash, filepath, isMerge),
   gitLastCommitMessage: (repoPath) => ipcRenderer.invoke('git:lastCommitMessage', repoPath),
 
   // Tags

@@ -315,10 +315,17 @@ export default function ResultsTable(props) {
                           setExpandedArrays((prev) => ({ ...prev, [key]: !prev[key] }));
                         }
 
+                        function onCellClick() {
+                          if (isLarge && props.onFetchCell) {
+                            props.onFetchCell(col, i());
+                          }
+                        }
+
                         return (
                           <td
                             class={`${isLarge ? 'db-cell-large' : ''} ${isNull ? 'db-cell-null' : ''} ${isActive() ? 'db-cell-active' : ''} ${formatted() !== null ? 'db-cell-formatted' : ''} ${isEdited() ? 'db-cell-edited' : ''}`}
                             title={formatted() !== null && !isArray() ? `Raw: ${val}` : (isLarge ? val : undefined)}
+                            onClick={onCellClick}
                             onDblClick={() => props.onCellDblClick?.(col, i(), val)}
                             onContextMenu={(e) => onCellContext(e, col, i(), val)}
                           >

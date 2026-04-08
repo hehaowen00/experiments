@@ -85,12 +85,11 @@ const highlightStyle = HighlightStyle.define([
 export default function SqlEditor(props) {
   let containerRef;
   let view;
-  let ignoreNextUpdate = false;
+  let programmatic = false;
 
   onMount(() => {
     const updateListener = EditorView.updateListener.of((update) => {
-      if (update.docChanged) {
-        ignoreNextUpdate = true;
+      if (update.docChanged && !programmatic) {
         props.onInput?.(update.state.doc.toString());
       }
     });
@@ -114,15 +113,13 @@ export default function SqlEditor(props) {
   createEffect(() => {
     const val = props.value ?? '';
     if (!view) return;
-    if (ignoreNextUpdate) {
-      ignoreNextUpdate = false;
-      return;
-    }
     const current = view.state.doc.toString();
     if (val !== current) {
+      programmatic = true;
       view.dispatch({
         changes: { from: 0, to: current.length, insert: val },
       });
+      programmatic = false;
     }
   });
 

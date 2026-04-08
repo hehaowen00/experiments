@@ -81,6 +81,11 @@ app.whenReady().then(async () => {
       await shell.openExternal(url);
     }
   });
+  ipcMain.handle('shell:showItemInFolder', async (_, fullPath) => {
+    if (typeof fullPath === 'string') {
+      shell.showItemInFolder(fullPath);
+    }
+  });
 });
 
 app.on('window-all-closed', () => {

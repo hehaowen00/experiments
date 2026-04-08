@@ -15,6 +15,7 @@ export const TAB_TYPES = {
   'datetime':    { icon: 'fa-solid fa-clock',          label: 'Date / Time' },
   'drop':        { icon: 'fa-solid fa-cloud-arrow-up', label: 'Drop' },
   'rfc':         { icon: 'fa-solid fa-book',           label: 'RFC Viewer' },
+
 };
 
 function makeTab(type, extra) {

@@ -23,7 +23,7 @@ function TreeDir(props) {
       >
         <Icon name={ws.expandedDirs().has(dirKey()) ? 'fa-solid fa-chevron-down' : 'fa-solid fa-chevron-right'} class="git-tree-chevron" />
         <Icon name="fa-solid fa-folder" class="git-tree-folder-icon" />
-        <span class="git-tree-dir-name">{props.child.name}</span>
+        <span class="git-tree-dir-name" title={props.dirPath}>{props.child.name}</span>
         <span class="git-tree-dir-count">{fileCount()}</span>
         <span class="git-file-actions">
           {props.isStaged && (

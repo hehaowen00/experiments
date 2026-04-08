@@ -317,6 +317,14 @@ export default function LogPanel() {
                   <Icon name="fa-solid fa-magnifying-glass-plus" /> Bisect (good)
                 </button>
               </Show>
+              <For each={parseRefs(menu.commit.refs).filter(r => (r.type === 'git-ref-branch' || r.type === 'git-ref-remote') && r.name !== ws.status.branch)}>{(ref) => (
+                <button class="file-context-menu-item" disabled={!!ws.operating()} onClick={() => {
+                  dismissCommitMenu();
+                  ws.doMerge(ref.name);
+                }}>
+                  <Icon name="fa-solid fa-code-branch" /> Merge {ref.name}
+                </button>
+              )}</For>
               <button class="file-context-menu-item danger" disabled={!!ws.operating()} onClick={() => {
                 dismissCommitMenu();
                 ws.doDropCommit(menu.commit.hash);

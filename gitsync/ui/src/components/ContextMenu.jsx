@@ -70,6 +70,13 @@ export default function ContextMenu() {
                 <Icon name="fa-solid fa-clock-rotate-left" /> File History
               </button>
             )}
+            <button class="file-context-menu-item" onClick={() => {
+              ws.setCtxMenu(null);
+              const target = `${ws.repoPath}/${menu.filepath}`;
+              window.api.showItemInFolder(target);
+            }}>
+              <Icon name="fa-solid fa-folder-open" /> Reveal in Finder
+            </button>
           </div>
         );
       })()}

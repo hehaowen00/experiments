@@ -93,7 +93,7 @@ function getLangExtension(format) {
 export default function CodeEditor(props) {
   let containerRef;
   let view;
-  let ignoreNextUpdate = false;
+  let programmatic = false;
   const langCompartment = new Compartment();
   const readOnlyCompartment = new Compartment();
 
@@ -101,8 +101,7 @@ export default function CodeEditor(props) {
     const langExt = getLangExtension(props.format);
 
     const updateListener = EditorView.updateListener.of((update) => {
-      if (update.docChanged) {
-        ignoreNextUpdate = true;
+      if (update.docChanged && !programmatic) {
         props.onInput?.(update.state.doc.toString());
       }
     });
@@ -136,15 +135,13 @@ export default function CodeEditor(props) {
   createEffect(() => {
     const val = props.value ?? '';
     if (!view) return;
-    if (ignoreNextUpdate) {
-      ignoreNextUpdate = false;
-      return;
-    }
     const current = view.state.doc.toString();
     if (val !== current) {
+      programmatic = true;
       view.dispatch({
         changes: { from: 0, to: current.length, insert: val },
       });
+      programmatic = false;
     }
   });
 

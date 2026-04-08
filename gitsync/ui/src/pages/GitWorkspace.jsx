@@ -5,13 +5,11 @@ import Icon from '../lib/Icon';
 import InteractiveRebase from '../components/InteractiveRebase';
 import Modal from '../components/Modal';
 import RepoSwitcher from '../components/RepoSwitcher';
-import Titlebar from '../components/Titlebar';
 import { useWorkspace, WorkspaceProvider } from '../context/WorkspaceContext';
 import ChangesPanel from '../panels/ChangesPanel';
 import LogPanel from '../panels/LogPanel';
 import RemotesPanel from '../panels/RemotesPanel';
 import ReadmePanel from '../panels/ReadmePanel';
-import StashesPanel from '../panels/StashesPanel';
 
 function WorkspaceInner() {
   const ws = useWorkspace();
@@ -29,15 +27,9 @@ function WorkspaceInner() {
 
   return (
     <div class="git-workspace">
-      {/* Header */}
-      <Titlebar>
-        <button class="btn btn-ghost btn-sm titlebar-no-drag" onClick={ws.onBack} title="Back to repos">
-          <Icon name="fa-solid fa-arrow-left" />
-        </button>
-        <button class="git-header-name titlebar-no-drag" onClick={ws.openSwitcher} title="Switch repo (Ctrl+P)">
-          {ws.repoData.name}
-        </button>
-        <span class="git-header-branch titlebar-no-drag" onClick={() => ws.onTabChange('remotes')} title="View branches">
+      {/* Toolbar */}
+      <div class="git-toolbar">
+        <span class="git-header-branch" onClick={() => ws.onTabChange('remotes')} title="View branches">
           <Icon name="fa-solid fa-code-branch" />
           {ws.status.branch || '...'}
         </span>
@@ -51,44 +43,7 @@ function WorkspaceInner() {
             </Show>
           </span>
         </Show>
-        <div style={{ flex: 1 }} />
-        <Show when={ws.operating()}>
-          <span class="git-operating">
-            {ws.operating()}
-            <Show when={ws.progressLine()}>
-              <span class="git-progress-line">{ws.progressLine()}</span>
-            </Show>
-          </span>
-        </Show>
-        <button class="btn btn-ghost btn-sm titlebar-no-drag" onClick={ws.doStashPush} disabled={!!ws.operating()} title="Stash">
-          <Icon name="fa-solid fa-box-archive" />
-        </button>
-        <button class="btn btn-ghost btn-sm titlebar-no-drag" onClick={ws.doFetch} disabled={!!ws.operating()} title="Fetch">
-          <Icon name="fa-solid fa-cloud-arrow-down" />
-        </button>
-        <button class="btn btn-ghost btn-sm titlebar-no-drag" onClick={ws.doPull} disabled={!!ws.operating()} title="Pull">
-          <Icon name="fa-solid fa-download" />
-        </button>
-        <button class="btn btn-ghost btn-sm titlebar-no-drag" onClick={ws.doPush} disabled={!!ws.operating()} title="Push">
-          <Icon name="fa-solid fa-upload" />
-        </button>
-        <button class="btn btn-ghost btn-sm titlebar-no-drag" onClick={ws.refresh} title="Refresh">
-          <Icon name="fa-solid fa-rotate" />
-        </button>
-        <button
-          class={`btn btn-ghost btn-sm titlebar-no-drag ${ws.outputOpen() ? 'btn-active' : ''}`}
-          onClick={ws.toggleOutputPanel}
-          title="Toggle output log"
-        >
-          <Icon name="fa-solid fa-terminal" />
-          <Show when={ws.outputLog().length > 0}>
-            <span class="git-tab-badge">{ws.outputLog().length}</span>
-          </Show>
-        </button>
-      </Titlebar>
-
-      {/* Tabs */}
-      <div class="git-tabs">
+        <div class="git-toolbar-sep" />
         <button class={`git-tab ${ws.tab() === 'changes' ? 'active' : ''}`} onClick={() => ws.onTabChange('changes')}>
           Workspace
           <Show when={ws.status.files.length > 0}>
@@ -101,18 +56,45 @@ function WorkspaceInner() {
         <button class={`git-tab ${ws.tab() === 'remotes' ? 'active' : ''}`} onClick={() => ws.onTabChange('remotes')}>
           Refs
         </button>
-        <button class={`git-tab ${ws.tab() === 'stashes' ? 'active' : ''}`} onClick={() => ws.onTabChange('stashes')}>
-          Stashes
-          <Show when={ws.stashes.list.length > 0}>
-            <span class="git-tab-badge">{ws.stashes.list.length}</span>
-          </Show>
-        </button>
-        <div style={{ flex: 1 }} />
         <Show when={ws.readme().content}>
           <button class={`git-tab ${ws.tab() === 'readme' ? 'active' : ''}`} onClick={() => ws.onTabChange('readme')}>
             README
           </button>
         </Show>
+        <div style={{ flex: 1 }} />
+        <Show when={ws.operating()}>
+          <span class="git-operating">
+            {ws.operating()}
+            <Show when={ws.progressLine()}>
+              <span class="git-progress-line">{ws.progressLine()}</span>
+            </Show>
+          </span>
+        </Show>
+        <button class="btn btn-ghost btn-sm" onClick={ws.doStashPush} disabled={!!ws.operating()} title="Stash">
+          <Icon name="fa-solid fa-box-archive" />
+        </button>
+        <button class="btn btn-ghost btn-sm" onClick={ws.doFetch} disabled={!!ws.operating()} title="Fetch">
+          <Icon name="fa-solid fa-cloud-arrow-down" />
+        </button>
+        <button class="btn btn-ghost btn-sm" onClick={ws.doPull} disabled={!!ws.operating()} title="Pull">
+          <Icon name="fa-solid fa-download" />
+        </button>
+        <button class="btn btn-ghost btn-sm" onClick={ws.doPush} disabled={!!ws.operating()} title="Push">
+          <Icon name="fa-solid fa-upload" />
+        </button>
+        <button class="btn btn-ghost btn-sm" onClick={ws.refresh} title="Refresh">
+          <Icon name="fa-solid fa-rotate" />
+        </button>
+        <button
+          class={`btn btn-ghost btn-sm ${ws.outputOpen() ? 'btn-active' : ''}`}
+          onClick={ws.toggleOutputPanel}
+          title="Toggle output log"
+        >
+          <Icon name="fa-solid fa-terminal" />
+          <Show when={ws.outputLog().length > 0}>
+            <span class="git-tab-badge">{ws.outputLog().length}</span>
+          </Show>
+        </button>
       </div>
 
       <Show when={ws.status.error}>
@@ -188,9 +170,6 @@ function WorkspaceInner() {
       </div>
       <div class="git-content" style={{ display: ws.tab() === 'remotes' ? '' : 'none' }}>
         <RemotesPanel />
-      </div>
-      <div class="git-content" style={{ display: ws.tab() === 'stashes' ? '' : 'none' }}>
-        <StashesPanel />
       </div>
       <div class="git-content" style={{ display: ws.tab() === 'readme' ? '' : 'none' }}>
         <ReadmePanel />

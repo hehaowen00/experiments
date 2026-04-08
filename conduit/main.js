@@ -8,6 +8,7 @@ const ipcDatabase = require('./main/ipc-database');
 const ipcDrop = require('./main/ipc-drop');
 const ipcRfc = require('./main/ipc-rfc');
 
+
 let mainWindow;
 
 function createWindow() {
@@ -37,6 +38,7 @@ app.whenReady().then(() => {
   ipcDatabase.register(mainWindow);
   ipcDrop.register(mainWindow);
   ipcRfc.register(mainWindow);
+
 
   ipcMain.handle('app:homeDir', () => require('os').homedir());
   ipcMain.handle('app:platform', () => process.platform);
