@@ -103,13 +103,6 @@ export default function LogPanel() {
           </Show>
         </div>
         <button
-          class={`btn btn-ghost btn-xs ${ws.logIncludeRemotes() ? 'btn-active' : ''}`}
-          onClick={() => { ws.setLogIncludeRemotes(!ws.logIncludeRemotes()); setTimeout(ws.loadLog, 0); }}
-          title={ws.logIncludeRemotes() ? 'Showing remote commits (click to hide)' : 'Show remote commits'}
-        >
-          <Icon name="fa-solid fa-cloud" />
-        </button>
-        <button
           class={`btn btn-ghost btn-xs ${ws.logTopoOrder() ? 'btn-active' : ''}`}
           onClick={() => { ws.setLogTopoOrder(!ws.logTopoOrder()); setTimeout(ws.loadLog, 0); }}
           title={ws.logTopoOrder() ? 'Topological order (click for date order)' : 'Date order (click for topological)'}

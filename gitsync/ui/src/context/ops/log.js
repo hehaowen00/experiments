@@ -14,7 +14,6 @@ export function createLogOps({
   logBranch,
   logSearch,
   logTopoOrder,
-  logIncludeRemotes,
   setLogBranches,
 }) {
   async function loadLog() {
@@ -34,7 +33,6 @@ export function createLogOps({
       0,
       search,
       logTopoOrder(),
-      logIncludeRemotes(),
     );
     if (!result.error) {
       const hasMore = result.commits.length > count;
@@ -72,7 +70,6 @@ export function createLogOps({
       skip,
       search,
       logTopoOrder(),
-      logIncludeRemotes(),
     );
     if (!result.error) {
       const hasMore = result.commits.length > LOG_PAGE_SIZE;

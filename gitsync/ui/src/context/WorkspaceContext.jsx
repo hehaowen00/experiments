@@ -139,7 +139,6 @@ export function WorkspaceProvider(props) {
   const [logBranches, setLogBranches] = createSignal([]);
   const [logSearch, setLogSearch] = createSignal('');
   const [logTopoOrder, setLogTopoOrder] = createSignal(false);
-  const [logIncludeRemotes, setLogIncludeRemotes] = createSignal(false);
   const [selectedFiles, setSelectedFiles] = createSignal(new Set());
   const [allFiles, setAllFiles] = createSignal([]);
 
@@ -304,7 +303,6 @@ export function WorkspaceProvider(props) {
     logBranch,
     logSearch,
     logTopoOrder,
-    logIncludeRemotes,
     setLogBranches,
   });
 
@@ -546,7 +544,7 @@ export function WorkspaceProvider(props) {
     window.addEventListener('beforeunload', saveCommitMessage);
     window.api.gitWatchRepo(repoPath);
     removeFsListener = window.api.onFsChanged((changedPath) => {
-      if (changedPath === repoPath) reloadRepo();
+      if (changedPath === repoPath) refresh();
     });
     removeProgressListener = window.api.onGitProgress((line) => {
       setProgressLine(line);
@@ -610,8 +608,6 @@ export function WorkspaceProvider(props) {
     setLogSearch,
     logTopoOrder,
     setLogTopoOrder,
-    logIncludeRemotes,
-    setLogIncludeRemotes,
     selectedFiles,
     allFiles,
     switcherOpen,

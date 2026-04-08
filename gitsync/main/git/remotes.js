@@ -6,11 +6,14 @@ function register({ mainWindow, git, gitRaw }) {
       const out = await git(repoPath, ['remote', '-v']);
       const remotes = {};
       out.trim().split('\n').filter(Boolean).forEach(line => {
-        const match = line.match(/^(\S+)\s+(\S+)\s+\((\w+)\)$/);
+        const match = line.match(/^(\S+)\s+(.+)\s+\((\w+)\)$/);
         if (match) {
           const [, name, url, type] = match;
           if (!remotes[name]) remotes[name] = { name, fetch: '', push: '' };
           remotes[name][type] = url;
+        } else {
+          const name = line.trim();
+          if (name && !remotes[name]) remotes[name] = { name, fetch: '', push: '' };
         }
       });
       return { remotes: Object.values(remotes) };

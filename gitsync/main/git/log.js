@@ -1,7 +1,7 @@
 const { ipcMain } = require('electron');
 
 function register({ mainWindow, git, gitRaw }) {
-  ipcMain.handle('git:log', async (_, repoPath, count, allBranches, branchName, skip, search, topoOrder, includeRemotes) => {
+  ipcMain.handle('git:log', async (_, repoPath, count, allBranches, branchName, skip, search, topoOrder) => {
     const fmt = '--pretty=format:%H%x00%h%x00%P%x00%an%x00%ae%x00%at%x00%s%x00%D';
     const parseCommits = (out) => {
       if (!out.trim()) return [];
@@ -33,17 +33,15 @@ function register({ mainWindow, git, gitRaw }) {
         args.push('--all', '--exclude=refs/stash');
       } else if (branchName) {
         args.push(branchName);
-        if (includeRemotes) {
-          // Include matching remote tracking branches
-          try {
-            const remoteRefs = await git(repoPath, ['for-each-ref', '--format=%(refname:short)', `refs/remotes/*/${branchName}`]);
-            for (const ref of remoteRefs.trim().split('\n').filter(Boolean)) {
-              args.push(ref);
-            }
-          } catch {}
-        }
-      } else if (includeRemotes) {
-        // Current branch mode with remotes: include upstream if it exists
+        // Always include matching remote tracking branches
+        try {
+          const remoteRefs = await git(repoPath, ['for-each-ref', '--format=%(refname:short)', `refs/remotes/*/${branchName}`]);
+          for (const ref of remoteRefs.trim().split('\n').filter(Boolean)) {
+            args.push(ref);
+          }
+        } catch {}
+      } else {
+        // Current branch: always include upstream so incoming remote commits are visible
         try {
           const upstream = (await git(repoPath, ['rev-parse', '--abbrev-ref', '@{upstream}'])).trim();
           if (upstream) args.push(upstream);
