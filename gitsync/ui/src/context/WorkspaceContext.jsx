@@ -164,7 +164,7 @@ export function WorkspaceProvider(props) {
   }
 
   async function refresh() {
-    setStatus('loading', true);
+    if (status.files.length === 0 && !status.branch) setStatus('loading', true);
     const [result, opResult, subResult, filesResult] = await Promise.all(
       [
         window.api.gitStatus(repoPath),
