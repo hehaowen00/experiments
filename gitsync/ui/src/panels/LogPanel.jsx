@@ -103,6 +103,13 @@ export default function LogPanel() {
           </Show>
         </div>
         <button
+          class={`btn btn-ghost btn-xs ${ws.logIncludeRemotes() ? 'btn-active' : ''}`}
+          onClick={() => { ws.setLogIncludeRemotes(!ws.logIncludeRemotes()); setTimeout(ws.loadLog, 0); }}
+          title={ws.logIncludeRemotes() ? 'Showing remote commits (click to hide)' : 'Show remote commits'}
+        >
+          <Icon name="fa-solid fa-cloud" />
+        </button>
+        <button
           class={`btn btn-ghost btn-xs ${ws.logTopoOrder() ? 'btn-active' : ''}`}
           onClick={() => { ws.setLogTopoOrder(!ws.logTopoOrder()); setTimeout(ws.loadLog, 0); }}
           title={ws.logTopoOrder() ? 'Topological order (click for date order)' : 'Date order (click for topological)'}
@@ -124,7 +131,6 @@ export default function LogPanel() {
           <table class="git-log-table">
             <thead>
               <tr>
-                <th class="git-log-graph" style={{ width: `${Math.max(ws.log.maxCols, 1) * 16 + 8}px` }}>Graph</th>
                 <th class="git-log-hash">Hash</th>
                 <th class="git-log-subject">Message</th>
                 <th class="git-log-author">Author</th>
@@ -133,7 +139,6 @@ export default function LogPanel() {
             </thead>
             <tbody>
               <For each={ws.log.commits}>{(c, idx) => {
-                const row = ws.log.graph[idx()];
                 return (
                   <tr
                     class={ws.commitDetail.hash === c.hash ? 'git-log-row-selected' : ''}
@@ -141,11 +146,6 @@ export default function LogPanel() {
                     onContextMenu={(e) => onCommitContextMenu(e, c)}
                     style={{ cursor: 'pointer' }}
                   >
-                    <td class="git-log-graph-cell" style={{ width: `${Math.max(ws.log.maxCols, 1) * 16 + 8}px` }}>
-                      <Show when={row}>
-                        <GraphCell row={row} maxCols={ws.log.maxCols} />
-                      </Show>
-                    </td>
                     <td class="git-log-hash"><code onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(c.hash); }}  title="Click to copy full hash">{c.short}</code></td>
                     <td class="git-log-subject">
                       <Show when={c.refs}>
@@ -162,9 +162,6 @@ export default function LogPanel() {
               }}</For>
             </tbody>
           </table>
-          <Show when={ws.log.loadingMore}>
-            <div class="git-log-loading-more">Loading more...</div>
-          </Show>
           <Show when={!ws.log.hasMore && ws.log.commits.length > 0}>
             <div class="git-log-end">End of history</div>
           </Show>

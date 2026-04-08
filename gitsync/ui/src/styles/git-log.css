@@ -82,6 +82,7 @@
 
 .git-log-table {
   width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
   font-size: var(--ui-font-size-sm);
 }
@@ -139,7 +140,7 @@ th.git-log-graph {
 }
 
 .git-log-hash {
-  width: 70px;
+  width: 80px;
 }
 
 .git-log-hash code {
@@ -190,6 +191,7 @@ th.git-log-graph {
 }
 
 .git-log-date {
+  width: 160px;
   color: var(--text-dim);
   font-size: var(--ui-font-size-xs);
   font-family: var(--font-mono);

@@ -183,7 +183,7 @@ export default function Modal() {
               <button class="btn btn-primary" onClick={() => close(null)} autofocus>{t.modal.okButton}</button>
             </div>
           </Show>
-          <Show when={modalType() !== 'settings' && modalType() !== 'alert' && modalType() !== 'confirm-type' && modalType() !== 'choice'}>
+          <Show when={modalType() !== 'settings' && modalType() !== 'alert' && modalType() !== 'confirm-type' && modalType() !== 'choice' && modalType() !== 'push'}>
             <div class="modal-buttons">
               <button class="btn btn-ghost" onClick={() => close(modalType() === 'prompt' ? null : false)}>{t.modal.cancelButton}</button>
               <Show when={modalType() === 'prompt' || modalType() === 'textarea'}>

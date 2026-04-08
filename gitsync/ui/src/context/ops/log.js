@@ -1,3 +1,4 @@
+import { produce } from 'solid-js/store';
 import { buildGraph, resetGraphColors } from '../../utils/graph';
 
 const LOG_PAGE_SIZE = 100;
@@ -13,6 +14,7 @@ export function createLogOps({
   logBranch,
   logSearch,
   logTopoOrder,
+  logIncludeRemotes,
   setLogBranches,
 }) {
   async function loadLog() {
@@ -23,26 +25,30 @@ export function createLogOps({
     const allBranches = branch === '__all__';
     const branchName =
       branch === '__current__' || branch === '__all__' ? null : branch;
+    const count = Math.max(log.commits.length, LOG_PAGE_SIZE);
     const result = await window.api.gitLog(
       repoPath,
-      LOG_PAGE_SIZE,
+      count + 1,
       allBranches,
       branchName,
       0,
       search,
       logTopoOrder(),
+      logIncludeRemotes(),
     );
     if (!result.error) {
+      const hasMore = result.commits.length > count;
+      const commits = hasMore ? result.commits.slice(0, count) : result.commits;
       resetGraphColors();
-      const { graph, maxCols, lanes } = buildGraph(result.commits, []);
+      const { graph, maxCols, lanes } = buildGraph(commits, []);
       setLog({
-        commits: result.commits,
+        commits,
         graph,
         maxCols,
         lanes,
         loading: false,
         loadingMore: false,
-        hasMore: result.commits.length >= LOG_PAGE_SIZE,
+        hasMore,
       });
     } else {
       setLog('loading', false);
@@ -60,15 +66,18 @@ export function createLogOps({
     const skip = log.commits.length;
     const result = await window.api.gitLog(
       repoPath,
-      LOG_PAGE_SIZE,
+      LOG_PAGE_SIZE + 1,
       allBranches,
       branchName,
       skip,
       search,
       logTopoOrder(),
+      logIncludeRemotes(),
     );
     if (!result.error) {
-      if (result.commits.length === 0) {
+      const hasMore = result.commits.length > LOG_PAGE_SIZE;
+      const newCommits = hasMore ? result.commits.slice(0, LOG_PAGE_SIZE) : result.commits;
+      if (newCommits.length === 0) {
         setLog({ loadingMore: false, hasMore: false });
         return;
       }
@@ -76,18 +85,21 @@ export function createLogOps({
         graph: newGraph,
         maxCols: newMaxCols,
         lanes,
-      } = buildGraph(result.commits, log.lanes);
-      const allCommits = [...log.commits, ...result.commits];
-      const allGraph = [...log.graph, ...newGraph];
-      const atLimit = allCommits.length >= LOG_MAX_COMMITS;
-      setLog({
-        commits: atLimit ? allCommits.slice(0, LOG_MAX_COMMITS) : allCommits,
-        graph: atLimit ? allGraph.slice(0, LOG_MAX_COMMITS) : allGraph,
-        maxCols: Math.max(log.maxCols, newMaxCols),
-        lanes,
-        loadingMore: false,
-        hasMore: !atLimit && result.commits.length >= LOG_PAGE_SIZE,
-      });
+      } = buildGraph(newCommits, log.lanes);
+      const atLimit = log.commits.length + newCommits.length >= LOG_MAX_COMMITS;
+      const remaining = LOG_MAX_COMMITS - log.commits.length;
+      setLog(produce((s) => {
+        const toAdd = atLimit ? newCommits.slice(0, remaining) : newCommits;
+        const graphToAdd = atLimit ? newGraph.slice(0, remaining) : newGraph;
+        for (let i = 0; i < toAdd.length; i++) {
+          s.commits.push(toAdd[i]);
+          s.graph.push(graphToAdd[i]);
+        }
+        s.maxCols = Math.max(s.maxCols, newMaxCols);
+        s.lanes = lanes;
+        s.loadingMore = false;
+        s.hasMore = !atLimit && hasMore;
+      }));
     } else {
       setLog('loadingMore', false);
     }
