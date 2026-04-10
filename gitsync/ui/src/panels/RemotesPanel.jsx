@@ -148,6 +148,9 @@ export default function RemotesPanel() {
               <button class="btn btn-ghost btn-xs git-branch-action" onClick={() => ws.doPushBranch(b.name)} title={`Push ${b.name} to remote`} disabled={!!ws.operating()}>
                 <Icon name="fa-solid fa-upload" />
               </button>
+              <button class="btn btn-ghost btn-xs git-branch-action" onClick={() => ws.doResetToBranch(b.name)} title={`Reset current branch to ${b.name}`} disabled={!!ws.operating()}>
+                <Icon name="fa-solid fa-backward" />
+              </button>
               <Show when={!b.current}>
                 <button class="btn btn-ghost btn-xs git-branch-action" onClick={() => ws.doMerge(b.name)} title={`Merge ${b.name} into ${ws.status.branch}`} disabled={!!ws.operating()}>
                   <Icon name="fa-solid fa-code-merge" />
@@ -179,6 +182,9 @@ export default function RemotesPanel() {
               <div class="git-branch-item">
                 <Icon name="fa-solid fa-cloud" class="git-branch-dot" style={{ 'font-size': '8px', opacity: 0.5 }} />
                 <span class="git-branch-name">{shortName}</span>
+                <button class="btn btn-ghost btn-xs git-branch-action" onClick={() => ws.doResetToBranch(b.name)} title={`Reset current branch to ${shortName}`} disabled={!!ws.operating()}>
+                  <Icon name="fa-solid fa-backward" />
+                </button>
                 <button class="btn btn-ghost btn-xs git-branch-action" onClick={() => ws.doMerge(b.name)} title={`Merge ${shortName} into ${ws.status.branch}`}>
                   <Icon name="fa-solid fa-code-merge" />
                 </button>

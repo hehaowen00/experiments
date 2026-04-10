@@ -39,7 +39,7 @@ export function createStashOps({
     const result = await window.api.gitStashPush(
       repoPath,
       message || '',
-      true,
+      false,
     );
     setOperating('');
     if (result.error) showAlert('Stash Failed', result.error);

@@ -24,6 +24,12 @@ import {
   setModalSelectedRemote,
   modalForce,
   setModalForce,
+  modalNewBranch,
+  setModalNewBranch,
+  modalNewBranchName,
+  setModalNewBranchName,
+  modalPullStrategy,
+  setModalPullStrategy,
   close,
 } from './state';
 
@@ -34,6 +40,8 @@ export default function Modal() {
   const [selectedTheme, setSelectedTheme] = createSignal(getStoredThemeId());
   const [uiFontSize, setUiFontSize] = createSignal(14);
   const [editorFontSize, setEditorFontSize] = createSignal(12);
+  const [diffMethod, setDiffMethod] = createSignal('auto');
+  const [difftAvailable, setDifftAvailable] = createSignal(null);
 
   // Identity management
   const [identities, setIdentities] = createStore([]);
@@ -47,7 +55,9 @@ export default function Modal() {
       window.api.getAllSettings().then((s) => {
         if (s.uiFontSize) setUiFontSize(parseInt(s.uiFontSize));
         if (s.editorFontSize) setEditorFontSize(parseInt(s.editorFontSize));
+        if (s.diffMethod) setDiffMethod(s.diffMethod);
       });
+      window.api.gitCheckDifft().then((v) => setDifftAvailable(v));
       window.api.identityList().then((list) => setIdentities(list));
     }
   });
@@ -112,9 +122,9 @@ export default function Modal() {
       else if (modalType() === 'confirm-type') {
         if (modalValue() === modalExpectedName()) close(true);
       } else if (modalType() === 'push') {
-        close({ remote: modalSelectedRemote(), force: modalForce() });
+        close({ remote: modalSelectedRemote(), force: modalForce(), newBranch: modalNewBranch() ? modalNewBranchName().trim() : null });
       } else if (modalType() === 'pull') {
-        close(modalSelectedRemote());
+        close({ remote: modalSelectedRemote(), strategy: modalPullStrategy() || null });
       } else if (modalType() !== 'textarea' && modalType() !== 'settings' && modalType() !== 'choice')
         close(modalType() === 'prompt' ? modalValue() : true);
     }
@@ -174,7 +184,7 @@ export default function Modal() {
             </div>
             <div class="settings-tab-content">
               <Show when={settingsTab() === 'general'}>
-                <GeneralTab selectedTheme={selectedTheme} setSelectedTheme={setSelectedTheme} uiFontSize={uiFontSize} setUiFontSize={setUiFontSize} editorFontSize={editorFontSize} setEditorFontSize={setEditorFontSize} />
+                <GeneralTab selectedTheme={selectedTheme} setSelectedTheme={setSelectedTheme} uiFontSize={uiFontSize} setUiFontSize={setUiFontSize} editorFontSize={editorFontSize} setEditorFontSize={setEditorFontSize} diffMethod={diffMethod} setDiffMethod={setDiffMethod} difftAvailable={difftAvailable} />
               </Show>
               <Show when={settingsTab() === 'identities'}>
                 <IdentitiesTab identities={identities} editingIdentity={editingIdentity} identityName={identityName} setIdentityName={setIdentityName} identityEmail={identityEmail} setIdentityEmail={setIdentityEmail} saveIdentity={saveIdentity} startEditIdentity={startEditIdentity} deleteIdentity={deleteIdentity} resetIdentityForm={resetIdentityForm} importGlobalIdentity={importGlobalIdentity} importRepoIdentities={importRepoIdentities} />
@@ -235,6 +245,28 @@ export default function Modal() {
               <label>
                 <input
                   type="checkbox"
+                  checked={modalNewBranch()}
+                  onChange={(e) => setModalNewBranch(e.target.checked)}
+                />
+                Create upstream branch
+              </label>
+            </div>
+            <Show when={modalNewBranch()}>
+              <div class="modal-field">
+                <label>Branch name</label>
+                <input
+                  type="text"
+                  class="input input-sm"
+                  value={modalNewBranchName()}
+                  onInput={(e) => setModalNewBranchName(e.target.value)}
+                  placeholder="remote branch name"
+                />
+              </div>
+            </Show>
+            <div class="modal-field modal-field-inline">
+              <label>
+                <input
+                  type="checkbox"
                   checked={modalForce()}
                   onChange={(e) => setModalForce(e.target.checked)}
                 />
@@ -245,7 +277,7 @@ export default function Modal() {
               <button class="btn btn-ghost" onClick={() => close(null)}>{t.modal.cancelButton}</button>
               <button
                 class={`btn ${modalForce() ? 'btn-danger' : 'btn-primary'}`}
-                onClick={() => close({ remote: modalSelectedRemote(), force: modalForce() })}
+                onClick={() => close({ remote: modalSelectedRemote(), force: modalForce(), newBranch: modalNewBranch() ? modalNewBranchName().trim() : null })}
               >
                 {modalForce() ? 'Force Push' : 'Push'}
               </button>
@@ -264,9 +296,23 @@ export default function Modal() {
                 class="select-sm select-full"
               />
             </div>
+            <div class="modal-field">
+              <label>Strategy</label>
+              <Select
+                value={modalPullStrategy()}
+                options={[
+                  { value: '', label: 'Default' },
+                  { value: 'rebase', label: 'Rebase' },
+                  { value: 'merge', label: 'Merge' },
+                  { value: 'ff-only', label: 'Fast-forward only' },
+                ]}
+                onChange={setModalPullStrategy}
+                class="select-sm select-full"
+              />
+            </div>
             <div class="modal-buttons">
               <button class="btn btn-ghost" onClick={() => close(null)}>{t.modal.cancelButton}</button>
-              <button class="btn btn-primary" onClick={() => close(modalSelectedRemote())}>Pull</button>
+              <button class="btn btn-primary" onClick={() => close({ remote: modalSelectedRemote(), strategy: modalPullStrategy() || null })}>Pull</button>
             </div>
           </Show>
         </div>

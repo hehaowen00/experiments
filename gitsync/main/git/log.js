@@ -2,17 +2,17 @@ const { ipcMain } = require('electron');
 
 function register({ mainWindow, git, gitRaw }) {
   ipcMain.handle('git:log', async (_, repoPath, count, allBranches, branchName, skip, search, topoOrder) => {
-    const fmt = '--pretty=format:%H%x00%h%x00%P%x00%an%x00%ae%x00%at%x00%s%x00%D';
+    const fmt = '--pretty=format:%H%x00%h%x00%P%x00%an%x00%at%x00%s%x00%D';
     const parseCommits = (out) => {
       if (!out.trim()) return [];
       return out.trim().split('\n').map(line => {
-        const [hash, short, parents, author, email, timestamp, subject, refs] = line.split('\x00');
+        const [hash, short, parents, author, timestamp, subject, refs] = line.split('\x00');
         return {
           hash, short,
           parents: parents ? parents.split(' ').filter(Boolean) : [],
-          author, email,
-          date: new Date(parseInt(timestamp) * 1000).toISOString(),
-          subject, refs,
+          author,
+          date: parseInt(timestamp) * 1000,
+          subject, refs: refs || undefined,
         };
       });
     };
@@ -65,7 +65,7 @@ function register({ mainWindow, git, gitRaw }) {
             merged.push(c);
           }
         }
-        merged.sort((a, b) => new Date(b.date) - new Date(a.date));
+        merged.sort((a, b) => b.date - a.date);
         return { commits: merged };
       }
       const out = await git(repoPath, args);
@@ -76,7 +76,7 @@ function register({ mainWindow, git, gitRaw }) {
   });
 
   ipcMain.handle('git:fileLog', async (_, repoPath, filepath, count, skip) => {
-    const fmt = '--pretty=format:%H%x00%h%x00%P%x00%an%x00%ae%x00%at%x00%s%x00%D';
+    const fmt = '--pretty=format:%H%x00%h%x00%P%x00%an%x00%at%x00%s%x00%D';
     try {
       const args = ['log', `--max-count=${count || 50}`, '--follow', fmt];
       if (skip) args.push(`--skip=${skip}`);
@@ -84,13 +84,13 @@ function register({ mainWindow, git, gitRaw }) {
       const out = await git(repoPath, args);
       if (!out.trim()) return { commits: [] };
       const commits = out.trim().split('\n').map(line => {
-        const [hash, short, parents, author, email, timestamp, subject, refs] = line.split('\x00');
+        const [hash, short, parents, author, timestamp, subject, refs] = line.split('\x00');
         return {
           hash, short,
           parents: parents ? parents.split(' ').filter(Boolean) : [],
-          author, email,
-          date: new Date(parseInt(timestamp) * 1000).toISOString(),
-          subject, refs,
+          author,
+          date: parseInt(timestamp) * 1000,
+          subject, refs: refs || undefined,
         };
       });
       return { commits };

@@ -1,10 +1,33 @@
-import { Show, For, createSignal, onCleanup } from 'solid-js';
+import { Show, For, createSignal, createMemo, onMount, onCleanup } from 'solid-js';
 import Icon from '../lib/Icon';
 import Select from '../lib/Select';
 import ResizeHandle from '../lib/ResizeHandle';
 import { useWorkspace } from '../context/WorkspaceContext';
-import { GraphCell, parseRefs } from '../utils/graph';
 import { DiffLines, isImageFile, ImagePreview } from '../utils/diff';
+
+const ROW_HEIGHT = 24;
+const OVERSCAN = 10;
+
+function fmtDate(ts) {
+  const d = new Date(ts);
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yy = String(d.getFullYear()).slice(-2);
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mi = String(d.getMinutes()).padStart(2, '0');
+  return `${dd}/${mm}/${yy} ${hh}:${mi}`;
+}
+
+function parseRefs(refStr) {
+  if (!refStr) return [];
+  return refStr.split(',').map(r => r.trim()).filter(Boolean).map(r => {
+    if (r.startsWith('HEAD -> ')) return { name: r.slice(8), type: 'git-ref-head' };
+    if (r === 'HEAD') return { name: 'HEAD', type: 'git-ref-head' };
+    if (r.startsWith('tag: ')) return { name: r.slice(5), type: 'git-ref-tag' };
+    if (r.includes('/')) return { name: r, type: 'git-ref-remote' };
+    return { name: r, type: 'git-ref-branch' };
+  });
+}
 
 export default function LogPanel() {
   const ws = useWorkspace();
@@ -16,6 +39,20 @@ export default function LogPanel() {
   const [commitMenu, setCommitMenu] = createSignal(null);
   const [showCommitBody, setShowCommitBody] = createSignal(true);
   const [bodyHeight, setBodyHeight] = createSignal(80);
+  const [scrollTop, setScrollTop] = createSignal(0);
+  const [viewHeight, setViewHeight] = createSignal(600);
+
+  let resizeObserver;
+  onMount(() => {
+    if (logPanelRef) {
+      setViewHeight(logPanelRef.clientHeight);
+      resizeObserver = new ResizeObserver(() => {
+        if (logPanelRef.clientHeight > 0) setViewHeight(logPanelRef.clientHeight);
+      });
+      resizeObserver.observe(logPanelRef);
+    }
+  });
+  onCleanup(() => resizeObserver?.disconnect());
 
   const verticalMq = window.matchMedia('(max-aspect-ratio: 4/3)');
   const [isVertical, setIsVertical] = createSignal(verticalMq.matches);
@@ -42,10 +79,28 @@ export default function LogPanel() {
 
   function onLogScroll(e) {
     const el = e.target;
+    setScrollTop(el.scrollTop);
+    setViewHeight(el.clientHeight);
     if (el.scrollHeight - el.scrollTop - el.clientHeight < 200) {
       ws.loadMoreLog();
     }
   }
+
+  const visibleRange = createMemo(() => {
+    const total = ws.log.commits.length;
+    if (total === 0) return { start: 0, end: 0 };
+    const st = scrollTop();
+    const start = Math.max(0, Math.floor(st / ROW_HEIGHT) - OVERSCAN);
+    const end = Math.min(total, Math.ceil((st + viewHeight()) / ROW_HEIGHT) + OVERSCAN);
+    return { start, end };
+  });
+
+  const visibleCommits = createMemo(() => {
+    const { start, end } = visibleRange();
+    return ws.log.commits.slice(start, end);
+  });
+
+  const totalHeight = () => ws.log.commits.length * ROW_HEIGHT;
 
   function onSearchInput(value) {
     ws.setLogSearch(value);
@@ -121,40 +176,39 @@ export default function LogPanel() {
           <Show when={!ws.log.loading && ws.log.commits.length === 0}>
             <div class="git-empty">No commits found</div>
           </Show>
-          <table class="git-log-table">
-            <thead>
-              <tr>
-                <th class="git-log-hash">Hash</th>
-                <th class="git-log-subject">Message</th>
-                <th class="git-log-author">Author</th>
-                <th class="git-log-date">Date</th>
-              </tr>
-            </thead>
-            <tbody>
-              <For each={ws.log.commits}>{(c, idx) => {
+          <Show when={ws.log.commits.length > 0}>
+            <div class="git-log-header-row">
+              <span class="git-log-col git-log-hash">Hash</span>
+              <span class="git-log-col git-log-subject">Message</span>
+              <span class="git-log-col git-log-author">Author</span>
+              <span class="git-log-col git-log-date">Date</span>
+            </div>
+            <div class="git-log-virtual" style={{ height: `${totalHeight()}px` }}>
+              <For each={visibleCommits()}>{(c, localIdx) => {
+                const rowIdx = () => visibleRange().start + localIdx();
                 return (
-                  <tr
-                    class={ws.commitDetail.hash === c.hash ? 'git-log-row-selected' : ''}
+                  <div
+                    class={`git-log-row ${ws.commitDetail.hash === c.hash ? 'git-log-row-selected' : ''}`}
                     onClick={() => ws.selectCommit(c.hash)}
                     onContextMenu={(e) => onCommitContextMenu(e, c)}
-                    style={{ cursor: 'pointer' }}
+                    style={{ top: `${rowIdx() * ROW_HEIGHT}px` }}
                   >
-                    <td class="git-log-hash"><code onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(c.hash); }}  title="Click to copy full hash">{c.short}</code></td>
-                    <td class="git-log-subject">
+                    <span class="git-log-col git-log-hash"><code onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(c.hash); }} title="Click to copy full hash">{c.short}</code></span>
+                    <span class="git-log-col git-log-subject">
                       <Show when={c.refs}>
                         <For each={parseRefs(c.refs)}>{(ref) => (
                           <span class={`git-log-ref ${ref.type}`}>{ref.name}</span>
                         )}</For>
                       </Show>
                       {c.subject}
-                    </td>
-                    <td class="git-log-author">{c.author}</td>
-                    <td class="git-log-date">{new Date(c.date).toLocaleString()}</td>
-                  </tr>
+                    </span>
+                    <span class="git-log-col git-log-author">{c.author}</span>
+                    <span class="git-log-col git-log-date">{fmtDate(c.date)}</span>
+                  </div>
                 );
               }}</For>
-            </tbody>
-          </table>
+            </div>
+          </Show>
           <Show when={!ws.log.hasMore && ws.log.commits.length > 0}>
             <div class="git-log-end">End of history</div>
           </Show>
@@ -171,7 +225,7 @@ export default function LogPanel() {
                 </button>
                 <span class="git-commit-detail-author">{ws.commitDetail.author} &lt;{ws.commitDetail.email}&gt;</span>
                 <span class="git-commit-detail-date">
-                  {ws.commitDetail.date ? new Date(ws.commitDetail.date).toLocaleString() : ''}
+                  {ws.commitDetail.date ? fmtDate(ws.commitDetail.date) : ''}
                 </span>
                 <Show when={ws.commitDetail.parents.length > 0}>
                   <span class="git-commit-detail-parents">
@@ -209,11 +263,9 @@ export default function LogPanel() {
                   const isImage = () => isImageFile(file.filename);
                   const toggleFile = () => {
                     if (isExpanded()) {
-                      const next = { ...ws.expandedDetailFiles() };
-                      delete next[file.filename];
-                      ws.setExpandedDetailFiles(next);
+                      ws.setExpandedDetailFiles({});
                     } else if (isImage()) {
-                      ws.setExpandedDetailFiles((prev) => ({ ...prev, [file.filename]: '__image__' }));
+                      ws.setExpandedDetailFiles({ [file.filename]: '__image__' });
                     } else {
                       ws.loadFileDiff(ws.commitDetail.hash, file.filename);
                     }

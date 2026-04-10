@@ -31,6 +31,23 @@ function runDifft(repoPath, args) {
 }
 
 function register({ mainWindow, git, gitRaw }) {
+  ipcMain.handle('git:statusBrief', async (_, repoPath) => {
+    try {
+      const branch = (await git(repoPath, ['branch', '--show-current'])).trim();
+      let ahead = 0;
+      let behind = 0;
+      try {
+        const counts = (await git(repoPath, ['rev-list', '--left-right', '--count', 'HEAD...@{upstream}'])).trim();
+        const [a, b] = counts.split(/\s+/);
+        ahead = parseInt(a) || 0;
+        behind = parseInt(b) || 0;
+      } catch {}
+      return { branch, ahead, behind };
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
+
   ipcMain.handle('git:status', async (_, repoPath) => {
     try {
       const out = await git(repoPath, ['status', '--porcelain=v1', '-uall']);
@@ -81,6 +98,10 @@ function register({ mainWindow, git, gitRaw }) {
     } catch (e) {
       return { error: e.message };
     }
+  });
+
+  ipcMain.handle('git:checkDifft', async () => {
+    return checkDifft();
   });
 
   ipcMain.handle('git:diffStructural', async (_, repoPath, filepath, staged) => {

@@ -1,3 +1,4 @@
+import { Show } from 'solid-js';
 import { applyEditorFontSize, applyUiFontSize } from '../../index';
 import t from '../../locale';
 import { applyTheme, getThemeList } from '../../themes';
@@ -17,6 +18,30 @@ export default function GeneralTab(props) {
           onChange={(value) => {
             applyTheme(value);
             props.setSelectedTheme(value);
+          }}
+          class="select-full"
+        />
+      </div>
+      <div class="settings-section">
+        <div class="settings-label">
+          Diff Method
+          <Show when={props.difftAvailable() !== null}>
+            <span class={`settings-hint ${props.difftAvailable() ? 'settings-hint-ok' : 'settings-hint-warn'}`}>
+              {props.difftAvailable() ? 'difftastic available' : 'difftastic not found'}
+            </span>
+          </Show>
+        </div>
+        <Select
+          value={props.diffMethod()}
+          options={[
+            { value: 'auto', label: 'Auto (difftastic if available)' },
+            { value: 'structural', label: 'Structural (difftastic)' },
+            { value: 'standard', label: 'Standard (git diff)' },
+          ]}
+          onChange={(value) => {
+            props.setDiffMethod(value);
+            window.api.setSetting('diffMethod', value);
+            window.dispatchEvent(new CustomEvent('diffmethod-changed', { detail: value }));
           }}
           class="select-full"
         />

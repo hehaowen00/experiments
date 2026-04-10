@@ -5,7 +5,7 @@ function git(repoPath, args, opts = {}) {
     execFile(
       'git',
       args,
-      { cwd: repoPath, maxBuffer: 10 * 1024 * 1024, ...opts },
+      { cwd: repoPath, maxBuffer: 2 * 1024 * 1024, ...opts },
       (err, stdout, stderr) => {
         if (err) {
           reject(new Error(stderr || err.message));
@@ -102,6 +102,8 @@ function register(mainWindow) {
   require('./git/conflicts').register(ctx);
   require('./git/bisect').register(ctx);
   require('./git/watcher').register(ctx);
+  require('./git/build-check').register(ctx);
+  require('./git/contributors').register(ctx);
 }
 
 module.exports = { register };

@@ -17,6 +17,7 @@ export function createCommitOps({
       showAlert('Error', 'Commit message is required');
       return;
     }
+
     const fullMsg = desc ? `${subject}\n\n${desc}` : subject;
     setCommit('running', true);
 

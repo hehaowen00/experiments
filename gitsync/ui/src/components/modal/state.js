@@ -81,8 +81,11 @@ export function showChoice(title, description = '', choices = []) {
 export const [modalRemotes, setModalRemotes] = createSignal([]);
 export const [modalSelectedRemote, setModalSelectedRemote] = createSignal('');
 export const [modalForce, setModalForce] = createSignal(false);
+export const [modalNewBranch, setModalNewBranch] = createSignal(false);
+export const [modalNewBranchName, setModalNewBranchName] = createSignal('');
+export const [modalPullStrategy, setModalPullStrategy] = createSignal('');
 
-export function showPush(remotes, lastRemote) {
+export function showPush(remotes, lastRemote, currentBranch) {
   return new Promise((resolve) => {
     modalResolve = resolve;
     setModalTitle('Push to Remote');
@@ -95,6 +98,8 @@ export function showPush(remotes, lastRemote) {
         : '';
     setModalSelectedRemote(defaultRemote);
     setModalForce(false);
+    setModalNewBranch(false);
+    setModalNewBranchName(currentBranch || '');
     setModalType('push');
     setModalVisible(true);
   });
@@ -112,6 +117,7 @@ export function showPull(remotes, lastRemote) {
         ? remotes[0].name
         : '';
     setModalSelectedRemote(defaultRemote);
+    setModalPullStrategy('');
     setModalType('pull');
     setModalVisible(true);
   });

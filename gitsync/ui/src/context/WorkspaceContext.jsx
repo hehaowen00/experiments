@@ -27,6 +27,8 @@ import { createStashOps } from './ops/stash';
 import { createWorktreeOps } from './ops/worktrees';
 import { createFileHistoryOps } from './ops/file-history';
 import { createBisectOps } from './ops/bisect';
+import { createBuildCheckOps } from './ops/build-check';
+import { createContributorOps } from './ops/contributors';
 
 const WorkspaceContext = createContext();
 
@@ -68,12 +70,9 @@ export function WorkspaceProvider(props) {
 
   const [log, setLog] = createStore({
     commits: [],
-    graph: [],
-    maxCols: 0,
     loading: false,
     loadingMore: false,
     hasMore: true,
-    lanes: [],
   });
 
   const [remotes, setRemotes] = createStore({ list: [], loading: false });
@@ -109,11 +108,15 @@ export function WorkspaceProvider(props) {
   const [progressLine, setProgressLine] = createSignal('');
   const [outputLog, setOutputLog] = createSignal([]);
   const [outputOpen, setOutputOpen] = createSignal(false);
+  const OUTPUT_MAX_LEN = 500;
   function setOutput(msg, autoOpen) {
     if (!msg) return;
+    const text = msg.length > OUTPUT_MAX_LEN
+      ? msg.slice(0, OUTPUT_MAX_LEN) + '\n... (truncated)'
+      : msg;
     setOutputLog((prev) => {
-      const next = [{ text: msg, time: new Date() }, ...prev];
-      return next.length > 500 ? next.slice(0, 500) : next;
+      const next = [{ text, time: Date.now() }, ...prev];
+      return next.length > 200 ? next.slice(0, 200) : next;
     });
     if (autoOpen) setOutputOpen(true);
   }
@@ -152,6 +155,8 @@ export function WorkspaceProvider(props) {
   const [switcherQuery, setSwitcherQuery] = createSignal('');
   const [switcherRepos, setSwitcherRepos] = createSignal([]);
   const [switcherIndex, setSwitcherIndex] = createSignal(0);
+  const [diffMethod, setDiffMethod] = createSignal('auto');
+  const [difftAvailable, setDifftAvailable] = createSignal(null);
 
   // --- Core operations ---
   async function loadReadme() {
@@ -222,7 +227,7 @@ export function WorkspaceProvider(props) {
   }
 
   // --- Compose ops modules ---
-  const diffOps = createDiffOps({ repoPath, status, setDiff });
+  const diffOps = createDiffOps({ repoPath, status, setDiff, diffMethod });
 
   const stagingOps = createStagingOps({
     repoPath,
@@ -253,6 +258,15 @@ export function WorkspaceProvider(props) {
 
   const patchOps = createPatchOps({ repoPath, setOutput, refresh });
 
+  const buildCheckOps = createBuildCheckOps({
+    repoPath,
+    status,
+    setOperating,
+    setOutput,
+  });
+
+  const contributorOps = createContributorOps({ repoPath });
+
   const commitKey = `gitsync:commit:${repoPath}`;
   const commitOps = createCommitOps({
     repoPath,
@@ -271,6 +285,7 @@ export function WorkspaceProvider(props) {
     setOperating,
     setOutput,
     reloadRepo,
+    prePushBuildCheck: buildCheckOps.prePushBuildCheck,
   });
 
   const branchOps = createBranchOps({
@@ -354,7 +369,29 @@ export function WorkspaceProvider(props) {
 
   // --- Tab change ---
   function onTabChange(t) {
+    const prev = tab();
     setTab(t);
+
+    // Free heavy state when leaving tabs
+    if (prev === 'log' && t !== 'log') {
+      setCommitDetail({ hash: null, body: '', author: '', email: '', date: '', parents: [], files: [], loading: false });
+      setExpandedDetailFiles({});
+      setLog({ commits: [], loading: false, loadingMore: false, hasMore: true });
+    }
+    if (prev === 'changes' && t !== 'changes') {
+      setDiff({ content: '', filepath: null, staged: false, header: '', structural: false });
+      setStashDetail({ ref: null, files: [] });
+    }
+    if (prev === 'remotes' && t !== 'remotes') {
+      setRemotes({ list: [], loading: false });
+      setBranches({ list: [], loading: false });
+      setTags({ list: [], loading: false });
+      setWorktrees({ list: [], loading: false });
+    }
+    if (prev === 'contributors' && t !== 'contributors') {
+      contributorOps.clearContributors();
+    }
+
     if (t === 'log') {
       logOps.loadLog();
       logOps.loadLogBranches();
@@ -364,6 +401,9 @@ export function WorkspaceProvider(props) {
       loadBranches();
       tagOps.loadTags();
       worktreeOps.loadWorktrees();
+    }
+    if (t === 'contributors') {
+      contributorOps.loadContributors();
     }
     if (t === 'stashes') {
       stashOps.loadStashes();
@@ -456,6 +496,8 @@ export function WorkspaceProvider(props) {
 
   function closeSwitcher() {
     setSwitcherOpen(false);
+    setSwitcherRepos([]);
+    setSwitcherQuery('');
   }
 
   function filteredSwitcherRepos() {
@@ -534,7 +576,14 @@ export function WorkspaceProvider(props) {
   let removeFsListener;
   let removeProgressListener;
 
+  const onDiffMethodChanged = (e) => setDiffMethod(e.detail);
+
   onMount(() => {
+    window.api.getSetting('diffMethod').then((v) => {
+      if (v) setDiffMethod(v);
+    });
+    window.api.gitCheckDifft().then((v) => setDifftAvailable(v));
+    window.addEventListener('diffmethod-changed', onDiffMethodChanged);
     restoreCommitMessage();
     reloadRepo();
     stashOps.loadStashes();
@@ -562,6 +611,7 @@ export function WorkspaceProvider(props) {
   onCleanup(() => {
     saveCommitMessage();
     window.removeEventListener('beforeunload', saveCommitMessage);
+    window.removeEventListener('diffmethod-changed', onDiffMethodChanged);
     document.removeEventListener('click', dismissCtxMenu);
     window.api.gitUnwatchRepo(repoPath);
     if (removeFsListener) removeFsListener();
@@ -649,6 +699,8 @@ export function WorkspaceProvider(props) {
     ...worktreeOps,
     ...fileHistoryOps,
     ...bisectOps,
+    ...buildCheckOps,
+    ...contributorOps,
     initSubmodule,
     openSubmodule,
     onFileContextMenu,
@@ -661,6 +713,9 @@ export function WorkspaceProvider(props) {
     closeSwitcher,
     filteredSwitcherRepos,
     switcherSelect,
+    diffMethod,
+    setDiffMethod,
+    difftAvailable,
     identities,
     currentIdentity,
     setRepoIdentity,

@@ -141,11 +141,13 @@ const themes = {
 
 const THEME_KEY = 'gitsync-theme';
 
+const themeList = Object.entries(themes).map(([id, theme]) => ({
+  id,
+  name: theme.name,
+}));
+
 export function getThemeList() {
-  return Object.entries(themes).map(([id, theme]) => ({
-    id,
-    name: theme.name,
-  }));
+  return themeList;
 }
 
 export function getStoredThemeId() {

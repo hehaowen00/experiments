@@ -223,6 +223,52 @@ export function createBranchOps({
     loadBranches();
   }
 
+  async function doResetToBranch(ref) {
+    const choice = await showChoice(
+      `Reset to ${ref}`,
+      'Choose how to reset the current branch.',
+      [
+        {
+          label: 'Soft reset',
+          value: 'soft',
+          description: 'Keep changes staged',
+        },
+        {
+          label: 'Hard reset',
+          value: 'hard',
+          description: 'Discard all local changes and commits',
+          style: 'danger',
+        },
+      ],
+    );
+    if (!choice) return;
+
+    if (choice === 'hard') {
+      const confirmed = await showConfirm(
+        'Hard Reset',
+        `This will discard all local commits and changes. Reset to ${ref}?`,
+        { confirmLabel: 'Reset', confirmStyle: 'danger' },
+      );
+      if (!confirmed) return;
+    }
+
+    setOperating(`Resetting to ${ref}...`);
+    let result;
+    if (choice === 'soft') {
+      result = await window.api.gitResetSoftTo(repoPath, ref);
+    } else {
+      result = await window.api.gitResetHardTo(repoPath, ref);
+    }
+    setOperating('');
+    if (result.error) {
+      showAlert('Reset Failed', result.error);
+    } else {
+      setOutput(`Reset (${choice}) to ${ref}`);
+    }
+    await reloadRepo();
+    loadBranches();
+  }
+
   return {
     checkoutBranch,
     checkoutRemoteBranch,
@@ -231,5 +277,6 @@ export function createBranchOps({
     doPushBranch,
     doDeleteBranch,
     doRenameBranch,
+    doResetToBranch,
   };
 }

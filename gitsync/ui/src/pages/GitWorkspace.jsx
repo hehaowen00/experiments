@@ -10,6 +10,7 @@ import ChangesPanel from '../panels/ChangesPanel';
 import LogPanel from '../panels/LogPanel';
 import RemotesPanel from '../panels/RemotesPanel';
 import ReadmePanel from '../panels/ReadmePanel';
+import ContributorsPanel from '../panels/ContributorsPanel';
 
 function WorkspaceInner() {
   const ws = useWorkspace();
@@ -55,6 +56,9 @@ function WorkspaceInner() {
         </button>
         <button class={`git-tab ${ws.tab() === 'remotes' ? 'active' : ''}`} onClick={() => ws.onTabChange('remotes')}>
           Refs
+        </button>
+        <button class={`git-tab ${ws.tab() === 'contributors' ? 'active' : ''}`} onClick={() => ws.onTabChange('contributors')}>
+          Contributors
         </button>
         <Show when={ws.readme().content}>
           <button class={`git-tab ${ws.tab() === 'readme' ? 'active' : ''}`} onClick={() => ws.onTabChange('readme')}>
@@ -120,7 +124,7 @@ function WorkspaceInner() {
             </Show>
             <For each={ws.outputLog()}>{(entry) => (
               <div class="git-output-entry">
-                <span class="git-output-time">{entry.time.toLocaleTimeString()}</span>
+                <span class="git-output-time">{new Date(entry.time).toLocaleTimeString()}</span>
                 <pre class="git-output-text">{entry.text}</pre>
               </div>
             )}</For>
@@ -170,6 +174,9 @@ function WorkspaceInner() {
       </div>
       <div class="git-content" style={{ display: ws.tab() === 'remotes' ? '' : 'none' }}>
         <RemotesPanel />
+      </div>
+      <div class="git-content" style={{ display: ws.tab() === 'contributors' ? '' : 'none' }}>
+        <ContributorsPanel />
       </div>
       <div class="git-content" style={{ display: ws.tab() === 'readme' ? '' : 'none' }}>
         <ReadmePanel />

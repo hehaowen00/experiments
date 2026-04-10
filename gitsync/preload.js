@@ -1,30 +1,86 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+// --- Caching layer ---
+// Immutable caches (never change during app lifetime)
+let _homeDir = null;
+let _platform = null;
+let _difftAvailable = null;
+
+// Invalidate-on-write caches
+let _settings = null;
+let _identities = null;
+
+function clearIdentityCache() {
+  _identities = null;
+}
+
 contextBridge.exposeInMainWorld('api', {
   // Window controls
-  platform: () => ipcRenderer.invoke('app:platform'),
+  platform: () => {
+    if (_platform) return _platform;
+    _platform = ipcRenderer.invoke('app:platform');
+    return _platform;
+  },
   windowMinimize: () => ipcRenderer.invoke('window:minimize'),
   windowMaximize: () => ipcRenderer.invoke('window:maximize'),
   windowClose: () => ipcRenderer.invoke('window:close'),
 
-  // Settings
-  getSetting: (key) => ipcRenderer.invoke('settings:get', key),
-  getAllSettings: () => ipcRenderer.invoke('settings:getAll'),
-  setSetting: (key, value) => ipcRenderer.invoke('settings:set', key, value),
+  // Settings (cached, invalidated on set)
+  getSetting: async (key) => {
+    if (!_settings) {
+      _settings = await ipcRenderer.invoke('settings:getAll');
+    }
+    return _settings[key] ?? null;
+  },
+  getAllSettings: async () => {
+    if (!_settings) {
+      _settings = await ipcRenderer.invoke('settings:getAll');
+    }
+    return _settings;
+  },
+  setSetting: async (key, value) => {
+    const result = await ipcRenderer.invoke('settings:set', key, value);
+    if (_settings) _settings[key] = value;
+    return result;
+  },
   openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
   showItemInFolder: (fullPath) => ipcRenderer.invoke('shell:showItemInFolder', fullPath),
-  homeDir: () => ipcRenderer.invoke('app:homeDir'),
+  homeDir: () => {
+    if (_homeDir) return _homeDir;
+    _homeDir = ipcRenderer.invoke('app:homeDir');
+    return _homeDir;
+  },
 
-  // Git identities
-  identityList: () => ipcRenderer.invoke('identity:list'),
-  identityCreate: (data) => ipcRenderer.invoke('identity:create', data),
-  identityUpdate: (id, data) => ipcRenderer.invoke('identity:update', id, data),
-  identityDelete: (id) => ipcRenderer.invoke('identity:delete', id),
+  // Git identities (cached, invalidated on mutations)
+  identityList: async () => {
+    if (_identities) return _identities;
+    _identities = await ipcRenderer.invoke('identity:list');
+    return _identities;
+  },
+  identityCreate: async (data) => {
+    const result = await ipcRenderer.invoke('identity:create', data);
+    clearIdentityCache();
+    return result;
+  },
+  identityUpdate: async (id, data) => {
+    const result = await ipcRenderer.invoke('identity:update', id, data);
+    clearIdentityCache();
+    return result;
+  },
+  identityDelete: async (id) => {
+    const result = await ipcRenderer.invoke('identity:delete', id);
+    clearIdentityCache();
+    return result;
+  },
   identityGetForRepo: (repoId) => ipcRenderer.invoke('identity:getForRepo', repoId),
   identitySetForRepo: (repoId, identityId, repoPath) => ipcRenderer.invoke('identity:setForRepo', repoId, identityId, repoPath),
   gitGetLocalIdentity: (repoPath) => ipcRenderer.invoke('git:getLocalIdentity', repoPath),
   gitGetGlobalIdentity: () => ipcRenderer.invoke('git:getGlobalIdentity'),
-  identityImport: (data) => ipcRenderer.invoke('identity:import', data),
+  identityImport: async (data) => {
+    const result = await ipcRenderer.invoke('identity:import', data);
+    clearIdentityCache();
+    return result;
+  },
 
   // Git Client - saved repos
   gitRepoList: () => ipcRenderer.invoke('gitRepo:list'),
@@ -48,8 +104,14 @@ contextBridge.exposeInMainWorld('api', {
   gitPickCloneFolder: () => ipcRenderer.invoke('git:pickCloneFolder'),
   gitInit: (dirPath) => ipcRenderer.invoke('git:init', dirPath),
   gitClone: (url, parentDir, dirName) => ipcRenderer.invoke('git:clone', url, parentDir, dirName),
+  gitStatusBrief: (repoPath) => ipcRenderer.invoke('git:statusBrief', repoPath),
   gitStatus: (repoPath) => ipcRenderer.invoke('git:status', repoPath),
   gitRevParseHead: (repoPath) => ipcRenderer.invoke('git:revParseHead', repoPath),
+  gitCheckDifft: () => {
+    if (_difftAvailable) return _difftAvailable;
+    _difftAvailable = ipcRenderer.invoke('git:checkDifft');
+    return _difftAvailable;
+  },
   gitDiffStructural: (repoPath, filepath, staged) => ipcRenderer.invoke('git:diffStructural', repoPath, filepath, staged),
   gitDiff: (repoPath, filepath, staged) => ipcRenderer.invoke('git:diff', repoPath, filepath, staged),
   gitDiffRaw: (repoPath, filepath, staged) => ipcRenderer.invoke('git:diffRaw', repoPath, filepath, staged),
@@ -67,6 +129,7 @@ contextBridge.exposeInMainWorld('api', {
   gitCommitAmend: (repoPath, message) => ipcRenderer.invoke('git:commitAmend', repoPath, message),
   gitResetSoftHead: (repoPath) => ipcRenderer.invoke('git:resetSoftHead', repoPath),
   gitResetSoftTo: (repoPath, hash) => ipcRenderer.invoke('git:resetSoftTo', repoPath, hash),
+  gitResetHardTo: (repoPath, ref) => ipcRenderer.invoke('git:resetHardTo', repoPath, ref),
   gitLog: (repoPath, count, allBranches, branchName, skip, search, topoOrder) => ipcRenderer.invoke('git:log', repoPath, count, allBranches, branchName, skip, search, topoOrder),
   gitPull: (repoPath, strategy, remote) => ipcRenderer.invoke('git:pull', repoPath, strategy, remote),
   gitPush: (repoPath, remote) => ipcRenderer.invoke('git:push', repoPath, remote),
@@ -147,6 +210,14 @@ contextBridge.exposeInMainWorld('api', {
   gitWorktreeAdd: (repoPath, wtPath, branch, newBranch) => ipcRenderer.invoke('git:worktreeAdd', repoPath, wtPath, branch, newBranch),
   gitWorktreeRemove: (repoPath, wtPath, force) => ipcRenderer.invoke('git:worktreeRemove', repoPath, wtPath, force),
   gitWorktreePrune: (repoPath) => ipcRenderer.invoke('git:worktreePrune', repoPath),
+
+  // Build check
+  gitBuildCheck: (repoPath) => ipcRenderer.invoke('git:buildCheck', repoPath),
+
+  // Contributors
+  gitContributors: (repoPath) => ipcRenderer.invoke('git:contributors', repoPath),
+  gitContributorActivity: (repoPath, email) => ipcRenderer.invoke('git:contributorActivity', repoPath, email),
+  gitRepoActivity: (repoPath) => ipcRenderer.invoke('git:repoActivity', repoPath),
 
   // Images
   gitImageBlob: (repoPath, filepath, ref) => ipcRenderer.invoke('git:imageBlob', repoPath, filepath, ref),

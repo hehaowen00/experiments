@@ -1,8 +1,7 @@
 import { produce } from 'solid-js/store';
-import { buildGraph, resetGraphColors } from '../../utils/graph';
 
 const LOG_PAGE_SIZE = 100;
-const LOG_MAX_COMMITS = 5000;
+const LOG_MAX_COMMITS = 2000;
 
 export function createLogOps({
   repoPath,
@@ -37,13 +36,8 @@ export function createLogOps({
     if (!result.error) {
       const hasMore = result.commits.length > count;
       const commits = hasMore ? result.commits.slice(0, count) : result.commits;
-      resetGraphColors();
-      const { graph, maxCols, lanes } = buildGraph(commits, []);
       setLog({
         commits,
-        graph,
-        maxCols,
-        lanes,
         loading: false,
         loadingMore: false,
         hasMore,
@@ -78,22 +72,13 @@ export function createLogOps({
         setLog({ loadingMore: false, hasMore: false });
         return;
       }
-      const {
-        graph: newGraph,
-        maxCols: newMaxCols,
-        lanes,
-      } = buildGraph(newCommits, log.lanes);
       const atLimit = log.commits.length + newCommits.length >= LOG_MAX_COMMITS;
       const remaining = LOG_MAX_COMMITS - log.commits.length;
       setLog(produce((s) => {
         const toAdd = atLimit ? newCommits.slice(0, remaining) : newCommits;
-        const graphToAdd = atLimit ? newGraph.slice(0, remaining) : newGraph;
         for (let i = 0; i < toAdd.length; i++) {
           s.commits.push(toAdd[i]);
-          s.graph.push(graphToAdd[i]);
         }
-        s.maxCols = Math.max(s.maxCols, newMaxCols);
-        s.lanes = lanes;
         s.loadingMore = false;
         s.hasMore = !atLimit && hasMore;
       }));
@@ -167,7 +152,7 @@ export function createLogOps({
       isMerge,
     );
     if (!result.error) {
-      setExpandedDetailFiles((prev) => ({ ...prev, [filepath]: result.diff }));
+      setExpandedDetailFiles({ [filepath]: result.diff });
     }
   }
 

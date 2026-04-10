@@ -76,71 +76,59 @@
 
 .git-log-panel {
   flex: 1;
-  overflow: auto;
+  overflow-y: scroll;
+  overflow-x: hidden;
   padding: 0;
 }
 
-.git-log-table {
-  width: 100%;
-  table-layout: fixed;
-  border-collapse: collapse;
-  font-size: var(--ui-font-size-sm);
-}
-
-.git-log-table thead {
+.git-log-header-row {
+  display: flex;
   position: sticky;
   top: 0;
   z-index: 2;
-}
-
-.git-log-table th {
-  text-align: left;
-  padding: 6px 10px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
+  font-size: var(--ui-font-size-xs);
   color: var(--text-dim);
   font-weight: 600;
-  font-size: var(--ui-font-size-xs);
 }
 
-.git-log-table td {
-  padding: 0 10px;
+.git-log-header-row .git-log-col {
+  padding: 6px 10px;
+}
+
+.git-log-virtual {
+  position: relative;
+  width: 100%;
+  min-height: 100%;
+  font-size: var(--ui-font-size-sm);
+}
+
+.git-log-row {
+  display: flex;
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 24px;
+  cursor: pointer;
   border-bottom: 1px solid color-mix(in srgb, var(--border) 40%, transparent);
+}
+
+.git-log-row:hover {
+  background: var(--surface);
+}
+
+.git-log-col {
+  padding: 0 10px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  height: 24px;
-}
-
-.git-log-table tr:hover td {
-  background: var(--surface);
-}
-
-.git-log-graph,
-.git-log-graph-cell {
-  overflow: visible !important;
-  border-bottom: none !important;
-  position: relative;
-}
-
-.git-log-graph-cell {
-  padding: 0 !important;
-  line-height: 0;
-}
-
-th.git-log-graph {
-  padding: 6px 10px 6px 10px;
-}
-
-.git-graph-svg {
-  display: block;
-  position: relative;
-  z-index: 1;
-  shape-rendering: geometricPrecision;
+  line-height: 24px;
 }
 
 .git-log-hash {
   width: 80px;
+  flex-shrink: 0;
 }
 
 .git-log-hash code {
@@ -150,18 +138,27 @@ th.git-log-graph {
 }
 
 .git-log-subject {
-  max-width: 0;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
+}
+
+.git-log-author {
+  width: 12ch;
+  flex-shrink: 0;
+}
+
+.git-log-date {
+  width: 110px;
+  flex-shrink: 0;
 }
 
 .git-log-ref {
-  display: inline-block;
-  padding: 1px 6px;
+  display: inline;
+  padding: 0 5px;
   border-radius: 3px;
   font-size: var(--ui-font-size-xs);
   margin-right: 4px;
   white-space: nowrap;
-  vertical-align: middle;
 }
 
 .git-ref-head {
@@ -185,13 +182,11 @@ th.git-log-graph {
   color: white;
 }
 
-.git-log-author {
-  width: 140px;
+.git-log-col.git-log-author {
   color: var(--text-dim);
 }
 
-.git-log-date {
-  width: 160px;
+.git-log-col.git-log-date {
   color: var(--text-dim);
   font-size: var(--ui-font-size-xs);
   font-family: var(--font-mono);
@@ -216,10 +211,6 @@ th.git-log-graph {
 .git-log-split > .git-log-panel {
   flex: 1;
   min-width: 0;
-}
-
-.git-log-table tbody tr:hover {
-  background: var(--bg-hover);
 }
 
 .git-log-row-selected {

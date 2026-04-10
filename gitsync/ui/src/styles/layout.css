@@ -192,6 +192,16 @@ input, textarea {
   color: var(--accent-hover);
 }
 
+.btn-build-check {
+  background: transparent;
+  color: var(--warning);
+}
+
+.btn-build-check:hover {
+  color: var(--warning);
+  filter: brightness(1.2);
+}
+
 .btn-ghost {
   background: transparent;
   color: var(--text-dim);
@@ -288,6 +298,21 @@ input, textarea {
   color: var(--text-dim);
   margin-bottom: 8px;
   letter-spacing: 0.5px;
+}
+
+.settings-hint {
+  font-weight: 400;
+  font-size: 0.85em;
+  margin-left: 8px;
+  letter-spacing: 0;
+}
+
+.settings-hint-ok {
+  color: var(--success);
+}
+
+.settings-hint-warn {
+  color: var(--warning);
 }
 
 .settings-select {

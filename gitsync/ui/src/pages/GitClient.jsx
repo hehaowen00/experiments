@@ -52,9 +52,9 @@ export default function GitClient(props) {
     loadRepoStatuses(repos);
   }
 
-  async function loadRepoStatuses(repos) {
+  function loadRepoStatuses(repos) {
     for (const repo of repos) {
-      window.api.gitStatus(repo.path).then((result) => {
+      window.api.gitStatusBrief(repo.path).then((result) => {
         if (!result.error) {
           setRepoStatus(repo.id, {
             branch: result.branch,

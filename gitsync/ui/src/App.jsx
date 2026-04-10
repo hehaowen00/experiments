@@ -1,18 +1,14 @@
-import { createSignal, For, Show, onMount } from 'solid-js';
+import { createSignal, For, Show, onMount, onCleanup } from 'solid-js';
 import GitClient from './pages/GitClient';
 import GitWorkspace from './pages/GitWorkspace';
 import Modal from './components/Modal';
 import Icon from './lib/Icon';
 
+const isMac = navigator.platform.startsWith('Mac');
+
 export default function App() {
   const [tabs, setTabs] = createSignal([]);
   const [activeTab, setActiveTab] = createSignal(null); // null = landing
-  const [isMac, setIsMac] = createSignal(true);
-
-  onMount(async () => {
-    const platform = await window.api.platform();
-    setIsMac(platform === 'darwin');
-  });
 
   function openGit(repoData) {
     const existing = tabs().find((t) => t.path === repoData.path);
@@ -24,10 +20,10 @@ export default function App() {
     setActiveTab(repoData.path);
   }
 
-  function closeTab(e, path) {
-    e.stopPropagation();
+  function closeTabByPath(path) {
     const current = tabs();
     const idx = current.findIndex((t) => t.path === path);
+    if (idx === -1) return;
     const next = current.filter((t) => t.path !== path);
     setTabs(next);
     if (activeTab() === path) {
@@ -39,6 +35,30 @@ export default function App() {
       }
     }
   }
+
+  function closeTab(e, path) {
+    e.stopPropagation();
+    closeTabByPath(path);
+  }
+
+  function onKeyDown(e) {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'w') {
+      e.preventDefault();
+      const active = activeTab();
+      if (active) {
+        closeTabByPath(active);
+      } else {
+        window.api.windowClose();
+      }
+    }
+    if ((e.metaKey || e.ctrlKey) && e.key === 't') {
+      e.preventDefault();
+      goHome();
+    }
+  }
+
+  onMount(() => document.addEventListener('keydown', onKeyDown));
+  onCleanup(() => document.removeEventListener('keydown', onKeyDown));
 
   function switchRepo(repoData) {
     openGit(repoData);
@@ -104,7 +124,7 @@ export default function App() {
     <div style={{ display: 'flex', 'flex-direction': 'column', height: '100vh', overflow: 'hidden' }}>
       {/* Tab bar */}
       <div class="app-tabbar">
-        <Show when={isMac()}>
+        <Show when={isMac}>
           <div class="titlebar-traffic-light-spacer" />
         </Show>
         <div class="app-tabs">
@@ -149,7 +169,7 @@ export default function App() {
             <Icon name="fa-solid fa-plus" />
           </button>
         </div>
-        <Show when={!isMac()}>
+        <Show when={!isMac}>
           <div class="titlebar-controls">
             <button class="titlebar-btn" onClick={() => window.api.windowMinimize()}>
               <Icon name="fa-solid fa-minus" />

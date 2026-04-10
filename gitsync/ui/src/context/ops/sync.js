@@ -6,6 +6,7 @@ export function createSyncOps({
   setOperating,
   setOutput,
   reloadRepo,
+  prePushBuildCheck,
 }) {
   let lastRemote = null;
 
@@ -36,12 +37,10 @@ export function createSyncOps({
         showAlert('No Remotes', 'No remotes configured for this repository.');
         return;
       }
-      if (remoteList.length === 1) {
-        remote = remoteList[0].name;
-      } else {
-        remote = await showPull(remoteList, lastRemote);
-        if (!remote) return;
-      }
+      const choice = await showPull(remoteList, lastRemote);
+      if (!choice) return;
+      remote = choice.remote;
+      if (!strategy) strategy = choice.strategy;
     }
     lastRemote = remote;
 
@@ -55,12 +54,6 @@ export function createSyncOps({
           'Local and remote branches have diverged.',
           [
             {
-              label: 'Fast-forward only',
-              value: 'ff-only',
-              description:
-                'Fail if not possible without creating a merge commit',
-            },
-            {
               label: 'Rebase',
               value: 'rebase',
               description:
@@ -71,6 +64,12 @@ export function createSyncOps({
               value: 'merge',
               description:
                 'Create a merge commit combining both histories',
+            },
+            {
+              label: 'Fast-forward only',
+              value: 'ff-only',
+              description:
+                'Fail if not possible without creating a merge commit',
             },
           ],
         );
@@ -85,6 +84,11 @@ export function createSyncOps({
   }
 
   async function doPush() {
+    if (prePushBuildCheck) {
+      const proceed = await prePushBuildCheck();
+      if (!proceed) return;
+    }
+
     const remoteResult = await window.api.gitRemoteList(repoPath);
     const remoteList = remoteResult.remotes || [];
     if (remoteList.length === 0) {
@@ -92,9 +96,9 @@ export function createSyncOps({
       return;
     }
 
-    const choice = await showPush(remoteList, lastRemote);
+    const choice = await showPush(remoteList, lastRemote, status.branch);
     if (!choice) return;
-    const { remote, force } = choice;
+    const { remote, force, newBranch } = choice;
     lastRemote = remote;
 
     if (force) {
@@ -107,32 +111,38 @@ export function createSyncOps({
       return;
     }
 
-    // Auto-pull before pushing; abort if remote had new changes
-    const headBefore = await window.api.gitRevParseHead(repoPath);
-    setOperating('Pulling...');
-    const pullResult = await window.api.gitPull(repoPath, null, remote);
-    setOperating('');
-    if (pullResult.error) {
-      showAlert('Pull Failed', pullResult.error);
-      await reloadRepo();
-      return;
-    }
-    const headAfter = await window.api.gitRevParseHead(repoPath);
-    if (!headBefore.error && !headAfter.error && headBefore.hash !== headAfter.hash) {
-      setOutput('Pull brought in new changes — push aborted. Review the changes before pushing again.');
-      await reloadRepo();
-      return;
-    }
-
     setOperating('Pushing...');
     let result;
-    if (!status.upstream && status.branch) {
+    if (newBranch) {
+      result = await window.api.gitPushSetUpstream(
+        repoPath,
+        remote,
+        newBranch,
+      );
+    } else if (!status.upstream && status.branch) {
       result = await window.api.gitPushSetUpstream(
         repoPath,
         remote,
         status.branch,
       );
     } else {
+      const headBefore = await window.api.gitRevParseHead(repoPath);
+      setOperating('Pulling...');
+      const pullResult = await window.api.gitPull(repoPath, null, remote);
+      setOperating('');
+      if (pullResult.error) {
+        showAlert('Pull Failed', pullResult.error);
+        await reloadRepo();
+        return;
+      }
+      const headAfter = await window.api.gitRevParseHead(repoPath);
+      if (!headBefore.error && !headAfter.error && headBefore.hash !== headAfter.hash) {
+        setOutput('Pull brought in new changes — push aborted. Review the changes before pushing again.');
+        await reloadRepo();
+        return;
+      }
+
+      setOperating('Pushing...');
       result = await window.api.gitPush(repoPath, remote);
     }
     setOperating('');

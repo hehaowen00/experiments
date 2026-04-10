@@ -397,7 +397,7 @@
 /* Resize handles for split panes */
 .git-resize-handle {
   flex-shrink: 0;
-  background: transparent;
+  background: var(--border);
   position: relative;
   z-index: 10;
   transition: background 0.15s;
@@ -409,12 +409,12 @@
 }
 
 .git-resize-handle-col {
-  width: 4px;
+  width: 2px;
   cursor: col-resize;
 }
 
 .git-resize-handle-row {
-  height: 4px;
+  height: 2px;
   cursor: row-resize;
 }
 
@@ -865,7 +865,7 @@
   cursor: pointer;
 }
 
-.git-commit-actions .btn {
+.git-commit-actions .btn:first-of-type {
   margin-left: auto;
 }
 
@@ -926,6 +926,8 @@
   padding: 4px 8px;
   min-width: 100%;
   display: inline-block;
+  user-select: text;
+  cursor: text;
 }
 
 .git-diff-line {

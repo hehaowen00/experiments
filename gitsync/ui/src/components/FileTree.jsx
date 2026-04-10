@@ -95,6 +95,9 @@ function FileTreeNode(props) {
           <div
             class={`git-file-item ${ws.diff.filepath === filepath ? 'active' : ''} ${file.isGitRepo ? 'git-nested-repo' : ''} ${isClean ? 'git-file-clean' : ''}`}
             style={{ 'padding-left': `${props.depth * 16 + 4}px` }}
+            data-filepath={filepath}
+            data-section={props.section}
+            data-staged={isStaged() ? '1' : ''}
             onClick={() => !file.isGitRepo && !isClean && ws.viewDiff(filepath, isStaged())}
             onContextMenu={(e) => !isClean && ws.onFileContextMenu(e, filepath, props.section)}
           >
@@ -106,26 +109,26 @@ function FileTreeNode(props) {
             <Show when={!isClean}>
               <span class="git-file-actions">
                 {isStaged() && (
-                  <button class="btn btn-ghost btn-xs" onClick={(e) => { e.stopPropagation(); ws.unstageFile(filepath); }} title="Unstage">
+                  <button class="btn btn-ghost btn-xs" data-action="unstage" data-path={filepath} title="Unstage">
                     <Icon name="fa-solid fa-minus" />
                   </button>
                 )}
                 {!isStaged() && !isUntracked() && (
                   <>
-                    <button class="btn btn-ghost btn-xs" onClick={(e) => { e.stopPropagation(); ws.stageFile(filepath); }} title="Stage">
+                    <button class="btn btn-ghost btn-xs" data-action="stage" data-path={filepath} title="Stage">
                       <Icon name="fa-solid fa-plus" />
                     </button>
-                    <button class="btn btn-ghost btn-xs btn-danger-hover" onClick={(e) => { e.stopPropagation(); ws.discardFile(filepath); }} title="Discard">
+                    <button class="btn btn-ghost btn-xs btn-danger-hover" data-action="discard" data-path={filepath} title="Discard">
                       <Icon name="fa-solid fa-xmark" />
                     </button>
                   </>
                 )}
                 {isUntracked() && (
                   <>
-                    <button class="btn btn-ghost btn-xs" onClick={(e) => { e.stopPropagation(); ws.stageFile(filepath); }} title="Stage">
+                    <button class="btn btn-ghost btn-xs" data-action="stage" data-path={filepath} title="Stage">
                       <Icon name="fa-solid fa-plus" />
                     </button>
-                    <button class="btn btn-ghost btn-xs btn-danger-hover" onClick={(e) => { e.stopPropagation(); ws.deleteUntrackedFiles([filepath]); }} title="Delete">
+                    <button class="btn btn-ghost btn-xs btn-danger-hover" data-action="delete" data-path={filepath} title="Delete">
                       <Icon name="fa-solid fa-xmark" />
                     </button>
                   </>
@@ -140,10 +143,32 @@ function FileTreeNode(props) {
 }
 
 export default function FileTree(props) {
+  const ws = useWorkspace();
   const tree = createMemo(() => compactTree(buildTree(props.getFiles())));
+
+  // Event delegation: handle file-level button clicks from a single handler
+  function onTreeClick(e) {
+    const btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    e.stopPropagation();
+
+    const action = btn.dataset.action;
+    const path = btn.dataset.path;
+    if (!path) return;
+
+    switch (action) {
+      case 'stage': ws.stageFile(path); break;
+      case 'unstage': ws.unstageFile(path); break;
+      case 'discard': ws.discardFile(path); break;
+      case 'delete': ws.deleteUntrackedFiles([path]); break;
+    }
+  }
+
   return (
-    <Show when={tree()}>
-      {(t) => <FileTreeNode node={t()} section={props.section} depth={0} parentPath="" />}
-    </Show>
+    <div onClick={onTreeClick}>
+      <Show when={tree()}>
+        {(t) => <FileTreeNode node={t()} section={props.section} depth={0} parentPath="" />}
+      </Show>
+    </div>
   );
 }

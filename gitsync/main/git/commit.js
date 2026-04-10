@@ -45,6 +45,15 @@ function register({ mainWindow, git, gitRaw }) {
     }
   });
 
+  ipcMain.handle('git:resetHardTo', async (_, repoPath, ref) => {
+    try {
+      await git(repoPath, ['reset', '--hard', ref]);
+      return { ok: true };
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
+
   ipcMain.handle('git:show', async (_, repoPath, hash) => {
     try {
       const fmt = '%H%x00%B%x00%an%x00%ae%x00%at%x00%P';

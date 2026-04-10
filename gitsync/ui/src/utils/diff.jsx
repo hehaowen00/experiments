@@ -1,4 +1,4 @@
-import { For, Show, createSignal, createMemo, onMount } from 'solid-js';
+import { For, Show, createSignal, createMemo, onMount, onCleanup } from 'solid-js';
 import Icon from '../lib/Icon';
 
 const IMAGE_EXTS = new Set([
@@ -9,6 +9,15 @@ export function isImageFile(filepath) {
   if (!filepath) return false;
   const ext = filepath.split('.').pop().toLowerCase();
   return IMAGE_EXTS.has(ext);
+}
+
+function dataUrlToObjectUrl(dataUrl) {
+  const [header, b64] = dataUrl.split(',');
+  const mime = header.match(/:(.*?);/)[1];
+  const bytes = atob(b64);
+  const arr = new Uint8Array(bytes.length);
+  for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+  return URL.createObjectURL(new Blob([arr], { type: mime }));
 }
 
 export function ImagePreview(props) {
@@ -22,7 +31,12 @@ export function ImagePreview(props) {
       props.gitRef || null,
     );
     if (result.error) setError(result.error);
-    else setSrc(result.data);
+    else setSrc(dataUrlToObjectUrl(result.data));
+  });
+
+  onCleanup(() => {
+    const url = src();
+    if (url) URL.revokeObjectURL(url);
   });
 
   return (
