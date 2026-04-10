@@ -4,6 +4,7 @@ import Select from '../lib/Select';
 import ResizeHandle from '../lib/ResizeHandle';
 import { useWorkspace } from '../context/WorkspaceContext';
 import { DiffLines, isImageFile, ImagePreview } from '../utils/diff';
+import { buildGraph, GraphCell } from '../utils/graph';
 
 const ROW_HEIGHT = 24;
 const OVERSCAN = 10;
@@ -100,6 +101,8 @@ export default function LogPanel() {
     return ws.log.commits.slice(start, end);
   });
 
+  const graphData = createMemo(() => buildGraph(ws.log.commits));
+
   const totalHeight = () => ws.log.commits.length * ROW_HEIGHT;
 
   function onSearchInput(value) {
@@ -195,12 +198,20 @@ export default function LogPanel() {
                   >
                     <span class="git-log-col git-log-hash"><code onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(c.hash); }} title="Click to copy full hash">{c.short}</code></span>
                     <span class="git-log-col git-log-subject">
-                      <Show when={c.refs}>
-                        <For each={parseRefs(c.refs)}>{(ref) => (
-                          <span class={`git-log-ref ${ref.type}`}>{ref.name}</span>
-                        )}</For>
+                      <Show when={graphData().rows[rowIdx()]}>
+                        <GraphCell
+                          row={graphData().rows[rowIdx()]}
+                          height={ROW_HEIGHT}
+                        />
                       </Show>
-                      {c.subject}
+                      <span class="git-log-subject-text">
+                        <Show when={c.refs}>
+                          <For each={parseRefs(c.refs)}>{(ref) => (
+                            <span class={`git-log-ref ${ref.type}`}>{ref.name}</span>
+                          )}</For>
+                        </Show>
+                        {c.subject}
+                      </span>
                     </span>
                     <span class="git-log-col git-log-author">{c.author}</span>
                     <span class="git-log-col git-log-date">{fmtDate(c.date)}</span>

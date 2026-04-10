@@ -15,10 +15,9 @@ function register({ mainWindow, git, gitRaw }) {
   ipcMain.handle('git:buildCheck', async (_, repoPath) => {
     // Detect project type
     const hasGoMod = fs.existsSync(path.join(repoPath, 'go.mod'));
-    const hasPkgJson = fs.existsSync(path.join(repoPath, 'package.json'));
 
-    if (!hasGoMod && !hasPkgJson) {
-      return { error: 'No go.mod or package.json found — cannot detect build system' };
+    if (!hasGoMod) {
+      return { error: 'No go.mod found — cannot detect build system' };
     }
 
     // Check if there are staged changes
@@ -37,12 +36,7 @@ function register({ mainWindow, git, gitRaw }) {
     }
 
     try {
-      let result;
-      if (hasGoMod) {
-        result = await run('go', ['test', '-v', './...'], repoPath);
-      } else {
-        result = await run('npm', ['run', 'build'], repoPath);
-      }
+      const result = await run('go', ['test', '-v', './...'], repoPath);
 
       const ok = result.exitCode === 0;
       const output = (result.stdout + '\n' + result.stderr).trim();

@@ -39,6 +39,7 @@ export function createBuildCheckOps({
       return await showConfirm(
         'Build check failed',
         'Push anyway?',
+        { confirmLabel: 'Push', confirmStyle: 'primary' },
       );
     }
     return true;
