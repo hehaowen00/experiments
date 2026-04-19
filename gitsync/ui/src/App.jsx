@@ -2,9 +2,8 @@ import { createSignal, For, Show, onMount, onCleanup } from 'solid-js';
 import GitClient from './pages/GitClient';
 import GitWorkspace from './pages/GitWorkspace';
 import Modal from './components/Modal';
+import Toast from './components/Toast';
 import Icon from './lib/Icon';
-
-const isMac = navigator.platform.startsWith('Mac');
 
 export default function App() {
   const [tabs, setTabs] = createSignal([]);
@@ -71,52 +70,51 @@ export default function App() {
 
   // --- Tab drag reorder ---
   let dragTabPath = null;
-  const [dropIndicator, setDropIndicator] = createSignal(null);
 
+  let dragImageEl;
   function onTabDragStart(e, path) {
     dragTabPath = path;
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', path);
+    if (!dragImageEl) {
+      dragImageEl = document.createElement('div');
+      dragImageEl.style.cssText = 'position:absolute;top:-9999px;width:1px;height:1px;';
+      document.body.appendChild(dragImageEl);
+    }
+    e.dataTransfer.setDragImage(dragImageEl, 0, 0);
     e.currentTarget.classList.add('dragging');
   }
 
   function onTabDragEnd(e) {
     e.currentTarget.classList.remove('dragging');
     dragTabPath = null;
-    setDropIndicator(null);
   }
 
   function onTabDragOver(e, path) {
     if (!dragTabPath || dragTabPath === path) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
-    const rect = e.currentTarget.getBoundingClientRect();
-    const mid = rect.left + rect.width / 2;
-    setDropIndicator({ path, side: e.clientX < mid ? 'left' : 'right' });
-  }
 
-  function onTabDragLeave() {
-    setDropIndicator(null);
-  }
-
-  function onTabDrop(e, targetPath) {
-    e.preventDefault();
-    setDropIndicator(null);
-    if (!dragTabPath || dragTabPath === targetPath) return;
-
-    const current = [...tabs()];
+    const current = tabs();
     const fromIdx = current.findIndex((t) => t.path === dragTabPath);
-    const toIdx = current.findIndex((t) => t.path === targetPath);
+    const toIdx = current.findIndex((t) => t.path === path);
     if (fromIdx === -1 || toIdx === -1) return;
 
     const rect = e.currentTarget.getBoundingClientRect();
     const mid = rect.left + rect.width / 2;
-    let insertIdx = e.clientX < mid ? toIdx : toIdx + 1;
+    const insertBefore = e.clientX < mid;
+    let insertIdx = insertBefore ? toIdx : toIdx + 1;
     if (fromIdx < insertIdx) insertIdx--;
+    if (fromIdx === insertIdx) return;
 
-    const [moved] = current.splice(fromIdx, 1);
-    current.splice(insertIdx, 0, moved);
-    setTabs(current);
+    const next = [...current];
+    const [moved] = next.splice(fromIdx, 1);
+    next.splice(insertIdx, 0, moved);
+    setTabs(next);
+  }
+
+  function onTabDrop(e) {
+    e.preventDefault();
     dragTabPath = null;
   }
 
@@ -124,9 +122,6 @@ export default function App() {
     <div style={{ display: 'flex', 'flex-direction': 'column', height: '100vh', overflow: 'hidden' }}>
       {/* Tab bar */}
       <div class="app-tabbar">
-        <Show when={isMac}>
-          <div class="titlebar-traffic-light-spacer" />
-        </Show>
         <div class="app-tabs">
           <button
             class={`app-tab ${activeTab() === null ? 'active' : ''}`}
@@ -138,18 +133,13 @@ export default function App() {
           <For each={tabs()}>{(tab) => (
             <button
               class={`app-tab ${activeTab() === tab.path ? 'active' : ''}`}
-              classList={{
-                'drag-over-left': dropIndicator()?.path === tab.path && dropIndicator()?.side === 'left',
-                'drag-over-right': dropIndicator()?.path === tab.path && dropIndicator()?.side === 'right',
-              }}
               onClick={() => setActiveTab(tab.path)}
               title={tab.path}
               draggable="true"
               onDragStart={(e) => onTabDragStart(e, tab.path)}
               onDragEnd={onTabDragEnd}
               onDragOver={(e) => onTabDragOver(e, tab.path)}
-              onDragLeave={onTabDragLeave}
-              onDrop={(e) => onTabDrop(e, tab.path)}
+              onDrop={onTabDrop}
             >
               <Icon name="fa-solid fa-code-branch" />
               <span>{tab.name}</span>
@@ -169,19 +159,17 @@ export default function App() {
             <Icon name="fa-solid fa-plus" />
           </button>
         </div>
-        <Show when={!isMac}>
-          <div class="titlebar-controls">
-            <button class="titlebar-btn" onClick={() => window.api.windowMinimize()}>
-              <Icon name="fa-solid fa-minus" />
-            </button>
-            <button class="titlebar-btn" onClick={() => window.api.windowMaximize()}>
-              <Icon name="fa-regular fa-square" />
-            </button>
-            <button class="titlebar-btn titlebar-btn-close" onClick={() => window.api.windowClose()}>
-              <Icon name="fa-solid fa-xmark" />
-            </button>
-          </div>
-        </Show>
+        <div class="titlebar-controls">
+          <button class="titlebar-btn" onClick={() => window.api.windowMinimize()}>
+            <Icon name="fa-solid fa-minus" />
+          </button>
+          <button class="titlebar-btn" onClick={() => window.api.windowMaximize()}>
+            <Icon name="fa-regular fa-square" />
+          </button>
+          <button class="titlebar-btn titlebar-btn-close" onClick={() => window.api.windowClose()}>
+            <Icon name="fa-solid fa-xmark" />
+          </button>
+        </div>
       </div>
 
       {/* Landing page */}
@@ -210,6 +198,7 @@ export default function App() {
           />
         </div>
       )}</For>
+      <Toast />
     </div>
   );
 }

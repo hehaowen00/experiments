@@ -40,8 +40,6 @@ export default function Modal() {
   const [selectedTheme, setSelectedTheme] = createSignal(getStoredThemeId());
   const [uiFontSize, setUiFontSize] = createSignal(14);
   const [editorFontSize, setEditorFontSize] = createSignal(12);
-  const [diffMethod, setDiffMethod] = createSignal('auto');
-  const [difftAvailable, setDifftAvailable] = createSignal(null);
 
   // Identity management
   const [identities, setIdentities] = createStore([]);
@@ -55,9 +53,7 @@ export default function Modal() {
       window.api.getAllSettings().then((s) => {
         if (s.uiFontSize) setUiFontSize(parseInt(s.uiFontSize));
         if (s.editorFontSize) setEditorFontSize(parseInt(s.editorFontSize));
-        if (s.diffMethod) setDiffMethod(s.diffMethod);
       });
-      window.api.gitCheckDifft().then((v) => setDifftAvailable(v));
       window.api.identityList().then((list) => setIdentities(list));
     }
   });
@@ -66,6 +62,10 @@ export default function Modal() {
     setEditingIdentity(null);
     setIdentityName('');
     setIdentityEmail('');
+  }
+
+  function notifyIdentitiesChanged() {
+    window.dispatchEvent(new CustomEvent('identities-changed'));
   }
 
   async function saveIdentity() {
@@ -80,6 +80,7 @@ export default function Modal() {
     const list = await window.api.identityList();
     setIdentities(list);
     resetIdentityForm();
+    notifyIdentitiesChanged();
   }
 
   function startEditIdentity(id) {
@@ -95,6 +96,7 @@ export default function Modal() {
     const list = await window.api.identityList();
     setIdentities(list);
     if (editingIdentity() === id) resetIdentityForm();
+    notifyIdentitiesChanged();
   }
 
   async function importGlobalIdentity() {
@@ -102,6 +104,7 @@ export default function Modal() {
     if (!global.name && !global.email) return;
     await window.api.identityImport(global);
     setIdentities(await window.api.identityList());
+    notifyIdentitiesChanged();
   }
 
   async function importRepoIdentities() {
@@ -113,6 +116,7 @@ export default function Modal() {
       }
     }
     setIdentities(await window.api.identityList());
+    notifyIdentitiesChanged();
   }
 
   function onKeyDown(e) {
@@ -184,7 +188,7 @@ export default function Modal() {
             </div>
             <div class="settings-tab-content">
               <Show when={settingsTab() === 'general'}>
-                <GeneralTab selectedTheme={selectedTheme} setSelectedTheme={setSelectedTheme} uiFontSize={uiFontSize} setUiFontSize={setUiFontSize} editorFontSize={editorFontSize} setEditorFontSize={setEditorFontSize} diffMethod={diffMethod} setDiffMethod={setDiffMethod} difftAvailable={difftAvailable} />
+                <GeneralTab selectedTheme={selectedTheme} setSelectedTheme={setSelectedTheme} uiFontSize={uiFontSize} setUiFontSize={setUiFontSize} editorFontSize={editorFontSize} setEditorFontSize={setEditorFontSize} />
               </Show>
               <Show when={settingsTab() === 'identities'}>
                 <IdentitiesTab identities={identities} editingIdentity={editingIdentity} identityName={identityName} setIdentityName={setIdentityName} identityEmail={identityEmail} setIdentityEmail={setIdentityEmail} saveIdentity={saveIdentity} startEditIdentity={startEditIdentity} deleteIdentity={deleteIdentity} resetIdentityForm={resetIdentityForm} importGlobalIdentity={importGlobalIdentity} importRepoIdentities={importRepoIdentities} />

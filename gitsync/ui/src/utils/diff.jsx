@@ -78,7 +78,7 @@ function isHeaderLine(line) {
 }
 
 export function parseDiffLines(raw) {
-  const lines = raw.split('\n');
+  const lines = raw.replace(/\n+$/, '').split('\n');
   const result = [];
   let oldNum = 0, newNum = 0;
   for (const line of lines) {
@@ -108,7 +108,7 @@ export function parseDiffLines(raw) {
  * returning parsed lines and state needed to resume parsing.
  */
 export function parseDiffLinesIncremental(raw, maxLines, prev) {
-  const lines = prev ? prev.rawLines : raw.split('\n');
+  const lines = prev ? prev.rawLines : raw.replace(/\n+$/, '').split('\n');
   const result = prev ? prev.parsed.slice() : [];
   let oldNum = prev ? prev.oldNum : 0;
   let newNum = prev ? prev.newNum : 0;
@@ -148,7 +148,7 @@ export function parseDiffLinesIncremental(raw, maxLines, prev) {
 
 // Parse hunks as separate groups with their raw text preserved
 export function parseDiffHunks(raw) {
-  const lines = raw.split('\n');
+  const lines = raw.replace(/\n+$/, '').split('\n');
   const hunks = [];
   let current = null;
   for (const line of lines) {
@@ -288,56 +288,3 @@ export function DiffContent(props) {
   );
 }
 
-const ANSI_COLORS = {
-  '30': 'color:var(--text-dim)', '31': 'color:var(--danger)', '32': 'color:var(--success)',
-  '33': 'color:var(--warning)', '34': 'color:var(--accent)', '35': 'color:#c678dd',
-  '36': 'color:#56b6c2', '37': 'color:var(--text)',
-  '90': 'color:var(--text-dim)', '91': 'color:var(--danger)', '92': 'color:var(--success)',
-  '93': 'color:var(--warning)', '94': 'color:var(--accent)', '95': 'color:#c678dd',
-  '96': 'color:#56b6c2', '97': 'color:var(--text)',
-};
-
-function ansiToHtml(text) {
-  let html = '';
-  let i = 0;
-  let open = false;
-  while (i < text.length) {
-    if (text[i] === '\x1b' && text[i + 1] === '[') {
-      const end = text.indexOf('m', i + 2);
-      if (end === -1) { html += text[i]; i++; continue; }
-      const codes = text.substring(i + 2, end).split(';');
-      i = end + 1;
-      if (codes.includes('0') || codes[0] === '') {
-        if (open) { html += '</span>'; open = false; }
-        continue;
-      }
-      const styles = [];
-      for (const code of codes) {
-        if (code === '1') styles.push('font-weight:bold');
-        else if (code === '2') styles.push('opacity:0.7');
-        else if (code === '4') styles.push('text-decoration:underline');
-        else if (ANSI_COLORS[code]) styles.push(ANSI_COLORS[code]);
-      }
-      if (styles.length) {
-        if (open) html += '</span>';
-        html += `<span style="${styles.join(';')}">`;
-        open = true;
-      }
-    } else if (text[i] === '<') {
-      html += '&lt;'; i++;
-    } else if (text[i] === '>') {
-      html += '&gt;'; i++;
-    } else if (text[i] === '&') {
-      html += '&amp;'; i++;
-    } else {
-      html += text[i]; i++;
-    }
-  }
-  if (open) html += '</span>';
-  return html;
-}
-
-export function DiffStructural(props) {
-  const html = createMemo(() => ansiToHtml(props.raw || ''));
-  return <div class="git-diff-structural" innerHTML={html()} />;
-}

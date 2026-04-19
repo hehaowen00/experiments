@@ -1,5 +1,38 @@
 const { ipcMain } = require('electron');
 
+// Parse git's compact rename syntax in --numstat output.
+// Forms:
+//   prefix/{old => new}/suffix, prefix/{old => new}, {old => new}/suffix, {old => new}
+//   old => new (plain arrow, no common prefix/suffix)
+// Returns { oldPath, newPath } or null when not a rename.
+function parseRename(raw) {
+  const open = raw.indexOf('{');
+  const close = raw.indexOf('}');
+  if (open !== -1 && close !== -1 && close > open) {
+    const mid = raw.substring(open + 1, close);
+    const arrow = mid.indexOf(' => ');
+    if (arrow !== -1) {
+      const oldMid = mid.substring(0, arrow);
+      const newMid = mid.substring(arrow + 4);
+      const prefix = raw.substring(0, open);
+      const suffix = raw.substring(close + 1);
+      const collapse = (s) => s.replace(/\/\//g, '/');
+      return {
+        oldPath: collapse(prefix + oldMid + suffix),
+        newPath: collapse(prefix + newMid + suffix),
+      };
+    }
+  }
+  const arrow = raw.indexOf(' => ');
+  if (arrow !== -1) {
+    return {
+      oldPath: raw.substring(0, arrow),
+      newPath: raw.substring(arrow + 4),
+    };
+  }
+  return null;
+}
+
 function register({ mainWindow, git, gitRaw }) {
   ipcMain.handle('git:commit', async (_, repoPath, message) => {
     try {
@@ -68,15 +101,19 @@ function register({ mainWindow, git, gitRaw }) {
         ? await git(repoPath, ['diff', '--numstat', '--no-color', `${hash}^1`, hash])
         : await git(repoPath, ['show', '--format=', '--numstat', '--no-color', hash]);
 
-      // Parse --numstat: each line is "adds\tdels\tfilename" or "-\t-\tfilename" for binary
+      // Parse --numstat: each line is "adds\tdels\tfilename" or "-\t-\tfilename" for binary.
+      // Renames appear as "adds\tdels\tprefix/{old => new}/suffix" (or "old => new").
       const files = [];
       if (numstatOut.trim()) {
         for (const line of numstatOut.trim().split('\n')) {
           const m = line.match(/^(-|\d+)\t(-|\d+)\t(.+)$/);
           if (m) {
             const binary = m[1] === '-';
+            const rename = parseRename(m[3]);
             files.push({
-              filename: m[3],
+              filename: rename ? rename.newPath : m[3],
+              oldPath: rename ? rename.oldPath : null,
+              renamed: !!rename,
               additions: binary ? 0 : parseInt(m[1]),
               deletions: binary ? 0 : parseInt(m[2]),
               binary,
@@ -101,12 +138,17 @@ function register({ mainWindow, git, gitRaw }) {
 
   ipcMain.handle(
     'git:showFileDiff',
-    async (_, repoPath, hash, filepath, isMerge) => {
+    async (_, repoPath, hash, filepath, isMerge, oldFilepath) => {
       try {
+        // For renames, include both paths so the rename diff is produced
+        // regardless of which side the pathspec matches.
+        const paths = oldFilepath && oldFilepath !== filepath
+          ? [filepath, oldFilepath]
+          : [filepath];
         // For merge commits, diff against first parent to show meaningful changes
         const diff = isMerge
-          ? await git(repoPath, ['diff', '--no-color', `${hash}^1`, hash, '--', filepath])
-          : await git(repoPath, ['show', '--format=', '--patch', '--no-color', hash, '--', filepath]);
+          ? await git(repoPath, ['diff', '--no-color', `${hash}^1`, hash, '--', ...paths])
+          : await git(repoPath, ['show', '--format=', '--patch', '--no-color', hash, '--', ...paths]);
         return { diff };
       } catch (e) {
         return { error: e.message };

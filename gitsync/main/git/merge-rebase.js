@@ -3,6 +3,29 @@ const { execFile } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
+function markerPath(repoPath) {
+  return path.join(repoPath, '.git', 'gitsync-stashed');
+}
+
+async function stashIfDirty(repoPath, git) {
+  const status = await git(repoPath, ['status', '--porcelain']);
+  if (status.trim().length === 0) return false;
+  await git(repoPath, ['stash']);
+  fs.writeFileSync(markerPath(repoPath), '');
+  return true;
+}
+
+async function popStashIfNeeded(repoPath, git) {
+  const marker = markerPath(repoPath);
+  if (!fs.existsSync(marker)) return;
+  try { fs.unlinkSync(marker); } catch {}
+  await git(repoPath, ['stash', 'pop']);
+}
+
+function clearMarker(repoPath) {
+  try { fs.unlinkSync(markerPath(repoPath)); } catch {}
+}
+
 function register({ mainWindow, git, gitRaw }) {
   ipcMain.handle('git:merge', async (_, repoPath, branch, opts = {}) => {
     try {
@@ -30,12 +53,15 @@ function register({ mainWindow, git, gitRaw }) {
 
   ipcMain.handle('git:rebase', async (_, repoPath, branch) => {
     try {
-      const out = await git(repoPath, ['rebase', '--autostash', branch]);
+      await stashIfDirty(repoPath, git);
+      const out = await git(repoPath, ['rebase', branch]);
+      await popStashIfNeeded(repoPath, git);
       return { ok: true, output: out };
     } catch (e) {
       if (e.message.includes('CONFLICT') || e.message.includes('could not apply')) {
         return { ok: false, conflict: true, output: e.message };
       }
+      clearMarker(repoPath);
       return { error: e.message };
     }
   });
@@ -43,6 +69,7 @@ function register({ mainWindow, git, gitRaw }) {
   ipcMain.handle('git:rebaseContinue', async (_, repoPath) => {
     try {
       const out = await git(repoPath, ['rebase', '--continue']);
+      await popStashIfNeeded(repoPath, git);
       return { ok: true, output: out };
     } catch (e) {
       if (e.message.includes('CONFLICT') || e.message.includes('could not apply')) {
@@ -55,8 +82,10 @@ function register({ mainWindow, git, gitRaw }) {
   ipcMain.handle('git:rebaseAbort', async (_, repoPath) => {
     try {
       const out = await git(repoPath, ['rebase', '--abort']);
+      await popStashIfNeeded(repoPath, git);
       return { ok: true, output: out };
     } catch (e) {
+      clearMarker(repoPath);
       return { error: e.message };
     }
   });
@@ -69,10 +98,11 @@ function register({ mainWindow, git, gitRaw }) {
       .join('\n') + '\n';
     const tmpFile = path.join(os.tmpdir(), `gitsync-rebase-${Date.now()}.txt`);
     try {
+      await stashIfDirty(repoPath, git);
       fs.writeFileSync(tmpFile, todoContent);
       const editorCmd = `cp "${tmpFile}"`;
       const out = await new Promise((resolve, reject) => {
-        execFile('git', ['rebase', '-i', '--autostash', baseHash], {
+        execFile('git', ['rebase', '-i', baseHash], {
           cwd: repoPath,
           env: { ...process.env, GIT_SEQUENCE_EDITOR: editorCmd },
           maxBuffer: 10 * 1024 * 1024,
@@ -82,11 +112,13 @@ function register({ mainWindow, git, gitRaw }) {
           else resolve(stdout + stderr);
         });
       });
+      await popStashIfNeeded(repoPath, git);
       return { ok: true, output: out };
     } catch (e) {
       if (e.message.includes('CONFLICT') || e.message.includes('could not apply')) {
         return { ok: false, conflict: true, output: e.message };
       }
+      clearMarker(repoPath);
       return { error: e.message };
     } finally {
       try { fs.unlinkSync(tmpFile); } catch {}
@@ -107,14 +139,17 @@ function register({ mainWindow, git, gitRaw }) {
 
   ipcMain.handle('git:dropCommit', async (_, repoPath, hash) => {
     try {
+      await stashIfDirty(repoPath, git);
       const out = await git(repoPath, [
-        'rebase', '--autostash', '--onto', `${hash}^`, hash,
+        'rebase', '--onto', `${hash}^`, hash,
       ]);
+      await popStashIfNeeded(repoPath, git);
       return { ok: true, output: out };
     } catch (e) {
       if (e.message.includes('CONFLICT') || e.message.includes('could not apply')) {
         return { ok: false, conflict: true, output: e.message };
       }
+      clearMarker(repoPath);
       return { error: e.message };
     }
   });

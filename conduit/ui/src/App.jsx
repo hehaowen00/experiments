@@ -23,13 +23,6 @@ export default function App() {
 
 function AppShell() {
   const [state, actions] = useTabs();
-  const [isMac, setIsMac] = createSignal(true);
-
-  onMount(async () => {
-    const platform = await window.api.platform();
-    setIsMac(platform === 'darwin');
-  });
-
   function onKeyDown(e) {
     if ((e.metaKey || e.ctrlKey) && e.key === 'w') {
       e.preventDefault();
@@ -119,10 +112,19 @@ function AppShell() {
   return (
     <div class="app-shell">
       <div class="app-tabbar">
-        <Show when={isMac()}>
-          <div class="titlebar-traffic-light-spacer" />
-        </Show>
         <div class="app-tabs">
+          <button
+            class="app-tab"
+            onClick={() => {
+              actions.togglePinnedTab(null);
+              const newTab = state.tabs.find((t) => t.type === 'new');
+              if (newTab) actions.activateTab(newTab.id);
+              else actions.createTab('new');
+            }}
+            title="Home"
+          >
+            <Icon name="fa-solid fa-house" />
+          </button>
           <For each={state.tabs}>
             {(tab, idx) => (
               <button
@@ -179,19 +181,17 @@ function AppShell() {
             <Icon name="fa-solid fa-gear" />
           </button>
         </div>
-        <Show when={!isMac()}>
-          <div class="titlebar-controls">
-            <button class="titlebar-btn" onClick={() => window.api.windowMinimize()}>
-              <Icon name="fa-solid fa-minus" />
-            </button>
-            <button class="titlebar-btn" onClick={() => window.api.windowMaximize()}>
-              <Icon name="fa-regular fa-square" />
-            </button>
-            <button class="titlebar-btn titlebar-btn-close" onClick={() => window.api.windowClose()}>
-              <Icon name="fa-solid fa-xmark" />
-            </button>
-          </div>
-        </Show>
+        <div class="titlebar-controls">
+          <button class="titlebar-btn" onClick={() => window.api.windowMinimize()}>
+            <Icon name="fa-solid fa-minus" />
+          </button>
+          <button class="titlebar-btn" onClick={() => window.api.windowMaximize()}>
+            <Icon name="fa-regular fa-square" />
+          </button>
+          <button class="titlebar-btn titlebar-btn-close" onClick={() => window.api.windowClose()}>
+            <Icon name="fa-solid fa-xmark" />
+          </button>
+        </div>
       </div>
 
       <For each={state.tabs}>

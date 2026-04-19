@@ -1,4 +1,4 @@
-import { showAlert, showConfirm, showPrompt } from '../../components/Modal';
+import { showAlert, showChoice, showConfirm, showPrompt } from '../../components/Modal';
 
 export function createStashOps({
   repoPath,
@@ -28,6 +28,29 @@ export function createStashOps({
   }
 
   async function doStashPush() {
+    const mode = await showChoice(
+      'Stash Changes',
+      'What would you like to stash?',
+      [
+        {
+          label: 'All changes',
+          value: 'all',
+          description: 'Stash staged and unstaged changes',
+        },
+        {
+          label: 'Staged only',
+          value: 'staged',
+          description: 'Stash staged changes; leave working tree changes in place',
+        },
+        {
+          label: 'Unstaged only',
+          value: 'unstaged',
+          description: 'Stash working tree changes; leave staged changes in the index',
+        },
+      ],
+    );
+    if (!mode) return;
+
     const message = await showPrompt(
       'Stash Message',
       '',
@@ -35,12 +58,16 @@ export function createStashOps({
       'Optional message',
     );
     if (message === null) return;
+
     setOperating('Stashing...');
-    const result = await window.api.gitStashPush(
-      repoPath,
-      message || '',
-      false,
-    );
+    let result;
+    if (mode === 'staged') {
+      result = await window.api.gitStashPushStaged(repoPath, message || '');
+    } else if (mode === 'unstaged') {
+      result = await window.api.gitStashPushUnstaged(repoPath, message || '');
+    } else {
+      result = await window.api.gitStashPush(repoPath, message || '', false);
+    }
     setOperating('');
     if (result.error) showAlert('Stash Failed', result.error);
     else setOutput(result.output || 'Changes stashed');

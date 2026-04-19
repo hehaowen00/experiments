@@ -29,7 +29,11 @@ export default function ContextMenu() {
             {isStaged && (
               <button class="file-context-menu-item danger" onClick={() => {
                 ws.setCtxMenu(null);
-                ws.discardStagedFiles(menu.filepaths);
+                if (menu.isFolder) {
+                  ws.discardFolder(menu.filepath, 'staged');
+                } else {
+                  ws.discardStagedFiles(menu.filepaths);
+                }
               }}>
                 <Icon name="fa-solid fa-xmark" /> Discard Changes
               </button>
@@ -49,7 +53,11 @@ export default function ContextMenu() {
             {!isStaged && !isUntracked && (
               <button class="file-context-menu-item danger" onClick={() => {
                 ws.setCtxMenu(null);
-                ws.discardFiles(menu.filepaths);
+                if (menu.isFolder) {
+                  ws.discardFolder(menu.filepath, 'unstaged');
+                } else {
+                  ws.discardFiles(menu.filepaths);
+                }
               }}>
                 <Icon name="fa-solid fa-xmark" /> Discard Changes
               </button>
@@ -57,7 +65,11 @@ export default function ContextMenu() {
             {isUntracked && (
               <button class="file-context-menu-item danger" onClick={() => {
                 ws.setCtxMenu(null);
-                ws.deleteUntrackedFiles(menu.filepaths);
+                if (menu.isFolder) {
+                  ws.discardFolder(menu.filepath, 'untracked');
+                } else {
+                  ws.deleteUntrackedFiles(menu.filepaths);
+                }
               }}>
                 <Icon name="fa-solid fa-trash" /> Delete {label}
               </button>

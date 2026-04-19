@@ -1,4 +1,4 @@
-import { onCleanup, onMount, Show, For } from 'solid-js';
+import { createSignal, createEffect, onCleanup, onMount, Show, For } from 'solid-js';
 import ContextMenu from '../components/ContextMenu';
 import FileHistory from '../components/FileHistory';
 import Icon from '../lib/Icon';
@@ -14,6 +14,56 @@ import ContributorsPanel from '../panels/ContributorsPanel';
 
 function WorkspaceInner() {
   const ws = useWorkspace();
+  let tabsRef;
+  const [overflowMenu, setOverflowMenu] = createSignal(null);
+  const [hiddenTabs, setHiddenTabs] = createSignal([]);
+
+  const allTabs = () => {
+    const tabs = [
+      { id: 'changes', label: 'Workspace', badge: ws.status.files.length || 0 },
+      { id: 'log', label: 'History' },
+      { id: 'remotes', label: 'Refs' },
+      { id: 'contributors', label: 'Contributors' },
+    ];
+    if (ws.readme().content) tabs.push({ id: 'readme', label: 'README' });
+    return tabs;
+  };
+
+  function checkOverflow() {
+    if (!tabsRef) return;
+    const containerWidth = tabsRef.clientWidth;
+    const children = tabsRef.children;
+    const hidden = [];
+    for (let i = 0; i < children.length; i++) {
+      const child = children[i];
+      if (child.offsetLeft + child.offsetWidth > containerWidth + 1) {
+        const tabId = child.dataset.tab;
+        if (tabId) hidden.push(tabId);
+      }
+    }
+    setHiddenTabs(hidden);
+  }
+
+  let resizeObserver;
+  onMount(() => {
+    checkOverflow();
+    resizeObserver = new ResizeObserver(checkOverflow);
+    if (tabsRef) resizeObserver.observe(tabsRef);
+  });
+  onCleanup(() => resizeObserver?.disconnect());
+
+  createEffect(() => {
+    allTabs();
+    requestAnimationFrame(checkOverflow);
+  });
+
+  let skipDismiss = false;
+  function dismissOverflowMenu() {
+    if (skipDismiss) { skipDismiss = false; return; }
+    setOverflowMenu(null);
+  }
+  document.addEventListener('click', dismissOverflowMenu);
+  onCleanup(() => document.removeEventListener('click', dismissOverflowMenu));
 
   function onGlobalKeyDown(e) {
     if ((e.metaKey || e.ctrlKey) && e.key === 'p') {
@@ -30,9 +80,9 @@ function WorkspaceInner() {
     <div class="git-workspace">
       {/* Toolbar */}
       <div class="git-toolbar">
-        <span class="git-header-branch" onClick={() => ws.onTabChange('remotes')} title="View branches">
+        <span class="git-header-branch" onClick={() => ws.onTabChange('remotes')} title={ws.status.branch || ''}>
           <Icon name="fa-solid fa-code-branch" />
-          {ws.status.branch || '...'}
+          <span class="git-header-branch-name">{ws.status.branch || '...'}</span>
         </span>
         <Show when={ws.status.upstream}>
           <span class="git-header-sync">
@@ -45,27 +95,33 @@ function WorkspaceInner() {
           </span>
         </Show>
         <div class="git-toolbar-sep" />
-        <button class={`git-tab ${ws.tab() === 'changes' ? 'active' : ''}`} onClick={() => ws.onTabChange('changes')}>
-          Workspace
-          <Show when={ws.status.files.length > 0}>
-            <span class="git-tab-badge">{ws.status.files.length}</span>
-          </Show>
-        </button>
-        <button class={`git-tab ${ws.tab() === 'log' ? 'active' : ''}`} onClick={() => ws.onTabChange('log')}>
-          History
-        </button>
-        <button class={`git-tab ${ws.tab() === 'remotes' ? 'active' : ''}`} onClick={() => ws.onTabChange('remotes')}>
-          Refs
-        </button>
-        <button class={`git-tab ${ws.tab() === 'contributors' ? 'active' : ''}`} onClick={() => ws.onTabChange('contributors')}>
-          Contributors
-        </button>
-        <Show when={ws.readme().content}>
-          <button class={`git-tab ${ws.tab() === 'readme' ? 'active' : ''}`} onClick={() => ws.onTabChange('readme')}>
-            README
+        <div class="git-tabs-container" ref={tabsRef}>
+          <For each={allTabs()}>{(t) => (
+            <button
+              class={`git-tab ${ws.tab() === t.id ? 'active' : ''}`}
+              data-tab={t.id}
+              onClick={() => ws.onTabChange(t.id)}
+            >
+              {t.label}
+              <Show when={t.badge > 0}>
+                <span class="git-tab-badge">{t.badge}</span>
+              </Show>
+            </button>
+          )}</For>
+        </div>
+        <Show when={hiddenTabs().length > 0}>
+          <button
+            class="btn btn-ghost btn-sm git-tabs-overflow-btn"
+            onClick={(e) => {
+              skipDismiss = true;
+              const rect = e.currentTarget.getBoundingClientRect();
+              setOverflowMenu(overflowMenu() ? null : { x: rect.left, y: rect.bottom + 4 });
+            }}
+            title="More tabs"
+          >
+            <Icon name="fa-solid fa-ellipsis" />
           </button>
         </Show>
-        <div style={{ flex: 1 }} />
         <Show when={ws.operating()}>
           <span class="git-operating">
             {ws.operating()}
@@ -80,7 +136,7 @@ function WorkspaceInner() {
         <button class="btn btn-ghost btn-sm" onClick={ws.doFetch} disabled={!!ws.operating()} title="Fetch">
           <Icon name="fa-solid fa-cloud-arrow-down" />
         </button>
-        <button class="btn btn-ghost btn-sm" onClick={ws.doPull} disabled={!!ws.operating()} title="Pull">
+        <button class="btn btn-ghost btn-sm" onClick={() => ws.doPull()} disabled={!!ws.operating()} title="Pull">
           <Icon name="fa-solid fa-download" />
         </button>
         <button class="btn btn-ghost btn-sm" onClick={ws.doPush} disabled={!!ws.operating()} title="Push">
@@ -181,6 +237,31 @@ function WorkspaceInner() {
       <div class="git-content" style={{ display: ws.tab() === 'readme' ? '' : 'none' }}>
         <ReadmePanel />
       </div>
+
+      <Show when={overflowMenu()}>
+        {(() => {
+          const menu = overflowMenu();
+          return (
+            <div
+              class="file-context-menu"
+              style={{ left: `${menu.x}px`, top: `${menu.y}px` }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <For each={allTabs().filter(t => hiddenTabs().includes(t.id))}>{(t) => (
+                <button class="file-context-menu-item" onClick={() => {
+                  dismissOverflowMenu();
+                  ws.onTabChange(t.id);
+                }}>
+                  {t.label}
+                  <Show when={t.badge > 0}>
+                    <span class="git-tab-badge">{t.badge}</span>
+                  </Show>
+                </button>
+              )}</For>
+            </div>
+          );
+        })()}
+      </Show>
 
       <Modal />
       <RepoSwitcher />

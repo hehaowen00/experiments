@@ -105,7 +105,7 @@ export function showPush(remotes, lastRemote, currentBranch) {
   });
 }
 
-export function showPull(remotes, lastRemote) {
+export function showPull(remotes, lastRemote, lastStrategy) {
   return new Promise((resolve) => {
     modalResolve = resolve;
     setModalTitle('Pull from Remote');
@@ -117,7 +117,7 @@ export function showPull(remotes, lastRemote) {
         ? remotes[0].name
         : '';
     setModalSelectedRemote(defaultRemote);
-    setModalPullStrategy('');
+    setModalPullStrategy(lastStrategy || '');
     setModalType('pull');
     setModalVisible(true);
   });

@@ -10,7 +10,6 @@
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  border-right: 1px solid var(--border);
   overflow: hidden;
 }
 
@@ -24,6 +23,7 @@
 }
 
 .git-stash-item {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -70,15 +70,18 @@
 }
 
 .git-stash-actions {
-  display: flex;
+  display: none;
   gap: 2px;
-  opacity: 0;
-  transition: opacity 0.15s;
+  position: absolute;
+  right: 4px;
+  top: 4px;
+  background: var(--surface);
+  padding: 0 2px;
   flex-shrink: 0;
 }
 
 .git-stash-item:hover .git-stash-actions {
-  opacity: 1;
+  display: flex;
 }
 
 .git-stash-item.selected,
@@ -88,7 +91,8 @@
 
 .git-stash-item.selected .git-stash-actions,
 .git-stash-item.git-stash-selected .git-stash-actions {
-  opacity: 1;
+  display: flex;
+  background: var(--surface2);
 }
 
 /* Detail area */
@@ -130,7 +134,6 @@
 .git-stash-file-list {
   flex-shrink: 0;
   overflow-y: auto;
-  border-right: 1px solid var(--border);
 }
 
 .git-stash-file-diff {

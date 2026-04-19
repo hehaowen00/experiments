@@ -67,6 +67,19 @@
   flex-shrink: 0;
 }
 
+.git-tabs-container {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.git-tabs-overflow-btn {
+  flex-shrink: 0;
+}
+
 .git-header-name {
   font-weight: 600;
   font-size: var(--ui-font-size-sm);
@@ -211,6 +224,14 @@
   font-size: var(--ui-font-size-sm);
   font-family: var(--mono);
   cursor: pointer;
+  max-width: 200px;
+  min-width: 0;
+}
+
+.git-header-branch-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .git-header-branch:hover {
@@ -410,11 +431,13 @@
 
 .git-resize-handle-col {
   width: 2px;
+  margin: 0 2px;
   cursor: col-resize;
 }
 
 .git-resize-handle-row {
   height: 2px;
+  margin: 2px 0;
   cursor: row-resize;
 }
 
@@ -426,7 +449,6 @@
 
 .git-files-panel {
   min-width: 200px;
-  border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   overflow-y: auto;
@@ -914,20 +936,8 @@
 }
 
 .git-diff-inner {
-  display: inline-block;
-  min-width: 100%;
-}
-
-.git-diff-structural {
-  white-space: pre;
-  font-family: var(--mono);
-  font-size: var(--editor-font-size, 12px);
-  line-height: 1.5;
-  padding: 4px 8px;
-  min-width: 100%;
-  display: inline-block;
-  user-select: text;
-  cursor: text;
+  display: block;
+  min-width: fit-content;
 }
 
 .git-diff-line {

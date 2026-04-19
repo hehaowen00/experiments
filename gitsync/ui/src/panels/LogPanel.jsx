@@ -5,6 +5,7 @@ import ResizeHandle from '../lib/ResizeHandle';
 import { useWorkspace } from '../context/WorkspaceContext';
 import { DiffLines, isImageFile, ImagePreview } from '../utils/diff';
 import { buildGraph, GraphCell } from '../utils/graph';
+import { showToast } from '../components/Toast';
 
 const ROW_HEIGHT = 24;
 const OVERSCAN = 10;
@@ -40,6 +41,7 @@ export default function LogPanel() {
   const [commitMenu, setCommitMenu] = createSignal(null);
   const [showCommitBody, setShowCommitBody] = createSignal(true);
   const [bodyHeight, setBodyHeight] = createSignal(80);
+  const [showGraph, setShowGraph] = createSignal(true);
   const [scrollTop, setScrollTop] = createSignal(0);
   const [viewHeight, setViewHeight] = createSignal(600);
 
@@ -55,11 +57,7 @@ export default function LogPanel() {
   });
   onCleanup(() => resizeObserver?.disconnect());
 
-  const verticalMq = window.matchMedia('(max-aspect-ratio: 4/3)');
-  const [isVertical, setIsVertical] = createSignal(verticalMq.matches);
-  const onMqChange = (e) => setIsVertical(e.matches);
-  verticalMq.addEventListener('change', onMqChange);
-  onCleanup(() => verticalMq.removeEventListener('change', onMqChange));
+  const [isVertical, setIsVertical] = createSignal(false);
 
   function onResizeBody(delta) {
     setBodyHeight((h) => Math.max(24, h + delta));
@@ -161,6 +159,13 @@ export default function LogPanel() {
           </Show>
         </div>
         <button
+          class={`btn btn-ghost btn-xs ${showGraph() ? 'btn-active' : ''}`}
+          onClick={() => setShowGraph(!showGraph())}
+          title={showGraph() ? 'Hide graph' : 'Show graph'}
+        >
+          <Icon name="fa-solid fa-diagram-project" />
+        </button>
+        <button
           class={`btn btn-ghost btn-xs ${ws.logTopoOrder() ? 'btn-active' : ''}`}
           onClick={() => { ws.setLogTopoOrder(!ws.logTopoOrder()); setTimeout(ws.loadLog, 0); }}
           title={ws.logTopoOrder() ? 'Topological order (click for date order)' : 'Date order (click for topological)'}
@@ -196,9 +201,9 @@ export default function LogPanel() {
                     onContextMenu={(e) => onCommitContextMenu(e, c)}
                     style={{ top: `${rowIdx() * ROW_HEIGHT}px` }}
                   >
-                    <span class="git-log-col git-log-hash"><code onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(c.hash); }} title="Click to copy full hash">{c.short}</code></span>
+                    <span class="git-log-col git-log-hash"><code onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(c.short); showToast('Copied ' + c.short); }} title="Click to copy short hash">{c.short}</code></span>
                     <span class="git-log-col git-log-subject">
-                      <Show when={graphData().rows[rowIdx()]}>
+                      <Show when={showGraph() && !ws.logSearch() && graphData().rows[rowIdx()]}>
                         <GraphCell
                           row={graphData().rows[rowIdx()]}
                           height={ROW_HEIGHT}
@@ -231,7 +236,7 @@ export default function LogPanel() {
             <div class="git-commit-detail-header">
               <div class="git-commit-detail-meta">
                 <code class="git-commit-detail-hash">{ws.commitDetail.hash?.substring(0, 12)}</code>
-                <button class="btn btn-ghost btn-xs" onClick={() => navigator.clipboard.writeText(ws.commitDetail.hash)} title="Copy full hash">
+                <button class="btn btn-ghost btn-xs" onClick={() => { navigator.clipboard.writeText(ws.commitDetail.hash); showToast('Copied ' + ws.commitDetail.hash.substring(0, 12)); }} title="Copy full hash">
                   <Icon name="fa-solid fa-copy" />
                 </button>
                 <span class="git-commit-detail-author">{ws.commitDetail.author} &lt;{ws.commitDetail.email}&gt;</span>
@@ -278,7 +283,7 @@ export default function LogPanel() {
                     } else if (isImage()) {
                       ws.setExpandedDetailFiles({ [file.filename]: '__image__' });
                     } else {
-                      ws.loadFileDiff(ws.commitDetail.hash, file.filename);
+                      ws.loadFileDiff(ws.commitDetail.hash, file.filename, file.oldPath);
                     }
                   };
                   return (
@@ -288,7 +293,13 @@ export default function LogPanel() {
                           name={isExpanded() ? 'fa-solid fa-chevron-down' : 'fa-solid fa-chevron-right'}
                           class="git-section-chevron"
                         />
-                        <span class="git-detail-file-name">{file.filename}</span>
+                        <span class="git-detail-file-name">
+                          <Show when={file.renamed} fallback={file.filename}>
+                            <span class="git-detail-file-rename-old">{file.oldPath}</span>
+                            <span class="git-detail-file-rename-arrow"> → </span>
+                            {file.filename}
+                          </Show>
+                        </span>
                         <span class="git-detail-file-stats">
                           <Show when={file.binary}>
                             <span class="git-detail-stat-bin">binary</span>

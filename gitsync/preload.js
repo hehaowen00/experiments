@@ -4,7 +4,6 @@ const { contextBridge, ipcRenderer } = require('electron');
 // Immutable caches (never change during app lifetime)
 let _homeDir = null;
 let _platform = null;
-let _difftAvailable = null;
 
 // Invalidate-on-write caches
 let _settings = null;
@@ -107,12 +106,6 @@ contextBridge.exposeInMainWorld('api', {
   gitStatusBrief: (repoPath) => ipcRenderer.invoke('git:statusBrief', repoPath),
   gitStatus: (repoPath) => ipcRenderer.invoke('git:status', repoPath),
   gitRevParseHead: (repoPath) => ipcRenderer.invoke('git:revParseHead', repoPath),
-  gitCheckDifft: () => {
-    if (_difftAvailable) return _difftAvailable;
-    _difftAvailable = ipcRenderer.invoke('git:checkDifft');
-    return _difftAvailable;
-  },
-  gitDiffStructural: (repoPath, filepath, staged) => ipcRenderer.invoke('git:diffStructural', repoPath, filepath, staged),
   gitDiff: (repoPath, filepath, staged) => ipcRenderer.invoke('git:diff', repoPath, filepath, staged),
   gitDiffRaw: (repoPath, filepath, staged) => ipcRenderer.invoke('git:diffRaw', repoPath, filepath, staged),
   gitStageHunk: (repoPath, patchText) => ipcRenderer.invoke('git:stageHunk', repoPath, patchText),
@@ -145,7 +138,7 @@ contextBridge.exposeInMainWorld('api', {
   gitCheckoutRemote: (repoPath, localName, remoteBranch) => ipcRenderer.invoke('git:checkoutRemote', repoPath, localName, remoteBranch),
   gitCheckoutNewBranch: (repoPath, branch) => ipcRenderer.invoke('git:checkoutNewBranch', repoPath, branch),
   gitShow: (repoPath, hash) => ipcRenderer.invoke('git:show', repoPath, hash),
-  gitShowFileDiff: (repoPath, hash, filepath, isMerge) => ipcRenderer.invoke('git:showFileDiff', repoPath, hash, filepath, isMerge),
+  gitShowFileDiff: (repoPath, hash, filepath, isMerge, oldFilepath) => ipcRenderer.invoke('git:showFileDiff', repoPath, hash, filepath, isMerge, oldFilepath),
   gitLastCommitMessage: (repoPath) => ipcRenderer.invoke('git:lastCommitMessage', repoPath),
 
   // Tags
@@ -161,6 +154,8 @@ contextBridge.exposeInMainWorld('api', {
   // Stash
   gitStashList: (repoPath) => ipcRenderer.invoke('git:stashList', repoPath),
   gitStashPush: (repoPath, message, includeUntracked) => ipcRenderer.invoke('git:stashPush', repoPath, message, includeUntracked),
+  gitStashPushStaged: (repoPath, message) => ipcRenderer.invoke('git:stashPushStaged', repoPath, message),
+  gitStashPushUnstaged: (repoPath, message) => ipcRenderer.invoke('git:stashPushUnstaged', repoPath, message),
   gitStashPop: (repoPath, ref) => ipcRenderer.invoke('git:stashPop', repoPath, ref),
   gitStashApply: (repoPath, ref) => ipcRenderer.invoke('git:stashApply', repoPath, ref),
   gitStashDrop: (repoPath, ref) => ipcRenderer.invoke('git:stashDrop', repoPath, ref),

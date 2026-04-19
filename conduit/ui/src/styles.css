@@ -168,7 +168,6 @@ select {
   display: flex;
   align-items: center;
   overflow-x: auto;
-  flex: 1;
   scrollbar-width: none;
 }
 
@@ -230,6 +229,7 @@ select {
   align-items: center;
   gap: 2px;
   flex-shrink: 0;
+  margin-left: auto;
 }
 
 .app-tab-pinned-btn {

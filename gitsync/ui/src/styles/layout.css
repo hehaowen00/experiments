@@ -300,21 +300,6 @@ input, textarea {
   letter-spacing: 0.5px;
 }
 
-.settings-hint {
-  font-weight: 400;
-  font-size: 0.85em;
-  margin-left: 8px;
-  letter-spacing: 0;
-}
-
-.settings-hint-ok {
-  color: var(--success);
-}
-
-.settings-hint-warn {
-  color: var(--warning);
-}
-
 .settings-select {
   width: 100%;
   padding: 8px 10px;

@@ -56,7 +56,6 @@ export function WorkspaceProvider(props) {
     filepath: null,
     staged: false,
     header: '',
-    structural: false,
   });
 
   const [commit, setCommit] = createStore({
@@ -155,8 +154,6 @@ export function WorkspaceProvider(props) {
   const [switcherQuery, setSwitcherQuery] = createSignal('');
   const [switcherRepos, setSwitcherRepos] = createSignal([]);
   const [switcherIndex, setSwitcherIndex] = createSignal(0);
-  const [diffMethod, setDiffMethod] = createSignal('auto');
-  const [difftAvailable, setDifftAvailable] = createSignal(null);
 
   // --- Core operations ---
   async function loadReadme() {
@@ -227,7 +224,7 @@ export function WorkspaceProvider(props) {
   }
 
   // --- Compose ops modules ---
-  const diffOps = createDiffOps({ repoPath, status, setDiff, diffMethod });
+  const diffOps = createDiffOps({ repoPath, status, setDiff });
 
   const stagingOps = createStagingOps({
     repoPath,
@@ -251,6 +248,7 @@ export function WorkspaceProvider(props) {
     status,
     diff,
     setDiff,
+    setOperating,
     refresh,
   });
 
@@ -379,7 +377,7 @@ export function WorkspaceProvider(props) {
       setLog({ commits: [], loading: false, loadingMore: false, hasMore: true });
     }
     if (prev === 'changes' && t !== 'changes') {
-      setDiff({ content: '', filepath: null, staged: false, header: '', structural: false });
+      setDiff({ content: '', filepath: null, staged: false, header: '' });
       setStashDetail({ ref: null, files: [] });
     }
     if (prev === 'remotes' && t !== 'remotes') {
@@ -576,14 +574,7 @@ export function WorkspaceProvider(props) {
   let removeFsListener;
   let removeProgressListener;
 
-  const onDiffMethodChanged = (e) => setDiffMethod(e.detail);
-
   onMount(() => {
-    window.api.getSetting('diffMethod').then((v) => {
-      if (v) setDiffMethod(v);
-    });
-    window.api.gitCheckDifft().then((v) => setDifftAvailable(v));
-    window.addEventListener('diffmethod-changed', onDiffMethodChanged);
     restoreCommitMessage();
     reloadRepo();
     stashOps.loadStashes();
@@ -606,13 +597,14 @@ export function WorkspaceProvider(props) {
     removeProgressListener = window.api.onGitProgress((line) => {
       setProgressLine(line);
     });
+    window.addEventListener('identities-changed', loadIdentities);
   });
 
   onCleanup(() => {
     saveCommitMessage();
     window.removeEventListener('beforeunload', saveCommitMessage);
-    window.removeEventListener('diffmethod-changed', onDiffMethodChanged);
     document.removeEventListener('click', dismissCtxMenu);
+    window.removeEventListener('identities-changed', loadIdentities);
     window.api.gitUnwatchRepo(repoPath);
     if (removeFsListener) removeFsListener();
     if (removeProgressListener) removeProgressListener();
@@ -713,9 +705,6 @@ export function WorkspaceProvider(props) {
     closeSwitcher,
     filteredSwitcherRepos,
     switcherSelect,
-    diffMethod,
-    setDiffMethod,
-    difftAvailable,
     identities,
     currentIdentity,
     setRepoIdentity,

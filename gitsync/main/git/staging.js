@@ -109,7 +109,8 @@ function register({ mainWindow, git, gitRaw }) {
 
   ipcMain.handle('git:deleteUntracked', async (_, repoPath, filepaths) => {
     try {
-      await git(repoPath, ['clean', '-f', '--', ...filepaths]);
+      // -d so directory pathspecs recurse and drop untracked subdirs.
+      await git(repoPath, ['clean', '-f', '-d', '--', ...filepaths]);
       return { ok: true };
     } catch (e) {
       return { error: e.message };

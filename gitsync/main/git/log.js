@@ -18,15 +18,6 @@ function register({ mainWindow, git, gitRaw }) {
     };
 
     try {
-      // If search looks like a commit hash, try exact lookup first
-      if (search && /^[0-9a-f]{4,40}$/i.test(search.trim())) {
-        try {
-          const out = await git(repoPath, ['log', '--max-count=1', fmt, search.trim()]);
-          const exact = parseCommits(out);
-          if (exact.length) return { commits: exact };
-        } catch {}
-      }
-
       const args = ['log', `--max-count=${count || 50}`, topoOrder ? '--topo-order' : '--date-order', fmt];
       if (skip) args.push(`--skip=${skip}`);
       if (allBranches) {
@@ -49,23 +40,25 @@ function register({ mainWindow, git, gitRaw }) {
       }
       if (search && search.trim()) {
         const q = search.trim();
-        // Run two searches and merge: one by message, one by author
-        const baseArgs = args.slice();
-        const msgArgs = [...baseArgs, `--grep=${q}`, '-i'];
-        const authorArgs = [...baseArgs, `--author=${q}`, '-i'];
-        const [msgOut, authorOut] = await Promise.all([
-          git(repoPath, msgArgs).catch(() => ''),
-          git(repoPath, authorArgs).catch(() => ''),
-        ]);
+        const isHash = /^[0-9a-f]{4,40}$/i.test(q);
+        // Single git process: match message OR author
+        const searchArgs = [...args, `--grep=${q}`, `--author=${q}`, '--or', '-i'];
+        const searches = [git(repoPath, searchArgs).catch(() => '')];
+        if (isHash) {
+          searches.push(git(repoPath, ['log', '--max-count=1', fmt, q]).catch(() => ''));
+        }
+        const results = await Promise.all(searches);
         const seen = new Set();
         const merged = [];
-        for (const c of [...parseCommits(msgOut), ...parseCommits(authorOut)]) {
-          if (!seen.has(c.hash)) {
-            seen.add(c.hash);
-            merged.push(c);
+        for (const out of results) {
+          for (const c of parseCommits(out)) {
+            if (!seen.has(c.hash)) {
+              seen.add(c.hash);
+              merged.push(c);
+            }
           }
         }
-        merged.sort((a, b) => b.date - a.date);
+        if (isHash) merged.sort((a, b) => b.date - a.date);
         return { commits: merged };
       }
       const out = await git(repoPath, args);

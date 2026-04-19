@@ -27,6 +27,46 @@ function register({ mainWindow, git, gitRaw }) {
     }
   });
 
+  ipcMain.handle('git:stashPushStaged', async (_, repoPath, message) => {
+    try {
+      const args = ['stash', 'push', '--staged'];
+      if (message) args.push('-m', message);
+      const out = await git(repoPath, args);
+      return { ok: true, output: out };
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
+
+  ipcMain.handle('git:stashPushUnstaged', async (_, repoPath, message) => {
+    try {
+      const hasStaged = (await git(repoPath, ['diff', '--cached', '--name-only'])).trim().length > 0;
+
+      if (!hasStaged) {
+        const args = ['stash', 'push'];
+        if (message) args.push('-m', message);
+        const out = await git(repoPath, args);
+        return { ok: true, output: out };
+      }
+
+      // Move staged changes aside, stash remaining (unstaged), then restore staged to the index.
+      await git(repoPath, ['stash', 'push', '--staged', '-m', '__gitsync_staged_holder__']);
+      try {
+        const args = ['stash', 'push'];
+        if (message) args.push('-m', message);
+        const out = await git(repoPath, args);
+        await git(repoPath, ['stash', 'pop', '--index', 'stash@{1}']);
+        return { ok: true, output: out };
+      } catch (e) {
+        // Something went wrong stashing unstaged — put staged changes back.
+        await git(repoPath, ['stash', 'pop', '--index', 'stash@{0}']);
+        throw e;
+      }
+    } catch (e) {
+      return { error: e.message };
+    }
+  });
+
   ipcMain.handle('git:stashPop', async (_, repoPath, ref) => {
     try {
       const out = await git(repoPath, ['stash', 'pop', ref || 'stash@{0}']);

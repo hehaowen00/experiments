@@ -143,13 +143,14 @@ export function createLogOps({
     }
   }
 
-  async function loadFileDiff(hash, filepath) {
+  async function loadFileDiff(hash, filepath, oldFilepath) {
     const isMerge = commitDetail.parents.length > 1;
     const result = await window.api.gitShowFileDiff(
       repoPath,
       hash,
       filepath,
       isMerge,
+      oldFilepath,
     );
     if (!result.error) {
       setExpandedDetailFiles({ [filepath]: result.diff });

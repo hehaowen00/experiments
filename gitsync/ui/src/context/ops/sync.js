@@ -9,6 +9,7 @@ export function createSyncOps({
   prePushBuildCheck,
 }) {
   let lastRemote = null;
+  let lastStrategy = null;
 
   async function pickRemote(title, description) {
     const remoteResult = await window.api.gitRemoteList(repoPath);
@@ -37,12 +38,13 @@ export function createSyncOps({
         showAlert('No Remotes', 'No remotes configured for this repository.');
         return;
       }
-      const choice = await showPull(remoteList, lastRemote);
+      const choice = await showPull(remoteList, lastRemote, lastStrategy);
       if (!choice) return;
       remote = choice.remote;
       if (!strategy) strategy = choice.strategy;
     }
     lastRemote = remote;
+    if (strategy) lastStrategy = strategy;
 
     setOperating('Pulling...');
     const result = await window.api.gitPull(repoPath, strategy, remote);

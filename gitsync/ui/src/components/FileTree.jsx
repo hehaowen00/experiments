@@ -47,8 +47,7 @@ function TreeDir(props) {
           {isUnstaged() && (
             <button class="btn btn-ghost btn-xs btn-danger-hover" onClick={(e) => {
               e.stopPropagation();
-              const paths = allFilesInTree(props.child).filter(f => !f.clean).map(f => f.path);
-              ws.discardFiles(paths);
+              ws.discardFolder(props.dirPath, 'unstaged');
             }} title="Discard all in folder">
               <Icon name="fa-solid fa-xmark" />
             </button>
@@ -56,8 +55,7 @@ function TreeDir(props) {
           {isUntracked() && hasChangedFiles() && (
             <button class="btn btn-ghost btn-xs btn-danger-hover" onClick={(e) => {
               e.stopPropagation();
-              const paths = allFilesInTree(props.child).filter(f => !f.clean).map(f => f.path);
-              ws.deleteUntrackedFiles(paths);
+              ws.discardFolder(props.dirPath, 'untracked');
             }} title="Delete all in folder">
               <Icon name="fa-solid fa-xmark" />
             </button>
