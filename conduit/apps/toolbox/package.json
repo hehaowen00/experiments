@@ -1,0 +1,43 @@
+{
+  "name": "@conduit/toolbox",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Conduit Toolbox — RFC viewer, datetime tool, file drop",
+  "main": "main.js",
+  "type": "commonjs",
+  "scripts": {
+    "build": "npm run build --workspace=@conduit/toolbox-ui",
+    "dev": "npm run dev --workspace=@conduit/toolbox-ui",
+    "start": "npm run build && electron .",
+    "dist": "npm run build && electron-builder",
+    "dist:mac": "npm run build && electron-builder --mac",
+    "dist:win": "npm run build && electron-builder --win",
+    "dist:linux": "npm run build && electron-builder --linux"
+  },
+  "build": {
+    "appId": "com.conduit.toolbox",
+    "productName": "Conduit Toolbox",
+    "files": [
+      "main.js",
+      "main/**/*",
+      "preload.js",
+      "ui/dist/**/*",
+      "node_modules/**/*"
+    ],
+    "mac": { "target": "dmg" },
+    "win": { "target": "nsis" },
+    "linux": { "target": "AppImage" },
+    "nsis": {
+      "oneClick": true,
+      "allowToChangeInstallationDirectory": false
+    }
+  },
+  "dependencies": {
+    "@conduit/core": "*",
+    "better-sqlite3": "^12.6.2"
+  },
+  "devDependencies": {
+    "electron": "^40.7.0",
+    "electron-builder": "^26.8.1"
+  }
+}

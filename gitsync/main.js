@@ -11,12 +11,15 @@ function createWindow() {
     width: 1200,
     height: 800,
     frame: false,
+    fullscreenable: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
     },
   });
+  mainWindow.setFullScreenable(false);
+  mainWindow.on('enter-full-screen', () => mainWindow.setFullScreen(false));
   mainWindow.maximize();
   mainWindow.loadFile('ui/dist/index-solid.html');
 }

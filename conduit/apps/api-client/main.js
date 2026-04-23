@@ -1,0 +1,72 @@
+const { app, BrowserWindow, ipcMain, Menu, shell, dialog } = require('electron');
+const path = require('path');
+const store = require('./main/store');
+const ipcCollections = require('./main/ipc-collections');
+const ipcRequests = require('./main/ipc-requests');
+const ipcWebsocket = require('./main/ipc-websocket');
+
+let mainWindow;
+
+function createWindow() {
+  mainWindow = new BrowserWindow({
+    width: 1200,
+    height: 800,
+    frame: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+  mainWindow.maximize();
+  mainWindow.loadFile('ui/dist/index.html');
+}
+
+app.whenReady().then(() => {
+  Menu.setApplicationMenu(null);
+  store.initDb();
+  createWindow();
+
+  ipcCollections.register(mainWindow);
+  ipcRequests.register(mainWindow);
+  ipcWebsocket.register(mainWindow);
+
+  ipcMain.handle('app:homeDir', () => require('os').homedir());
+  ipcMain.handle('app:platform', () => process.platform);
+  ipcMain.handle('app:quit', () => app.quit());
+  ipcMain.handle('window:minimize', () => mainWindow?.minimize());
+  ipcMain.handle('window:maximize', () => {
+    if (mainWindow?.isMaximized()) mainWindow.unmaximize();
+    else mainWindow?.maximize();
+  });
+  ipcMain.handle('window:close', () => mainWindow?.close());
+  ipcMain.handle('file:save', async (_, defaultName, content) => {
+    const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+      defaultPath: defaultName,
+      filters: [
+        { name: 'CSV', extensions: ['csv'] },
+        { name: 'JSON', extensions: ['json'] },
+        { name: 'All Files', extensions: ['*'] },
+      ],
+    });
+    if (canceled || !filePath) return null;
+    require('fs').writeFileSync(filePath, content, 'utf-8');
+    return filePath;
+  });
+
+  ipcMain.handle('shell:openExternal', async (_, url) => {
+    if (typeof url === 'string' && (url.startsWith('http://') || url.startsWith('https://'))) {
+      await shell.openExternal(url);
+    }
+  });
+});
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') app.quit();
+});
+app.on('activate', () => {
+  if (BrowserWindow.getAllWindows().length === 0) createWindow();
+});
+app.on('will-quit', () => {
+  store.closeDb();
+});

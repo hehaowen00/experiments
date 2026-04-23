@@ -50,12 +50,32 @@ function initDb() {
       email TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS git_worktree_names (
+      wt_path TEXT PRIMARY KEY,
+      nickname TEXT NOT NULL
+    );
+
   `);
 
   // Add identity_id column to git_repos if missing
   const cols = db.pragma('table_info(git_repos)').map(c => c.name);
   if (!cols.includes('identity_id')) {
     db.exec('ALTER TABLE git_repos ADD COLUMN identity_id TEXT DEFAULT NULL');
+  }
+
+  // Migrate git_worktree_names from (repo_id, wt_path) to (wt_path)
+  const wtCols = db.pragma('table_info(git_worktree_names)').map(c => c.name);
+  if (wtCols.includes('repo_id')) {
+    db.exec(`
+      CREATE TABLE git_worktree_names_new (
+        wt_path TEXT PRIMARY KEY,
+        nickname TEXT NOT NULL
+      );
+      INSERT OR IGNORE INTO git_worktree_names_new (wt_path, nickname)
+        SELECT wt_path, nickname FROM git_worktree_names;
+      DROP TABLE git_worktree_names;
+      ALTER TABLE git_worktree_names_new RENAME TO git_worktree_names;
+    `);
   }
 
 }

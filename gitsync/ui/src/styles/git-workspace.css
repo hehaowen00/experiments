@@ -298,7 +298,7 @@
 }
 
 .git-tab {
-  padding: 3px 10px;
+  padding: 3px 6px;
   border: none;
   background: transparent;
   color: var(--text-dim);
@@ -307,7 +307,7 @@
   border-radius: 4px;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   transition: color 0.15s, background 0.15s;
   white-space: nowrap;
 }
@@ -1244,6 +1244,16 @@
   font-size: var(--ui-font-size-sm);
   color: var(--accent);
 }
+
+.git-worktree-nickname {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.git-worktree-branch-sep {
+  color: var(--text-dim);
+}
+
 
 .git-worktree-path {
   font-family: var(--mono);

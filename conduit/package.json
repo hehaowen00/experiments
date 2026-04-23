@@ -1,57 +1,30 @@
 {
-  "name": "api-client",
+  "name": "conduit",
   "version": "1.0.0",
-  "description": "",
-  "main": "main.js",
+  "private": true,
+  "description": "Conduit — API client, database client, and developer toolbox",
+  "workspaces": [
+    "apps/*",
+    "apps/*/ui",
+    "packages/*"
+  ],
   "scripts": {
-    "build": "cd ui && npx vite build",
-    "start": "cd ui && npx vite build && cd .. && electron .",
-    "dev": "cd ui && npx vite",
-    "dist": "npm run build && electron-builder",
-    "dist:mac": "npm run build && electron-builder --mac",
-    "dist:win": "npm run build && electron-builder --win",
-    "dist:linux": "npm run build && electron-builder --linux"
+    "postinstall": "electron-rebuild -f -w better-sqlite3",
+    "rebuild": "electron-rebuild -f -w better-sqlite3",
+    "dev:api": "npm run dev --workspace=apps/api-client",
+    "dev:db": "npm run dev --workspace=apps/db-client",
+    "dev:toolbox": "npm run dev --workspace=apps/toolbox",
+    "start:api": "npm run start --workspace=apps/api-client",
+    "start:db": "npm run start --workspace=apps/db-client",
+    "start:toolbox": "npm run start --workspace=apps/toolbox",
+    "build": "npm run build --workspaces --if-present",
+    "dist": "npm run dist --workspaces --if-present",
+    "dist:mac": "npm run dist:mac --workspaces --if-present",
+    "dist:win": "npm run dist:win --workspaces --if-present",
+    "dist:linux": "npm run dist:linux --workspaces --if-present"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "build": {
-    "appId": "com.api-client.app",
-    "productName": "Conduit",
-    "files": [
-      "main.js",
-      "main/**/*",
-      "preload.js",
-      "ui/dist/**/*",
-      "node_modules/**/*"
-    ],
-    "mac": {
-      "target": "dmg"
-    },
-    "win": {
-      "target": "nsis"
-    },
-    "linux": {
-      "target": "AppImage"
-    },
-    "nsis": {
-      "oneClick": true,
-      "allowToChangeInstallationDirectory": false
-    }
-  },
-  "type": "commonjs",
   "devDependencies": {
-    "electron": "^40.7.0",
-    "electron-builder": "^26.8.1",
+    "@electron/rebuild": "^3.6.0",
     "prettier": "^3.8.1"
-  },
-  "dependencies": {
-    "@fortawesome/fontawesome-free": "^7.2.0",
-    "better-sqlite3": "^12.6.2",
-
-    "pg": "^8.20.0",
-    "vite": "^7.3.1",
-    "vite-plugin-solid": "^2.11.10",
-    "ws": "^8.19.0"
   }
 }

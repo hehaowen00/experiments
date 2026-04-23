@@ -1,0 +1,44 @@
+{
+  "name": "@conduit/api-client",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Conduit API Client — HTTP collections, WebSocket, SSE",
+  "main": "main.js",
+  "type": "commonjs",
+  "scripts": {
+    "build": "npm run build --workspace=@conduit/api-client-ui",
+    "dev": "npm run dev --workspace=@conduit/api-client-ui",
+    "start": "npm run build && electron .",
+    "dist": "npm run build && electron-builder",
+    "dist:mac": "npm run build && electron-builder --mac",
+    "dist:win": "npm run build && electron-builder --win",
+    "dist:linux": "npm run build && electron-builder --linux"
+  },
+  "build": {
+    "appId": "com.conduit.api-client",
+    "productName": "Conduit API Client",
+    "files": [
+      "main.js",
+      "main/**/*",
+      "preload.js",
+      "ui/dist/**/*",
+      "node_modules/**/*"
+    ],
+    "mac": { "target": "dmg" },
+    "win": { "target": "nsis" },
+    "linux": { "target": "AppImage" },
+    "nsis": {
+      "oneClick": true,
+      "allowToChangeInstallationDirectory": false
+    }
+  },
+  "dependencies": {
+    "@conduit/core": "*",
+    "better-sqlite3": "^12.6.2",
+    "ws": "^8.19.0"
+  },
+  "devDependencies": {
+    "electron": "^40.7.0",
+    "electron-builder": "^26.8.1"
+  }
+}

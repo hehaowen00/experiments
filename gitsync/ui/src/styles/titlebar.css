@@ -56,8 +56,8 @@
 }
 
 .titlebar-btn:hover {
-  background: var(--surface2);
-  color: var(--text);
+  background: transparent;
+  color: var(--accent);
 }
 
 .titlebar-btn-close:hover {

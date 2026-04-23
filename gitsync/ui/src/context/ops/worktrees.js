@@ -17,21 +17,21 @@ export function createWorktreeOps({
     else setWorktrees('loading', false);
   }
 
-  async function addWorktree(branchName, wtPath) {
-    const branchResult = await window.api.gitBranchList(repoPath);
-    const exists =
-      branchResult.branches &&
-      branchResult.branches.some(
-        (b) =>
-          b.name === branchName ||
-          b.name === `remotes/origin/${branchName}`,
-      );
+  async function setWorktreeName(wtPath, nickname) {
+    const result = await window.api.gitWorktreeSetName(wtPath, nickname);
+    if (result.error) showAlert('Error', result.error);
+    else loadWorktrees();
+  }
+
+  async function addWorktree(branchName, wtPath, opts = {}) {
+    const { createNew = false, detach = false, force = false, nickname = '' } = opts;
     setOperating('Adding worktree...');
     const result = await window.api.gitWorktreeAdd(
       repoPath,
       wtPath,
-      exists ? branchName : '',
-      exists ? '' : branchName,
+      createNew ? '' : branchName,
+      createNew ? branchName : '',
+      { detach, force },
     );
     setOperating('');
     if (result.error) {
@@ -39,6 +39,9 @@ export function createWorktreeOps({
       return false;
     }
     setOutput(result.output || `Worktree added at ${wtPath}`);
+    if (nickname.trim()) {
+      await window.api.gitWorktreeSetName(wtPath, nickname.trim());
+    }
     loadWorktrees();
     return true;
   }
@@ -82,9 +85,11 @@ export function createWorktreeOps({
   }
 
   function openWorktree(wt) {
+    const label = wt.nickname || wt.branch || 'detached';
     onSwitchRepo({
-      name: `${repoData.name} [${wt.branch || 'detached'}]`,
+      name: `${repoData.name} [${label}]`,
       path: wt.path,
+      isWorktree: true,
     });
   }
 
@@ -94,5 +99,6 @@ export function createWorktreeOps({
     removeWorktree,
     pruneWorktrees,
     openWorktree,
+    setWorktreeName,
   };
 }

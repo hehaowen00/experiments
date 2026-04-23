@@ -103,7 +103,6 @@ function register(mainWindow) {
   require('./git/bisect').register(ctx);
   require('./git/watcher').register(ctx);
   require('./git/build-check').register(ctx);
-  require('./git/contributors').register(ctx);
 }
 
 module.exports = { register };

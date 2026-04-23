@@ -10,6 +10,7 @@ export function createStashOps({
   setOperating,
   setOutput,
   refresh,
+  reloadRepo,
 }) {
   async function loadStashes() {
     setStashes('loading', true);
@@ -71,7 +72,7 @@ export function createStashOps({
     setOperating('');
     if (result.error) showAlert('Stash Failed', result.error);
     else setOutput(result.output || 'Changes stashed');
-    await refresh();
+    await reloadRepo();
     loadStashes();
   }
 
@@ -83,7 +84,7 @@ export function createStashOps({
     else if (result.conflict)
       setOutput(result.output || 'Stash applied with conflicts', true);
     else setOutput(result.output || 'Stash popped');
-    await refresh();
+    await reloadRepo();
     loadStashes();
   }
 
@@ -96,7 +97,6 @@ export function createStashOps({
       setOutput(result.output || 'Stash applied with conflicts', true);
     else setOutput(result.output || 'Stash applied');
     await refresh();
-    loadStashes();
   }
 
   async function doStashDrop(ref) {
@@ -105,6 +105,7 @@ export function createStashOps({
     const result = await window.api.gitStashDrop(repoPath, ref);
     if (result.error) showAlert('Error', result.error);
     else setOutput('Stash dropped');
+    await reloadRepo();
     loadStashes();
   }
 

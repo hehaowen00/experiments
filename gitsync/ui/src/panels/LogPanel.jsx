@@ -26,9 +26,22 @@ function parseRefs(refStr) {
     if (r.startsWith('HEAD -> ')) return { name: r.slice(8), type: 'git-ref-head' };
     if (r === 'HEAD') return { name: 'HEAD', type: 'git-ref-head' };
     if (r.startsWith('tag: ')) return { name: r.slice(5), type: 'git-ref-tag' };
+    if (r === 'refs/stash' || r === 'stash') return { name: 'stash', type: 'git-ref-stash' };
+    if (/^stash@\{\d+\}$/.test(r)) return { name: r, type: 'git-ref-stash' };
     if (r.includes('/')) return { name: r, type: 'git-ref-remote' };
     return { name: r, type: 'git-ref-branch' };
   });
+}
+
+function isStashCommit(commit) {
+  return parseRefs(commit.refs).some((r) => r.type === 'git-ref-stash');
+}
+
+function stashRefFor(commit) {
+  const refs = parseRefs(commit.refs);
+  const specific = refs.find((r) => r.type === 'git-ref-stash' && /^stash@\{\d+\}$/.test(r.name));
+  if (specific) return specific.name;
+  return 'stash@{0}';
 }
 
 export default function LogPanel() {
@@ -45,7 +58,10 @@ export default function LogPanel() {
   const [scrollTop, setScrollTop] = createSignal(0);
   const [viewHeight, setViewHeight] = createSignal(600);
 
+  const [isVertical, setIsVertical] = createSignal(false);
+
   let resizeObserver;
+  let splitResizeObserver;
   onMount(() => {
     if (logPanelRef) {
       setViewHeight(logPanelRef.clientHeight);
@@ -54,10 +70,21 @@ export default function LogPanel() {
       });
       resizeObserver.observe(logPanelRef);
     }
+    if (splitRef) {
+      const update = () => {
+        const w = splitRef.clientWidth;
+        const h = splitRef.clientHeight;
+        if (w > 0 && h > 0) setIsVertical(h > w);
+      };
+      update();
+      splitResizeObserver = new ResizeObserver(update);
+      splitResizeObserver.observe(splitRef);
+    }
   });
-  onCleanup(() => resizeObserver?.disconnect());
-
-  const [isVertical, setIsVertical] = createSignal(false);
+  onCleanup(() => {
+    resizeObserver?.disconnect();
+    splitResizeObserver?.disconnect();
+  });
 
   function onResizeBody(delta) {
     setBodyHeight((h) => Math.max(24, h + delta));
@@ -100,6 +127,17 @@ export default function LogPanel() {
   });
 
   const graphData = createMemo(() => buildGraph(ws.log.commits));
+
+  const commitStats = createMemo(() => {
+    const files = ws.commitDetail.files || [];
+    let insertions = 0;
+    let deletions = 0;
+    for (const f of files) {
+      insertions += f.additions || 0;
+      deletions += f.deletions || 0;
+    }
+    return { filesChanged: files.length, insertions, deletions };
+  });
 
   const totalHeight = () => ws.log.commits.length * ROW_HEIGHT;
 
@@ -176,7 +214,7 @@ export default function LogPanel() {
           <Icon name="fa-solid fa-rotate" />
         </button>
       </div>
-      <div class="git-log-split" ref={splitRef}>
+      <div class={`git-log-split ${isVertical() ? 'vertical' : ''}`} ref={splitRef}>
         <div class="git-log-panel" ref={logPanelRef} onScroll={onLogScroll} style={{ flex: logFlex() }}>
           <Show when={ws.log.loading}>
             <div class="git-empty">Loading...</div>
@@ -226,7 +264,7 @@ export default function LogPanel() {
             </div>
           </Show>
           <Show when={!ws.log.hasMore && ws.log.commits.length > 0}>
-            <div class="git-log-end">End of history</div>
+            <div class="git-log-end">Start of history</div>
           </Show>
         </div>
 
@@ -247,6 +285,19 @@ export default function LogPanel() {
                   <span class="git-commit-detail-parents">
                     {ws.commitDetail.parents.length > 1 ? 'Merge: ' : 'Parent: '}
                     {ws.commitDetail.parents.map(p => p.substring(0, 8)).join(' ')}
+                  </span>
+                </Show>
+                <Show when={commitStats().filesChanged > 0}>
+                  <span class="git-commit-detail-stats">
+                    <span class="git-commit-detail-stat-files" title={`${commitStats().filesChanged} file${commitStats().filesChanged === 1 ? '' : 's'} changed`}>
+                      <Icon name="fa-solid fa-file-lines" /> {commitStats().filesChanged}
+                    </span>
+                    <Show when={commitStats().insertions > 0}>
+                      <span class="git-commit-detail-stat-add" title={`${commitStats().insertions} insertion${commitStats().insertions === 1 ? '' : 's'}`}>+{commitStats().insertions}</span>
+                    </Show>
+                    <Show when={commitStats().deletions > 0}>
+                      <span class="git-commit-detail-stat-del" title={`${commitStats().deletions} deletion${commitStats().deletions === 1 ? '' : 's'}`}>-{commitStats().deletions}</span>
+                    </Show>
                   </span>
                 </Show>
               </div>
@@ -335,66 +386,96 @@ export default function LogPanel() {
       <Show when={commitMenu()}>
         {(() => {
           const menu = commitMenu();
+          const stashRef = stashRefFor(menu.commit);
           return (
             <div
               class="file-context-menu"
               style={{ left: `${menu.x}px`, top: `${menu.y}px` }}
               onClick={(e) => e.stopPropagation()}
             >
-              <button class="file-context-menu-item" disabled={!!ws.operating()} onClick={() => {
-                dismissCommitMenu();
-                ws.checkoutCommit(menu.commit.hash);
-              }}>
-                <Icon name="fa-solid fa-right-to-bracket" /> Checkout
-              </button>
-              <button class="file-context-menu-item" disabled={!!ws.operating()} onClick={() => {
-                dismissCommitMenu();
-                ws.doCherryPick(menu.commit.hash);
-              }}>
-                <Icon name="fa-solid fa-circle-dot" /> Cherry-pick
-              </button>
-              <button class="file-context-menu-item" disabled={!!ws.operating()} onClick={() => {
-                dismissCommitMenu();
-                ws.doRevert(menu.commit.hash);
-              }}>
-                <Icon name="fa-solid fa-rotate-left" /> Revert Commit
-              </button>
-              <button class="file-context-menu-item" disabled={!!ws.operating()} onClick={() => {
-                dismissCommitMenu();
-                ws.startInteractiveRebase(menu.commit.hash);
-              }}>
-                <Icon name="fa-solid fa-list-check" /> Interactive Rebase...
-              </button>
-              <Show when={!ws.bisect.selecting && ws.opState() !== 'bisect'}>
+              <Show when={isStashCommit(menu.commit)} fallback={
+                <>
+                  <button class="file-context-menu-item" disabled={!!ws.operating()} onClick={() => {
+                    dismissCommitMenu();
+                    ws.checkoutCommit(menu.commit.hash);
+                  }}>
+                    <Icon name="fa-solid fa-right-to-bracket" /> Checkout
+                  </button>
+                  <button class="file-context-menu-item" disabled={!!ws.operating()} onClick={() => {
+                    dismissCommitMenu();
+                    ws.doCherryPick(menu.commit.hash);
+                  }}>
+                    <Icon name="fa-solid fa-circle-dot" /> Cherry-pick
+                  </button>
+                  <button class="file-context-menu-item" disabled={!!ws.operating()} onClick={() => {
+                    dismissCommitMenu();
+                    ws.doRevert(menu.commit.hash);
+                  }}>
+                    <Icon name="fa-solid fa-rotate-left" /> Revert Commit
+                  </button>
+                  <button class="file-context-menu-item" disabled={!!ws.operating()} onClick={() => {
+                    dismissCommitMenu();
+                    ws.startInteractiveRebase(menu.commit.hash);
+                  }}>
+                    <Icon name="fa-solid fa-list-check" /> Interactive Rebase...
+                  </button>
+                  <Show when={!ws.bisect.selecting && ws.opState() !== 'bisect'}>
+                    <button class="file-context-menu-item" disabled={!!ws.operating()} onClick={() => {
+                      dismissCommitMenu();
+                      ws.startBisectSelect(menu.commit);
+                    }}>
+                      <Icon name="fa-solid fa-magnifying-glass-minus" /> Bisect (bad)...
+                    </button>
+                  </Show>
+                  <Show when={ws.bisect.selecting}>
+                    <button class="file-context-menu-item" disabled={!!ws.operating()} onClick={() => {
+                      dismissCommitMenu();
+                      ws.finishBisectSelect(menu.commit);
+                    }}>
+                      <Icon name="fa-solid fa-magnifying-glass-plus" /> Bisect (good)
+                    </button>
+                  </Show>
+                  <For each={parseRefs(menu.commit.refs).filter(r => (r.type === 'git-ref-branch' || r.type === 'git-ref-remote') && r.name !== ws.status.branch)}>{(ref) => (
+                    <button class="file-context-menu-item" disabled={!!ws.operating()} onClick={() => {
+                      dismissCommitMenu();
+                      ws.doMerge(ref.name);
+                    }}>
+                      <Icon name="fa-solid fa-code-branch" /> Merge {ref.name}
+                    </button>
+                  )}</For>
+                  <button class="file-context-menu-item danger" disabled={!!ws.operating()} onClick={() => {
+                    dismissCommitMenu();
+                    ws.doDropCommit(menu.commit.hash);
+                  }}>
+                    <Icon name="fa-solid fa-trash" /> Drop Commit
+                  </button>
+                </>
+              }>
                 <button class="file-context-menu-item" disabled={!!ws.operating()} onClick={() => {
                   dismissCommitMenu();
-                  ws.startBisectSelect(menu.commit);
+                  ws.viewStashDiff(stashRef);
                 }}>
-                  <Icon name="fa-solid fa-magnifying-glass-minus" /> Bisect (bad)...
+                  <Icon name="fa-solid fa-eye" /> Show Stash
+                </button>
+                <button class="file-context-menu-item" disabled={!!ws.operating()} onClick={() => {
+                  dismissCommitMenu();
+                  ws.doStashApply(stashRef);
+                }}>
+                  <Icon name="fa-solid fa-paste" /> Apply Stash
+                </button>
+                <button class="file-context-menu-item" disabled={!!ws.operating()} onClick={() => {
+                  dismissCommitMenu();
+                  ws.doStashPop(stashRef);
+                }}>
+                  <Icon name="fa-solid fa-arrow-up-from-bracket" /> Pop Stash
+                </button>
+                <button class="file-context-menu-item danger" disabled={!!ws.operating()} onClick={() => {
+                  dismissCommitMenu();
+                  ws.doStashDrop(stashRef);
+                }}>
+                  <Icon name="fa-solid fa-trash" /> Drop Stash
                 </button>
               </Show>
-              <Show when={ws.bisect.selecting}>
-                <button class="file-context-menu-item" disabled={!!ws.operating()} onClick={() => {
-                  dismissCommitMenu();
-                  ws.finishBisectSelect(menu.commit);
-                }}>
-                  <Icon name="fa-solid fa-magnifying-glass-plus" /> Bisect (good)
-                </button>
-              </Show>
-              <For each={parseRefs(menu.commit.refs).filter(r => (r.type === 'git-ref-branch' || r.type === 'git-ref-remote') && r.name !== ws.status.branch)}>{(ref) => (
-                <button class="file-context-menu-item" disabled={!!ws.operating()} onClick={() => {
-                  dismissCommitMenu();
-                  ws.doMerge(ref.name);
-                }}>
-                  <Icon name="fa-solid fa-code-branch" /> Merge {ref.name}
-                </button>
-              )}</For>
-              <button class="file-context-menu-item danger" disabled={!!ws.operating()} onClick={() => {
-                dismissCommitMenu();
-                ws.doDropCommit(menu.commit.hash);
-              }}>
-                <Icon name="fa-solid fa-trash" /> Drop Commit
-              </button>
             </div>
           );
         })()}

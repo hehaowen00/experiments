@@ -21,7 +21,7 @@ function register({ mainWindow, git, gitRaw }) {
       const args = ['log', `--max-count=${count || 50}`, topoOrder ? '--topo-order' : '--date-order', fmt];
       if (skip) args.push(`--skip=${skip}`);
       if (allBranches) {
-        args.push('--all', '--exclude=refs/stash');
+        args.push('--exclude=refs/stash', '--all');
       } else if (branchName) {
         args.push(branchName);
         // Always include matching remote tracking branches
@@ -62,7 +62,47 @@ function register({ mainWindow, git, gitRaw }) {
         return { commits: merged };
       }
       const out = await git(repoPath, args);
-      return { commits: parseCommits(out) };
+      const commits = parseCommits(out);
+
+      // Include stashes only on the first page when showing all branches.
+      // Stashes are fetched explicitly so we can strip their internal helper
+      // parents (index / untracked) that would otherwise create phantom lanes
+      // in the graph.
+      if (allBranches && !skip) {
+        try {
+          const stashListOut = await git(repoPath, [
+            'stash', 'list', '--pretty=format:%H%x00%gd',
+          ]);
+          const stashEntries = stashListOut
+            .trim()
+            .split('\n')
+            .filter(Boolean)
+            .map((line) => {
+              const [hash, ref] = line.split('\x00');
+              return { hash, ref };
+            });
+          if (stashEntries.length > 0) {
+            const refByHash = new Map(stashEntries.map((s) => [s.hash, s.ref]));
+            const stashOut = await git(repoPath, [
+              'log', '--no-walk', fmt, ...stashEntries.map((s) => s.hash),
+            ]);
+            for (const c of parseCommits(stashOut)) {
+              c.parents = c.parents.slice(0, 1);
+              c.isStash = true;
+              const label = refByHash.get(c.hash);
+              const existing = c.refs ? c.refs.split(',').map((r) => r.trim()) : [];
+              if (label && !existing.some((r) => r === label || r === 'refs/stash')) {
+                existing.unshift(label);
+              }
+              c.refs = existing.join(', ') || undefined;
+              commits.push(c);
+            }
+            commits.sort((a, b) => b.date - a.date);
+          }
+        } catch {}
+      }
+
+      return { commits };
     } catch (e) {
       return { error: e.message };
     }

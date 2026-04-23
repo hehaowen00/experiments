@@ -202,17 +202,14 @@ contextBridge.exposeInMainWorld('api', {
   // Worktrees
   gitPickWorktreeFolder: () => ipcRenderer.invoke('git:pickWorktreeFolder'),
   gitWorktreeList: (repoPath) => ipcRenderer.invoke('git:worktreeList', repoPath),
-  gitWorktreeAdd: (repoPath, wtPath, branch, newBranch) => ipcRenderer.invoke('git:worktreeAdd', repoPath, wtPath, branch, newBranch),
+  gitWorktreeSetName: (wtPath, nickname) => ipcRenderer.invoke('git:worktreeSetName', wtPath, nickname),
+  gitSuggestWorktreePath: (desired) => ipcRenderer.invoke('git:suggestWorktreePath', desired),
+  gitWorktreeAdd: (repoPath, wtPath, branch, newBranch, opts) => ipcRenderer.invoke('git:worktreeAdd', repoPath, wtPath, branch, newBranch, opts),
   gitWorktreeRemove: (repoPath, wtPath, force) => ipcRenderer.invoke('git:worktreeRemove', repoPath, wtPath, force),
   gitWorktreePrune: (repoPath) => ipcRenderer.invoke('git:worktreePrune', repoPath),
 
   // Build check
   gitBuildCheck: (repoPath) => ipcRenderer.invoke('git:buildCheck', repoPath),
-
-  // Contributors
-  gitContributors: (repoPath) => ipcRenderer.invoke('git:contributors', repoPath),
-  gitContributorActivity: (repoPath, email) => ipcRenderer.invoke('git:contributorActivity', repoPath, email),
-  gitRepoActivity: (repoPath) => ipcRenderer.invoke('git:repoActivity', repoPath),
 
   // Images
   gitImageBlob: (repoPath, filepath, ref) => ipcRenderer.invoke('git:imageBlob', repoPath, filepath, ref),

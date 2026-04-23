@@ -4,63 +4,107 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What is Conduit
 
-Conduit is an Electron desktop app (similar to Postman/Insomnia) for API development. It supports HTTP request collections, WebSocket connections, SSE streams, a database client (PostgreSQL and SQLite), an RFC viewer/downloader, a date/time converter, and file drop/transfer.
+Conduit is split into three Electron desktop apps sharing a monorepo:
+
+- **API Client** (`apps/api-client/`) — HTTP collections, WebSocket, SSE
+- **DB Client** (`apps/db-client/`) — PostgreSQL + SQLite workspace
+- **Toolbox** (`apps/toolbox/`) — RFC viewer, date/time converter, file drop
+
+Shared code lives in `packages/` — UI library (`@conduit/ui-shared`) and main-process core (`@conduit/core`). Each app owns its own SQLite DB under `~/.config/conduit-{api,db,toolbox}/`.
 
 ## Commands
 
 ```bash
-# Development - run UI dev server (hot reload, no Electron shell)
-cd ui && npx vite
+# Install (workspaces)
+npm install
 
-# Development - build UI and launch Electron
-npm start
+# Dev (Vite hot reload, no Electron)
+npm run dev:api
+npm run dev:db
+npm run dev:toolbox
 
-# Build UI only
+# Build UI + launch Electron
+npm run start:api
+npm run start:db
+npm run start:toolbox
+
+# Package a specific app
+npm run dist:mac --workspace=@conduit/api-client
+npm run dist:win --workspace=@conduit/db-client
+npm run dist:linux --workspace=@conduit/toolbox
+
+# Build or package all apps
 npm run build
-
-# Package for distribution
-npm run dist          # all platforms
-npm run dist:mac      # macOS .dmg
-npm run dist:win      # Windows .nsis
-npm run dist:linux    # Linux .AppImage
+npm run dist
 ```
 
-There are no tests or linting configured for the JS/Electron portion.
+No tests or linting are configured for the JS/Electron portion.
 
-The `websocket/` directory is a vendored copy of gorilla/websocket (Go) and is independent from the Electron app. Run Go tests with `cd websocket && go test ./...`.
+The `websocket/` directory is a vendored copy of gorilla/websocket (Go), independent of the Electron apps. Run Go tests with `cd websocket && go test ./...`.
+
+## Repo layout
+
+```
+conduit/
+├── apps/
+│   ├── api-client/      # HTTP/WS/SSE app
+│   │   ├── main.js, preload.js
+│   │   ├── main/        # store.js, ipc-collections, ipc-requests, ipc-websocket, import.js
+│   │   └── ui/          # Vite + SolidJS UI
+│   ├── db-client/       # Database app
+│   │   ├── main.js, preload.js
+│   │   ├── main/        # store.js, ipc-database
+│   │   └── ui/
+│   └── toolbox/         # RFC + datetime + drop
+│       ├── main.js, preload.js
+│       ├── main/        # store.js (with rfc.db), ipc-rfc, ipc-drop
+│       └── ui/          # has two Vite entries: index.html + drop.html
+├── packages/
+│   ├── core/            # CommonJS: ksuid, store-pragmas
+│   └── ui-shared/       # ESM: themes, locale, Modal/Select/Icon/FormModal/ItemCard/
+│                        # CategoryList/TitleBar/TabBar, TabProvider tab store, fonts helpers
+├── package.json         # npm workspaces root
+└── websocket/           # vendored Go (independent)
+```
 
 ## Architecture
 
-### Electron Main Process (`main.js`, `main/`)
-- **CommonJS modules** throughout (`require`/`module.exports`)
-- `main.js` — App entry point; creates BrowserWindow, initializes SQLite DB, registers IPC handlers
-- `main/store.js` — SQLite database (better-sqlite3) for app state: collections, responses, settings, DB connections. Handles schema migrations via ALTER TABLE. Data stored at `~/.config/api-client/api-client.db`
-- `main/ipc-*.js` — IPC handler modules, each exports a `register(mainWindow)` function called at startup. Handles: collections, HTTP requests, WebSocket, database client, file drop, RFC viewer
-- `main/ksuid.js` — ID generation (Base62-encoded KSUID)
+### Main process (per app)
+- **CommonJS** (`require`/`module.exports`). Each app has its own `main.js`, `preload.js`, and `main/` folder.
+- `main/store.js` — app-specific SQLite schema and queries. Each app uses `@conduit/core`'s `applyPragmas` and may use `generateKSUID` for IDs.
+- `main/ipc-*.js` — IPC handler modules, each exports `register(mainWindow)` called at startup.
 
-### Preload (`preload.js`)
-- Bridges main↔renderer via `contextBridge.exposeInMainWorld('api', {...})`. The renderer accesses all backend functionality through `window.api.*` calls.
+### DB paths
+- api-client: `~/.config/conduit-api/app.db` (collections, responses, categories, settings)
+- db-client: `~/.config/conduit-db/app.db` (db_connections, db_categories, settings)
+- toolbox: `~/.config/conduit-toolbox/app.db` (settings) + `~/.config/conduit-toolbox/rfc.db` (rfcs, rfc_content, rfc_meta)
 
-### UI (`ui/`)
-- **SolidJS** with JSX, built by Vite (`vite-plugin-solid`)
-- Entry: `ui/index-solid.html` → `ui/src/index.jsx` → `ui/src/App.jsx`
-- Has its own `package.json` with separate dependencies (codemirror, solid-js)
+On first launch, each app does a one-time migration from the legacy `~/.config/api-client/api-client.db` (and the toolbox also pulls in `~/.config/api-client/rfc.db`).
 
-**Tab system:** `ui/src/store/tabs.jsx` manages tab state via SolidJS `createStore` + context. Tab types: `new` (app picker), `api` (collection list), `collection` (HTTP editor), `db` (DB connection list), `database` (SQL workspace), `rfc` (RFC viewer), `datetime`, `drop`. Tabs use `display: none` toggling (not conditional rendering) to preserve component state across tab switches. `datetime` and `drop` are singletons (one instance max). Ctrl/Cmd+W closes tabs; closing the last new tab quits the app.
+### Preload
+Each app's `preload.js` exposes only the IPC surface relevant to that app via `contextBridge.exposeInMainWorld('api', {...})`. Shared: window controls, `getAllSettings`/`setSetting`, `openExternal`, `saveFile`, `homeDir`.
 
-**Pages:** Landing (collection list), Collection (HTTP request editor), DatabaseClient (connection list), DatabaseWorkspace (SQL client), RfcViewer (RFC browser/search), DateTimeTool, Drop (file transfer)
+### UI (per app)
+- **SolidJS + Vite**. Each `apps/*/ui/` has its own `package.json` and `vite.config.js`.
+- Entry: `apps/<app>/ui/index.html` → `src/index.jsx` → `src/App.jsx`.
+- The shared UI library `@conduit/ui-shared` is resolved via a Vite alias (`packages/ui-shared`). `vite-plugin-solid` is configured to process JSX in that path.
+- Shared components: `Icon`, `Modal` (+ settings + `showPrompt/showConfirm/showTextarea/showAlert`), `Select`, `FormModal`/`FormField`, `ItemCard`, `CategoryList`, `TitleBar`, `TabBar`.
+- Shared stores: `TabProvider` (generic — accepts `tabTypes`, `pinnedTools`, `initialType` props), `useTabs`.
+- Shared helpers: `applyTheme`, `applyUiFontSize`, `applyEditorFontSize`, `t` (locale).
 
-**Key components:** RequestPane/ResponsePane (HTTP), CodeEditor/SqlEditor (CodeMirror 6 wrappers), Sidebar, CategoryList, ResultsTable, NewTabPage (app picker grid)
+### Tabs
+- api-client uses `TabProvider` with tab types `api | collection` (initialType: `api`). New tabs open to Landing; closing the last quits.
+- db-client uses `TabProvider` with tab types `db | database` (initialType: `db`). Same closing behavior.
+- toolbox doesn't use tabs — it has a single shell with a top-nav switching between RFC / DateTime / Drop. State is preserved via `display: none` toggling.
 
-**State:** `ui/src/store/collection.jsx` manages collection/request editor state with SolidJS signals. `ui/src/store/tabs.jsx` manages tab routing. Both use `createStore` + `createContext` pattern.
+### WebSocket/SSE stream stashing
+Lives in `apps/api-client/ui/src/store/collection.jsx`. When a user switches requests while a WS/SSE stream is open, the stream state is "stashed" and restored on return. On disconnect, history is persisted via `saveWsHistory()`. `saveResponse` wipes previous response data for the same `request_id` so only the latest retains full body/messages.
 
-### IPC Communication Pattern
-All renderer→main communication uses Electron's `ipcRenderer.invoke` / `ipcMain.handle` pattern. Event-driven features (WebSocket messages, SSE events, drop notifications) use `ipcRenderer.on` for main→renderer push.
+### Styles
+Each app currently ships a full copy of the legacy `styles.css` (4466 lines, with clear feature-section comments). The `packages/ui-shared/fonts.js` exports the CSS variable helpers used by the settings modal. Further style deduplication is a future cleanup.
 
-### WebSocket/SSE Stream Stashing
-`collection.jsx` supports one active stream per collection. When the user switches to a different request while a WS/SSE stream is open, the stream state is "stashed" (saved to a `stashedStream` variable) and restored if the user navigates back. Event handlers (`onWsMessage`, `onWsClose`, etc.) check both the active connection and the stashed connection. On disconnect or close, stream history (including messages) is persisted to the responses table via `saveWsHistory()`. The `saveResponse` DB function wipes previous response data for the same `request_id` before inserting, so only the latest response retains full body/messages.
-
-### Key Conventions
-- Main process uses CommonJS; UI uses ESM. Do not mix.
+## Key conventions
+- Main process = CommonJS; UI = ESM. Do not mix.
 - SolidJS reactivity: use `<Switch>`/`<Match>` (not JS `switch`) when rendering needs to react to store property changes inside `<For>`.
 - Prettier: 80 char width, single quotes, trailing commas (`.prettierrc`).
+- When adding a new shared component, add it to `packages/ui-shared/components/` and re-export it from `packages/ui-shared/index.js`.

@@ -87,7 +87,8 @@
 }
 
 .git-branch-item:hover .git-branch-checkout,
-.git-branch-item:hover .git-branch-action {
+.git-branch-item:hover .git-branch-action,
+.git-worktree-item:hover .git-branch-action {
   opacity: 1;
 }
 

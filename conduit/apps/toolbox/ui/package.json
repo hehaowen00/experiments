@@ -1,0 +1,20 @@
+{
+  "name": "@conduit/toolbox-ui",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@conduit/ui-shared": "*",
+    "@fortawesome/fontawesome-free": "^7.2.0",
+    "qrcode": "^1.5.4",
+    "solid-js": "^1.9.0"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0",
+    "vite-plugin-solid": "^2.11.0"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "name": "@conduit/ui-shared",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "peerDependencies": {
+    "solid-js": "^1.9.0"
+  }
+}

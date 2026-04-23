@@ -1,4 +1,4 @@
-import { produce } from 'solid-js/store';
+import { produce, reconcile } from 'solid-js/store';
 
 const LOG_PAGE_SIZE = 100;
 const LOG_MAX_COMMITS = 2000;
@@ -34,10 +34,25 @@ export function createLogOps({
       logTopoOrder(),
     );
     if (!result.error) {
-      const hasMore = result.commits.length > count;
-      const commits = hasMore ? result.commits.slice(0, count) : result.commits;
+      const mainCount = result.commits.reduce(
+        (n, c) => (c.isStash ? n : n + 1),
+        0,
+      );
+      const hasMore = mainCount > count;
+      let commits = result.commits;
+      if (hasMore) {
+        let kept = 0;
+        commits = commits.filter((c) => {
+          if (c.isStash) return true;
+          if (kept < count) {
+            kept++;
+            return true;
+          }
+          return false;
+        });
+      }
+      setLog('commits', reconcile(commits, { key: 'hash', merge: false }));
       setLog({
-        commits,
         loading: false,
         loadingMore: false,
         hasMore,
@@ -55,7 +70,7 @@ export function createLogOps({
     const allBranches = branch === '__all__';
     const branchName =
       branch === '__current__' || branch === '__all__' ? null : branch;
-    const skip = log.commits.length;
+    const skip = log.commits.reduce((n, c) => (c.isStash ? n : n + 1), 0);
     const result = await window.api.gitLog(
       repoPath,
       LOG_PAGE_SIZE + 1,

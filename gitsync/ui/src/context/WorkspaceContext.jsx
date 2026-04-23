@@ -28,7 +28,6 @@ import { createWorktreeOps } from './ops/worktrees';
 import { createFileHistoryOps } from './ops/file-history';
 import { createBisectOps } from './ops/bisect';
 import { createBuildCheckOps } from './ops/build-check';
-import { createContributorOps } from './ops/contributors';
 
 const WorkspaceContext = createContext();
 
@@ -161,9 +160,24 @@ export function WorkspaceProvider(props) {
     setReadme({ content: result.content, filename: result.filename });
   }
 
+  function loadCurrentTabData() {
+    const t = tab();
+    if (t === 'log') {
+      logOps.loadLog();
+      logOps.loadLogBranches();
+    } else if (t === 'remotes') {
+      remoteOps.loadRemotes();
+      loadBranches();
+      tagOps.loadTags();
+      worktreeOps.loadWorktrees();
+    } else if (t === 'stashes') {
+      stashOps.loadStashes();
+    }
+  }
+
   async function reloadRepo() {
     await refresh();
-    if (tab() === 'log') logOps.loadLog();
+    loadCurrentTabData();
   }
 
   async function refresh() {
@@ -263,8 +277,6 @@ export function WorkspaceProvider(props) {
     setOutput,
   });
 
-  const contributorOps = createContributorOps({ repoPath });
-
   const commitKey = `gitsync:commit:${repoPath}`;
   const commitOps = createCommitOps({
     repoPath,
@@ -344,6 +356,7 @@ export function WorkspaceProvider(props) {
     setOperating,
     setOutput,
     refresh,
+    reloadRepo,
   });
 
   const worktreeOps = createWorktreeOps({
@@ -386,26 +399,7 @@ export function WorkspaceProvider(props) {
       setTags({ list: [], loading: false });
       setWorktrees({ list: [], loading: false });
     }
-    if (prev === 'contributors' && t !== 'contributors') {
-      contributorOps.clearContributors();
-    }
-
-    if (t === 'log') {
-      logOps.loadLog();
-      logOps.loadLogBranches();
-    }
-    if (t === 'remotes') {
-      remoteOps.loadRemotes();
-      loadBranches();
-      tagOps.loadTags();
-      worktreeOps.loadWorktrees();
-    }
-    if (t === 'contributors') {
-      contributorOps.loadContributors();
-    }
-    if (t === 'stashes') {
-      stashOps.loadStashes();
-    }
+    loadCurrentTabData();
   }
 
   // --- Submodules ---
@@ -592,6 +586,7 @@ export function WorkspaceProvider(props) {
       fsDebounce = setTimeout(() => {
         refreshing = true;
         refresh().finally(() => { refreshing = false; });
+        loadCurrentTabData();
       }, 300);
     });
     removeProgressListener = window.api.onGitProgress((line) => {
@@ -692,7 +687,6 @@ export function WorkspaceProvider(props) {
     ...fileHistoryOps,
     ...bisectOps,
     ...buildCheckOps,
-    ...contributorOps,
     initSubmodule,
     openSubmodule,
     onFileContextMenu,

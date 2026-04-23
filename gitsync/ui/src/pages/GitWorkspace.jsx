@@ -10,7 +10,6 @@ import ChangesPanel from '../panels/ChangesPanel';
 import LogPanel from '../panels/LogPanel';
 import RemotesPanel from '../panels/RemotesPanel';
 import ReadmePanel from '../panels/ReadmePanel';
-import ContributorsPanel from '../panels/ContributorsPanel';
 
 function WorkspaceInner() {
   const ws = useWorkspace();
@@ -18,14 +17,17 @@ function WorkspaceInner() {
   const [overflowMenu, setOverflowMenu] = createSignal(null);
   const [hiddenTabs, setHiddenTabs] = createSignal([]);
 
+  const isWorktree = () => !!ws.repoData?.isWorktree;
+
   const allTabs = () => {
     const tabs = [
       { id: 'changes', label: 'Workspace', badge: ws.status.files.length || 0 },
       { id: 'log', label: 'History' },
-      { id: 'remotes', label: 'Refs' },
-      { id: 'contributors', label: 'Contributors' },
     ];
-    if (ws.readme().content) tabs.push({ id: 'readme', label: 'README' });
+    if (!isWorktree()) {
+      tabs.push({ id: 'remotes', label: 'Refs' });
+      if (ws.readme().content) tabs.push({ id: 'readme', label: 'README' });
+    }
     return tabs;
   };
 
@@ -139,9 +141,11 @@ function WorkspaceInner() {
         <button class="btn btn-ghost btn-sm" onClick={() => ws.doPull()} disabled={!!ws.operating()} title="Pull">
           <Icon name="fa-solid fa-download" />
         </button>
-        <button class="btn btn-ghost btn-sm" onClick={ws.doPush} disabled={!!ws.operating()} title="Push">
-          <Icon name="fa-solid fa-upload" />
-        </button>
+        <Show when={!isWorktree()}>
+          <button class="btn btn-ghost btn-sm" onClick={ws.doPush} disabled={!!ws.operating()} title="Push">
+            <Icon name="fa-solid fa-upload" />
+          </button>
+        </Show>
         <button class="btn btn-ghost btn-sm" onClick={ws.refresh} title="Refresh">
           <Icon name="fa-solid fa-rotate" />
         </button>
@@ -230,9 +234,6 @@ function WorkspaceInner() {
       </div>
       <div class="git-content" style={{ display: ws.tab() === 'remotes' ? '' : 'none' }}>
         <RemotesPanel />
-      </div>
-      <div class="git-content" style={{ display: ws.tab() === 'contributors' ? '' : 'none' }}>
-        <ContributorsPanel />
       </div>
       <div class="git-content" style={{ display: ws.tab() === 'readme' ? '' : 'none' }}>
         <ReadmePanel />
