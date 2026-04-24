@@ -48,6 +48,12 @@ pub enum Message {
     // Terminal widget event (id, event)
     Terminal(TabId, iced_term::Event),
 
+    // Keyboard shortcuts
+    PrevTerminalTab,
+    NextTerminalTab,
+    PrevProjectTab,
+    NextProjectTab,
+
     // Window
     WindowSized(iced::Size),
 

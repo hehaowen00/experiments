@@ -1,4 +1,4 @@
-use iced::widget::{button, column, container, row, scrollable, text, Space};
+use iced::widget::{button, column, container, mouse_area, row, scrollable, text, Space};
 use iced::{Alignment, Element, Length};
 
 use crate::app::App;
@@ -40,7 +40,7 @@ pub fn view<'a>(app: &'a App) -> Element<'a, Message> {
         for p in &app.projects {
             let path_str = theme::truncate_middle(&p.path.to_string_lossy(), 72);
             let already_open = app.open_tabs.iter().any(|s| s.project.id == p.id);
-            let card = container(
+            let card_inner = container(
                 row![
                     column![
                         text(p.name.clone()).size(15),
@@ -49,10 +49,9 @@ pub fn view<'a>(app: &'a App) -> Element<'a, Message> {
                     .spacing(3)
                     .width(Length::Fill),
                     row![
-                        button(text(if already_open { "Focus" } else { "Open" }).size(12))
-                            .padding([theme::PAD_XS + 2.0, theme::PAD_MD])
-                            .style(theme::primary_button)
-                            .on_press(Message::OpenProject(p.id.clone())),
+                        text(if already_open { "open" } else { "" })
+                            .size(11)
+                            .color(theme::TEXT_DIM),
                         button(text("Remove").size(12))
                             .padding([theme::PAD_XS + 2.0, theme::PAD_MD])
                             .style(theme::danger_button)
@@ -68,6 +67,9 @@ pub fn view<'a>(app: &'a App) -> Element<'a, Message> {
             .width(Length::Fill)
             .height(Length::Fixed(68.0))
             .style(theme::card);
+            let card = mouse_area(card_inner)
+                .on_press(Message::OpenProject(p.id.clone()))
+                .interaction(iced::mouse::Interaction::Pointer);
             col = col.push(card);
         }
         scrollable(col).height(Length::Fill).into()

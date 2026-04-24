@@ -19,6 +19,10 @@ fn main() -> iced::Result {
     iced::application(app::App::new, app::App::update, app::App::view)
         .title(app::App::title)
         .subscription(app::App::subscription)
-        .window_size(iced::Size { width: 1280.0, height: 800.0 })
+        .window(iced::window::Settings {
+            size: iced::Size::new(1280.0, 800.0),
+            maximized: true,
+            ..Default::default()
+        })
         .run()
 }

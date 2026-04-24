@@ -1,4 +1,4 @@
-import { Show } from 'solid-js';
+import { Show, For } from 'solid-js';
 
 const LANE_W = 16;
 const NODE_R = 3.5;
@@ -135,84 +135,110 @@ export function buildGraph(commits) {
 }
 
 export function GraphCell(props) {
-  const h = props.height;
-  const mid = h / 2;
-  const row = props.row;
-  const w = row.numLanes * LANE_W;
-  const cx = laneX(row.commitLane);
-  const collapseSet = new Set(row.collapsing);
+  // All derived values must be reactive getters — props.row updates in place
+  // when buildGraph recomputes (e.g. new commits loaded above this row change
+  // its continuesUp set). Destructuring into `const` would freeze the view to
+  // the initial props.
+  const row = () => props.row;
+  const h = () => props.height;
+  const mid = () => h() / 2;
+  const w = () => row().numLanes * LANE_W;
+  const cx = () => laneX(row().commitLane);
+  const up = () => row().continuesUp;
+  const down = () => row().continuesDown;
 
-  // Pass-through: active at top & bottom, not commit lane, not collapsing
-  const passThrough = [...row.topActive].filter(
-    (i) =>
-      i !== row.commitLane &&
-      !collapseSet.has(i) &&
-      row.bottomActive.has(i),
-  );
+  const passThrough = () => {
+    const r = row();
+    const collapse = new Set(r.collapsing);
+    return [...r.topActive].filter(
+      (i) =>
+        i !== r.commitLane &&
+        !collapse.has(i) &&
+        r.bottomActive.has(i),
+    );
+  };
 
-  const up = row.continuesUp;
-  const down = row.continuesDown;
+  const sortedCollapsing = () => {
+    const r = row();
+    return [...r.collapsing]
+      .filter((i) => up().has(i))
+      .sort(
+        (a, b) =>
+          Math.abs(b - r.commitLane) - Math.abs(a - r.commitLane),
+      );
+  };
+
+  const sortedMergeTo = () => {
+    const r = row();
+    return [...r.mergeToLanes]
+      .filter((i) => down().has(i))
+      .sort(
+        (a, b) =>
+          Math.abs(b - r.commitLane) - Math.abs(a - r.commitLane),
+      );
+  };
 
   return (
     <svg
-      width={w}
-      height={h}
+      width={w()}
+      height={h()}
       class="git-graph-cell"
     >
       {/* Pass-through vertical lines — clip to connected portions */}
-      {passThrough.map((i) => {
-        const goesUp = up.has(i);
-        const goesDown = down.has(i);
-        if (!goesUp && !goesDown) return null;
+      <For each={passThrough()}>{(i) => {
+        const goesUp = () => up().has(i);
+        const goesDown = () => down().has(i);
         return (
-          <line
-            x1={laneX(i)} y1={goesUp ? 0 : mid}
-            x2={laneX(i)} y2={goesDown ? h : mid}
-            stroke={color(i)} stroke-width="2"
-          />
+          <Show when={goesUp() || goesDown()}>
+            <line
+              x1={laneX(i)} y1={goesUp() ? 0 : mid()}
+              x2={laneX(i)} y2={goesDown() ? h() : mid()}
+              stroke={color(i)} stroke-width="2"
+            />
+          </Show>
         );
-      })}
+      }}</For>
 
       {/* Commit lane: top half — only if lane connects to row above */}
-      <Show when={row.topActive.has(row.commitLane) && up.has(row.commitLane)}>
+      <Show when={row().topActive.has(row().commitLane) && up().has(row().commitLane)}>
         <line
-          x1={cx} y1={0}
-          x2={cx} y2={mid}
-          stroke={color(row.commitLane)} stroke-width="2"
+          x1={cx()} y1={0}
+          x2={cx()} y2={mid()}
+          stroke={color(row().commitLane)} stroke-width="2"
         />
       </Show>
 
       {/* Commit lane: bottom half — only if lane connects to row below */}
-      <Show when={row.bottomActive.has(row.commitLane) && down.has(row.commitLane)}>
+      <Show when={row().bottomActive.has(row().commitLane) && down().has(row().commitLane)}>
         <line
-          x1={cx} y1={mid}
-          x2={cx} y2={h}
-          stroke={color(row.commitLane)} stroke-width="2"
+          x1={cx()} y1={mid()}
+          x2={cx()} y2={h()}
+          stroke={color(row().commitLane)} stroke-width="2"
         />
       </Show>
 
-      {/* Collapsing: vertical down then horizontal in (outermost first) — only if lane connects above */}
-      {[...row.collapsing].filter((i) => up.has(i)).sort((a, b) => Math.abs(b - row.commitLane) - Math.abs(a - row.commitLane)).map((i) => (
+      {/* Collapsing: vertical down then horizontal in (outermost first) */}
+      <For each={sortedCollapsing()}>{(i) => (
         <path
-          d={collapsePath(i, cx, mid)}
+          d={collapsePath(i, cx(), mid())}
           stroke={color(i)} stroke-width="2" fill="none"
         />
-      ))}
+      )}</For>
 
-      {/* Merge: horizontal out then vertical down (outermost first) — only if lane connects below */}
-      {[...row.mergeToLanes].filter((i) => down.has(i)).sort((a, b) => Math.abs(b - row.commitLane) - Math.abs(a - row.commitLane)).map((i) => (
+      {/* Merge: horizontal out then vertical down (outermost first) */}
+      <For each={sortedMergeTo()}>{(i) => (
         <path
-          d={mergePath(cx, i, mid, h)}
+          d={mergePath(cx(), i, mid(), h())}
           stroke={color(i)} stroke-width="2" fill="none"
         />
-      ))}
+      )}</For>
 
       {/* Commit node */}
       <circle
-        cx={cx}
-        cy={mid}
+        cx={cx()}
+        cy={mid()}
         r={NODE_R}
-        fill={color(row.commitLane)}
+        fill={color(row().commitLane)}
         stroke="var(--bg)"
         stroke-width="1.5"
       />

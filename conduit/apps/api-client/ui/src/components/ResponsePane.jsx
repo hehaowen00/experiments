@@ -316,6 +316,7 @@ export default function ResponsePane() {
   const [messageFilter, setMessageFilter] = createSignal('');
 
   let viewerAPI = null;
+  let searchInputRef;
   let searchActiveIdx = -1;
 
   // Load history when request changes or new response arrives
@@ -378,7 +379,15 @@ export default function ResponsePane() {
   // Search
   function openSearch() {
     if (!state.response?.body) return;
+    const wasVisible = searchVisible();
     setSearchVisible(true);
+    const focus = () => {
+      if (!searchInputRef) return;
+      searchInputRef.focus();
+      searchInputRef.select();
+    };
+    if (wasVisible) focus();
+    else queueMicrotask(focus);
   }
 
   function selectAllBody() {
@@ -688,6 +697,7 @@ export default function ResponsePane() {
                 }}
               />
               <input
+                ref={searchInputRef}
                 type="text"
                 class="url-input search-input"
                 placeholder={t.responsePane.searchPlaceholder}

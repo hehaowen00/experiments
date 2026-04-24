@@ -107,6 +107,49 @@ impl App {
             iced::Event::Window(iced::window::Event::Resized(size)) => {
                 Some(Message::WindowSized(size))
             }
+            iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
+                ref key,
+                ref modified_key,
+                modifiers,
+                ref text,
+                ..
+            }) => {
+                if !modifiers.command() {
+                    return None;
+                }
+                let shift = modifiers.shift();
+                tracing::info!(
+                    "terminus key: key={:?} modified_key={:?} modifiers={:?} text={:?}",
+                    key,
+                    modified_key,
+                    modifiers,
+                    text
+                );
+                let candidate = |c: &str| -> Option<&'static str> {
+                    match c {
+                        "[" | "{" => Some("["),
+                        "]" | "}" => Some("]"),
+                        _ => None,
+                    }
+                };
+                let which = match key {
+                    iced::keyboard::Key::Character(c) => candidate(c.as_str()),
+                    _ => None,
+                }
+                .or_else(|| match modified_key {
+                    iced::keyboard::Key::Character(c) => candidate(c.as_str()),
+                    _ => None,
+                })
+                .or_else(|| text.as_deref().and_then(candidate));
+
+                match (which, shift) {
+                    (Some("["), false) => Some(Message::PrevTerminalTab),
+                    (Some("]"), false) => Some(Message::NextTerminalTab),
+                    (Some("["), true) => Some(Message::PrevProjectTab),
+                    (Some("]"), true) => Some(Message::NextProjectTab),
+                    _ => None,
+                }
+            }
             _ => None,
         }));
 
@@ -413,6 +456,18 @@ impl App {
                     state.worktrees = list;
                 }
             }
+            Message::PrevTerminalTab => {
+                self.step_terminal_tab(-1);
+            }
+            Message::NextTerminalTab => {
+                self.step_terminal_tab(1);
+            }
+            Message::PrevProjectTab => {
+                self.step_project_tab(-1);
+            }
+            Message::NextProjectTab => {
+                self.step_project_tab(1);
+            }
             Message::WindowSized(size) => {
                 let pane = self.compute_pane_size(size);
                 self.last_pane_size = Some(pane);
@@ -514,6 +569,46 @@ impl App {
                     .or_else(|| self.open_tabs.first().map(|p| p.project.id.clone()))
             };
         }
+    }
+
+    fn step_terminal_tab(&mut self, delta: i32) {
+        let size = self.last_pane_size;
+        let Some(state) = self.active_state_mut() else {
+            return;
+        };
+        if state.tab_order.is_empty() {
+            return;
+        }
+        let current = state
+            .active_tab
+            .and_then(|id| state.tab_order.iter().position(|t| *t == id))
+            .unwrap_or(0);
+        let len = state.tab_order.len() as i32;
+        let next_idx = ((current as i32 + delta).rem_euclid(len)) as usize;
+        let next_id = state.tab_order[next_idx];
+        state.active_tab = Some(next_id);
+        if let Some(size) = size {
+            if let Some(tab) = state.tabs.get_mut(&next_id) {
+                let _ = tab.term.handle(iced_term::Command::ProxyToBackend(
+                    iced_term::BackendCommand::Resize(Some(size), None),
+                ));
+            }
+        }
+    }
+
+    fn step_project_tab(&mut self, delta: i32) {
+        if self.open_tabs.is_empty() {
+            return;
+        }
+        let current = self
+            .active_project
+            .as_ref()
+            .and_then(|id| self.open_tabs.iter().position(|p| &p.project.id == id))
+            .map(|i| i as i32)
+            .unwrap_or(if delta > 0 { -1 } else { self.open_tabs.len() as i32 });
+        let len = self.open_tabs.len() as i32;
+        let next_idx = ((current + delta).rem_euclid(len)) as usize;
+        self.active_project = Some(self.open_tabs[next_idx].project.id.clone());
     }
 
     fn add_project(&mut self, path: PathBuf) {

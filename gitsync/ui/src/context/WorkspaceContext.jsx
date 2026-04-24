@@ -178,6 +178,8 @@ export function WorkspaceProvider(props) {
   async function reloadRepo() {
     await refresh();
     loadCurrentTabData();
+    // Rebuild the graph even off the log tab; loadCurrentTabData skips it.
+    if (tab() !== 'log') reloadLog();
   }
 
   async function refresh() {
@@ -309,15 +311,6 @@ export function WorkspaceProvider(props) {
     pickRemote: syncOps.pickRemote,
   });
 
-  const mergeRebaseOps = createMergeRebaseOps({
-    repoPath,
-    status,
-    log,
-    setOperating,
-    setOutput,
-    reloadRepo,
-  });
-
   const logOps = createLogOps({
     repoPath,
     log,
@@ -330,6 +323,19 @@ export function WorkspaceProvider(props) {
     logSearch,
     logTopoOrder,
     setLogBranches,
+  });
+
+  async function reloadLog() {
+    await Promise.all([logOps.loadLog(), logOps.loadLogBranches()]);
+  }
+
+  const mergeRebaseOps = createMergeRebaseOps({
+    repoPath,
+    status,
+    log,
+    setOperating,
+    setOutput,
+    reloadRepo,
   });
 
   const remoteOps = createRemoteOps({
