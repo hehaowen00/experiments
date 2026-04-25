@@ -1,10 +1,17 @@
 use anyhow::{Context, Result};
 use rusqlite::{Connection, OptionalExtension, params};
 use std::cell::RefCell;
+use std::path::PathBuf;
 use std::rc::Rc;
 
 use crate::config;
 use crate::domain::project::Project;
+
+#[derive(Debug, Clone)]
+pub struct ClaudeSession {
+    pub session_id: String,
+    pub cwd: PathBuf,
+}
 
 pub type Db = Rc<RefCell<Connection>>;
 
@@ -37,6 +44,17 @@ fn migrate(conn: &Connection) -> Result<()> {
         CREATE TABLE IF NOT EXISTS settings (
             key   TEXT PRIMARY KEY,
             value TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS claude_sessions (
+            project_id  TEXT NOT NULL,
+            slot        INTEGER NOT NULL,
+            session_id  TEXT NOT NULL UNIQUE,
+            cwd         TEXT NOT NULL,
+            created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+            last_active TEXT,
+            PRIMARY KEY (project_id, slot),
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
         );
         "#,
     )?;
@@ -104,5 +122,66 @@ pub fn touch_last_used(db: &Db, id: &str) -> Result<()> {
 pub fn delete_project(db: &Db, id: &str) -> Result<()> {
     let conn = db.borrow();
     conn.execute("DELETE FROM projects WHERE id = ?1", params![id])?;
+    Ok(())
+}
+
+pub fn list_claude_sessions(db: &Db, project_id: &str) -> Result<Vec<ClaudeSession>> {
+    let conn = db.borrow();
+    let mut stmt = conn.prepare(
+        "SELECT session_id, cwd FROM claude_sessions
+         WHERE project_id = ?1 ORDER BY slot",
+    )?;
+    let rows = stmt
+        .query_map(params![project_id], |row| {
+            Ok(ClaudeSession {
+                session_id: row.get(0)?,
+                cwd: row.get::<_, String>(1)?.into(),
+            })
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows)
+}
+
+pub fn next_claude_slot(db: &Db, project_id: &str) -> Result<i64> {
+    let conn = db.borrow();
+    let next: i64 = conn.query_row(
+        "SELECT COALESCE(MAX(slot), -1) + 1 FROM claude_sessions WHERE project_id = ?1",
+        params![project_id],
+        |row| row.get(0),
+    )?;
+    Ok(next)
+}
+
+pub fn insert_claude_session(
+    db: &Db,
+    project_id: &str,
+    slot: i64,
+    session_id: &str,
+    cwd: &std::path::Path,
+) -> Result<()> {
+    let conn = db.borrow();
+    conn.execute(
+        "INSERT INTO claude_sessions (project_id, slot, session_id, cwd)
+         VALUES (?1, ?2, ?3, ?4)",
+        params![project_id, slot, session_id, cwd.to_string_lossy()],
+    )?;
+    Ok(())
+}
+
+pub fn delete_claude_session(db: &Db, session_id: &str) -> Result<()> {
+    let conn = db.borrow();
+    conn.execute(
+        "DELETE FROM claude_sessions WHERE session_id = ?1",
+        params![session_id],
+    )?;
+    Ok(())
+}
+
+pub fn touch_claude_session(db: &Db, session_id: &str) -> Result<()> {
+    let conn = db.borrow();
+    conn.execute(
+        "UPDATE claude_sessions SET last_active = datetime('now') WHERE session_id = ?1",
+        params![session_id],
+    )?;
     Ok(())
 }

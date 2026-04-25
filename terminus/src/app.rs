@@ -40,6 +40,48 @@ pub struct Tab {
     pub title: String,
     pub cwd: PathBuf,
     pub term: iced_term::Terminal,
+    pub kind: TabKind,
+    pub session_id: Option<String>,
+}
+
+#[derive(Copy, Clone, Eq, PartialEq)]
+pub enum TabKind {
+    Claude,
+    Shell,
+}
+
+fn is_claude_title(s: &str) -> bool {
+    s.to_lowercase().contains("claude")
+}
+
+fn claude_session_file_exists(session_id: &str) -> bool {
+    let Some(base) = directories::BaseDirs::new() else {
+        return false;
+    };
+    let projects = base.home_dir().join(".claude").join("projects");
+    let Ok(entries) = std::fs::read_dir(&projects) else {
+        return false;
+    };
+    let target = format!("{session_id}.jsonl");
+    for entry in entries.flatten() {
+        if entry.path().join(&target).is_file() {
+            return true;
+        }
+    }
+    false
+}
+
+fn claude_group_end(state: &ProjectState) -> usize {
+    state
+        .tab_order
+        .iter()
+        .position(|tid| {
+            state
+                .tabs
+                .get(tid)
+                .map_or(false, |t| matches!(t.kind, TabKind::Shell))
+        })
+        .unwrap_or(state.tab_order.len())
 }
 
 pub struct Modal {
@@ -190,7 +232,21 @@ impl App {
             .find(|p| p.tabs.contains_key(&terminal_id))
     }
 
+    fn focus_active_terminal(&self) -> Task<Message> {
+        let Some(state) = self.active_state() else {
+            return Task::none();
+        };
+        let Some(id) = state.active_tab else {
+            return Task::none();
+        };
+        let Some(tab) = state.tabs.get(&id) else {
+            return Task::none();
+        };
+        iced_term::TerminalView::focus(tab.term.widget_id().clone())
+    }
+
     pub fn update(&mut self, msg: Message) -> Task<Message> {
+        let mut focus_active = false;
         match msg {
             Message::RefreshProjects => {
                 self.projects = db::list_projects(&self.db).unwrap_or_default();
@@ -204,6 +260,7 @@ impl App {
             Message::AddProjectPicked(None) => {}
             Message::OpenProject(id) => {
                 self.open_project_tab(&id);
+                focus_active = true;
             }
             Message::CloseProjectTab(id) => {
                 self.close_project_tab(&id);
@@ -212,6 +269,7 @@ impl App {
                 if let Some(ref pid) = id {
                     if self.open_tabs.iter().any(|p| &p.project.id == pid) {
                         self.active_project = Some(pid.clone());
+                        focus_active = true;
                     }
                 } else {
                     self.active_project = None;
@@ -378,9 +436,11 @@ impl App {
                             shell_bin,
                             shell::plain_args(),
                             false,
+                            None,
                             initial_size,
                         ) {
                             self.next_tab_id += 1;
+                            focus_active = true;
                         }
                     }
                 }
@@ -388,26 +448,60 @@ impl App {
             Message::NewClaudeTab => {
                 let next_id = self.next_tab_id;
                 let initial_size = self.last_pane_size;
-                if let Some(state) = self.active_state_mut() {
+                let project_id = self.active_project.clone();
+                if let (Some(pid), Some(state)) = (project_id, self.active_state_mut()) {
                     if let Some(cwd) = state
                         .selected_wt
                         .clone()
                         .or_else(|| Some(state.project.path.clone()))
                     {
                         let shell_bin = shell::detect_shell();
-                        let args = shell::claude_args(&shell_bin);
-                        if spawn_tab(state, next_id, cwd, shell_bin, args, true, initial_size) {
+                        let session_id = uuid::Uuid::new_v4().to_string();
+                        let args = shell::claude_args(&shell_bin, &session_id, false);
+                        if spawn_tab(
+                            state,
+                            next_id,
+                            cwd.clone(),
+                            shell_bin,
+                            args,
+                            true,
+                            Some(session_id.clone()),
+                            initial_size,
+                        ) {
                             self.next_tab_id += 1;
+                            focus_active = true;
+                            match db::next_claude_slot(&self.db, &pid) {
+                                Ok(slot) => {
+                                    if let Err(e) = db::insert_claude_session(
+                                        &self.db,
+                                        &pid,
+                                        slot,
+                                        &session_id,
+                                        &cwd,
+                                    ) {
+                                        tracing::error!("insert claude session: {e:#}");
+                                    }
+                                }
+                                Err(e) => tracing::error!("next slot: {e:#}"),
+                            }
                         }
                     }
                 }
             }
             Message::CloseTab(id) => {
+                let mut closed_session: Option<String> = None;
                 if let Some(state) = self.find_tab_for_terminal(id) {
-                    state.tabs.remove(&id);
+                    if let Some(tab) = state.tabs.remove(&id) {
+                        closed_session = tab.session_id;
+                    }
                     state.tab_order.retain(|t| *t != id);
                     if state.active_tab == Some(id) {
                         state.active_tab = state.tab_order.last().copied();
+                    }
+                }
+                if let Some(sid) = closed_session {
+                    if let Err(e) = db::delete_claude_session(&self.db, &sid) {
+                        tracing::error!("delete claude session: {e:#}");
                     }
                 }
             }
@@ -421,6 +515,7 @@ impl App {
                                 iced_term::BackendCommand::Resize(Some(size), None),
                             ));
                         }
+                        focus_active = true;
                     }
                 }
             }
@@ -435,15 +530,34 @@ impl App {
                         let action = tab.term.handle(iced_term::Command::ProxyToBackend(cmd));
                         match action {
                             iced_term::actions::Action::Shutdown => {
-                                state.tabs.remove(&id);
+                                let exited_session = state
+                                    .tabs
+                                    .remove(&id)
+                                    .and_then(|t| t.session_id);
                                 state.tab_order.retain(|t| *t != id);
                                 if state.active_tab == Some(id) {
                                     state.active_tab = state.tab_order.last().copied();
                                 }
+                                if let Some(sid) = exited_session {
+                                    if let Err(e) = db::touch_claude_session(&self.db, &sid) {
+                                        tracing::error!("touch claude session: {e:#}");
+                                    }
+                                }
                             }
                             iced_term::actions::Action::ChangeTitle(title) => {
+                                let mut promote = false;
                                 if let Some(tab) = state.tabs.get_mut(&id) {
-                                    tab.title = title;
+                                    if matches!(tab.kind, TabKind::Shell)
+                                        && is_claude_title(&title)
+                                    {
+                                        tab.kind = TabKind::Claude;
+                                        promote = true;
+                                    }
+                                }
+                                if promote {
+                                    state.tab_order.retain(|t| *t != id);
+                                    let insert_at = claude_group_end(state);
+                                    state.tab_order.insert(insert_at, id);
                                 }
                             }
                             _ => {}
@@ -458,15 +572,19 @@ impl App {
             }
             Message::PrevTerminalTab => {
                 self.step_terminal_tab(-1);
+                focus_active = true;
             }
             Message::NextTerminalTab => {
                 self.step_terminal_tab(1);
+                focus_active = true;
             }
             Message::PrevProjectTab => {
                 self.step_project_tab(-1);
+                focus_active = true;
             }
             Message::NextProjectTab => {
                 self.step_project_tab(1);
+                focus_active = true;
             }
             Message::WindowSized(size) => {
                 let pane = self.compute_pane_size(size);
@@ -482,7 +600,11 @@ impl App {
             Message::Error(e) => self.error = Some(e),
             Message::DismissError => self.error = None,
         }
-        Task::none()
+        if focus_active {
+            self.focus_active_terminal()
+        } else {
+            Task::none()
+        }
     }
 
     pub fn view(&self) -> Element<'_, Message> {
@@ -550,8 +672,57 @@ impl App {
             active_tab: None,
             modal: None,
         });
-        self.active_project = Some(pid);
+        self.active_project = Some(pid.clone());
         self.projects = db::list_projects(&self.db).unwrap_or_default();
+        self.restore_claude_sessions(&pid);
+    }
+
+    fn restore_claude_sessions(&mut self, project_id: &str) {
+        let sessions = match db::list_claude_sessions(&self.db, project_id) {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::error!("list claude sessions: {e:#}");
+                return;
+            }
+        };
+        if sessions.is_empty() {
+            return;
+        }
+        let initial_size = self.last_pane_size;
+        let shell_bin = shell::detect_shell();
+        for session in sessions {
+            if !claude_session_file_exists(&session.session_id) {
+                if let Err(e) = db::delete_claude_session(&self.db, &session.session_id) {
+                    tracing::error!("prune empty claude session: {e:#}");
+                }
+                continue;
+            }
+            if !session.cwd.exists() {
+                tracing::warn!(
+                    "claude session cwd missing, skipping: {}",
+                    session.cwd.display()
+                );
+                continue;
+            }
+            let Some(state) = self.open_tabs.iter_mut().find(|p| p.project.id == project_id)
+            else {
+                return;
+            };
+            let next_id = self.next_tab_id;
+            let args = shell::claude_args(&shell_bin, &session.session_id, true);
+            if spawn_tab(
+                state,
+                next_id,
+                session.cwd.clone(),
+                shell_bin.clone(),
+                args,
+                true,
+                Some(session.session_id.clone()),
+                initial_size,
+            ) {
+                self.next_tab_id += 1;
+            }
+        }
     }
 
     fn close_project_tab(&mut self, id: &str) {
@@ -641,6 +812,7 @@ fn spawn_tab(
     program: String,
     args: Vec<String>,
     claude: bool,
+    session_id: Option<String>,
     initial_size: Option<iced::Size>,
 ) -> bool {
     let settings = iced_term::settings::Settings {
@@ -665,11 +837,23 @@ fn spawn_tab(
                 iced_term::BackendCommand::Resize(Some(size), None),
             ));
 
-            let title = if claude {
-                format!("claude {}", cwd.file_name().and_then(|s| s.to_str()).unwrap_or(""))
+            let pty_name = if claude { "claude" } else { "shell" };
+            let in_main = if state.worktrees.is_empty() {
+                true
             } else {
-                format!("zsh {}", cwd.file_name().and_then(|s| s.to_str()).unwrap_or(""))
+                state
+                    .worktrees
+                    .iter()
+                    .find(|w| w.path == cwd)
+                    .map_or(false, |w| w.is_main)
             };
+            let folder = cwd.file_name().and_then(|s| s.to_str()).unwrap_or("");
+            let title = if in_main || folder.is_empty() {
+                pty_name.to_string()
+            } else {
+                format!("[{}] {}", folder, pty_name)
+            };
+            let kind = if claude { TabKind::Claude } else { TabKind::Shell };
             state.tabs.insert(
                 id,
                 Tab {
@@ -677,9 +861,15 @@ fn spawn_tab(
                     title,
                     cwd,
                     term,
+                    kind,
+                    session_id,
                 },
             );
-            state.tab_order.push(id);
+            let insert_at = match kind {
+                TabKind::Claude => claude_group_end(state),
+                TabKind::Shell => state.tab_order.len(),
+            };
+            state.tab_order.insert(insert_at, id);
             state.active_tab = Some(id);
             true
         }

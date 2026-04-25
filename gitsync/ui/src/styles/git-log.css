@@ -158,6 +158,7 @@
 .git-graph-cell {
   display: block;
   flex-shrink: 0;
+  margin-right: 10px;
 }
 
 .git-log-author {
