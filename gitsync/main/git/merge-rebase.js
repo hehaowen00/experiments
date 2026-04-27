@@ -3,27 +3,34 @@ const { execFile } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
-function markerPath(repoPath) {
-  return path.join(repoPath, '.git', 'gitsync-stashed');
+// Resolve the actual gitdir. In a worktree, `<repo>/.git` is a file containing
+// a `gitdir:` pointer; the real gitdir lives at `<main>/.git/worktrees/<wt>/`.
+// `git rev-parse --absolute-git-dir` returns the right path in both cases.
+async function resolveGitDir(repoPath, git) {
+  return (await git(repoPath, ['rev-parse', '--absolute-git-dir'])).trim();
+}
+
+async function markerPath(repoPath, git) {
+  return path.join(await resolveGitDir(repoPath, git), 'gitsync-stashed');
 }
 
 async function stashIfDirty(repoPath, git) {
   const status = await git(repoPath, ['status', '--porcelain']);
   if (status.trim().length === 0) return false;
   await git(repoPath, ['stash']);
-  fs.writeFileSync(markerPath(repoPath), '');
+  fs.writeFileSync(await markerPath(repoPath, git), '');
   return true;
 }
 
 async function popStashIfNeeded(repoPath, git) {
-  const marker = markerPath(repoPath);
+  const marker = await markerPath(repoPath, git);
   if (!fs.existsSync(marker)) return;
   try { fs.unlinkSync(marker); } catch {}
   await git(repoPath, ['stash', 'pop']);
 }
 
-function clearMarker(repoPath) {
-  try { fs.unlinkSync(markerPath(repoPath)); } catch {}
+async function clearMarker(repoPath, git) {
+  try { fs.unlinkSync(await markerPath(repoPath, git)); } catch {}
 }
 
 function register({ mainWindow, git, gitRaw }) {
@@ -61,7 +68,7 @@ function register({ mainWindow, git, gitRaw }) {
       if (e.message.includes('CONFLICT') || e.message.includes('could not apply')) {
         return { ok: false, conflict: true, output: e.message };
       }
-      clearMarker(repoPath);
+      await clearMarker(repoPath, git);
       return { error: e.message };
     }
   });
@@ -85,7 +92,7 @@ function register({ mainWindow, git, gitRaw }) {
       await popStashIfNeeded(repoPath, git);
       return { ok: true, output: out };
     } catch (e) {
-      clearMarker(repoPath);
+      await clearMarker(repoPath, git);
       return { error: e.message };
     }
   });
@@ -118,7 +125,7 @@ function register({ mainWindow, git, gitRaw }) {
       if (e.message.includes('CONFLICT') || e.message.includes('could not apply')) {
         return { ok: false, conflict: true, output: e.message };
       }
-      clearMarker(repoPath);
+      await clearMarker(repoPath, git);
       return { error: e.message };
     } finally {
       try { fs.unlinkSync(tmpFile); } catch {}
@@ -149,7 +156,7 @@ function register({ mainWindow, git, gitRaw }) {
       if (e.message.includes('CONFLICT') || e.message.includes('could not apply')) {
         return { ok: false, conflict: true, output: e.message };
       }
-      clearMarker(repoPath);
+      await clearMarker(repoPath, git);
       return { error: e.message };
     }
   });
@@ -167,8 +174,8 @@ function register({ mainWindow, git, gitRaw }) {
   });
 
   ipcMain.handle('git:operationState', async (_, repoPath) => {
-    const gitDir = path.join(repoPath, '.git');
     try {
+      const gitDir = await resolveGitDir(repoPath, git);
       if (fs.existsSync(path.join(gitDir, 'rebase-merge')) || fs.existsSync(path.join(gitDir, 'rebase-apply'))) {
         return { state: 'rebase' };
       }

@@ -1,4 +1,4 @@
-use iced::widget::{button, container, row, scrollable, text, Space};
+use iced::widget::{button, container, mouse_area, row, scrollable, text, Space};
 use iced::{Alignment, Element, Length};
 
 use crate::app::App;
@@ -8,16 +8,11 @@ use crate::ui::theme;
 pub fn view<'a>(app: &'a App) -> Element<'a, Message> {
     let home_active = app.active_project.is_none();
     let home_chip = container(
-        button(text("Home").size(12))
-            .padding([theme::PAD_XS + 2.0, theme::PAD_MD])
-            .style(if home_active {
-                theme::primary_button
-            } else {
-                theme::ghost_button
-            })
+        button(text("home").size(theme::FONT_SIZE))
+            .padding([theme::PAD_SM, theme::PAD_MD])
+            .style(theme::flat_button)
             .on_press(Message::FocusProjectTab(None)),
     )
-    .padding(2)
     .style(if home_active {
         theme::tab_active
     } else {
@@ -29,38 +24,36 @@ pub fn view<'a>(app: &'a App) -> Element<'a, Message> {
         .align_y(Alignment::Center);
 
     for state in &app.open_tabs {
+        let pid = state.project.id.clone();
         let active = app.active_project.as_deref() == Some(state.project.id.as_str());
-        let label_btn = button(text(truncate(&state.project.name, 22)).size(12))
-            .padding([theme::PAD_XS + 2.0, theme::PAD_SM + 2.0])
-            .style(if active {
-                theme::primary_button
-            } else {
-                theme::ghost_button
-            })
-            .on_press(Message::FocusProjectTab(Some(state.project.id.clone())));
-        let close_btn = button(text("×").size(12))
-            .padding([theme::PAD_XS, theme::PAD_SM])
-            .style(theme::ghost_button)
-            .on_press(Message::CloseProjectTab(state.project.id.clone()));
+        let hovered = app.hovered_project.as_deref() == Some(state.project.id.as_str());
+        let label_btn = button(text(truncate(&state.project.name, 22)).size(theme::FONT_SIZE))
+            .padding([theme::PAD_SM, theme::PAD_MD])
+            .style(theme::flat_button)
+            .on_press(Message::FocusProjectTab(Some(pid.clone())));
+        let close_btn = button(text("×").size(theme::FONT_SIZE).color(theme::TEXT_DIM))
+            .padding([theme::PAD_XS + 2.0, theme::PAD_SM])
+            .style(theme::flat_button)
+            .on_press(Message::CloseProjectTab(pid.clone()));
         let chip = container(
             row![label_btn, close_btn]
-                .spacing(2)
+                .spacing(0)
                 .align_y(Alignment::Center),
         )
-        .padding(2)
         .style(if active {
             theme::tab_active
+        } else if hovered {
+            theme::tab_hover
         } else {
             theme::tab_inactive
         });
-        strip = strip.push(chip);
+        let cell = mouse_area(chip)
+            .on_enter(Message::ProjectTabHoverEnter(pid.clone()))
+            .on_exit(Message::ProjectTabHoverExit(pid));
+        strip = strip.push(cell);
     }
 
-    let plus = button(text("+").size(13))
-        .padding([theme::PAD_XS + 2.0, theme::PAD_MD])
-        .style(theme::ghost_button)
-        .on_press(Message::FocusProjectTab(None));
-    strip = strip.push(plus).push(Space::new().width(Length::Fill));
+    strip = strip.push(Space::new().width(Length::Fill));
 
     container(
         scrollable(strip).direction(scrollable::Direction::Horizontal(
@@ -69,7 +62,7 @@ pub fn view<'a>(app: &'a App) -> Element<'a, Message> {
                 .scroller_width(4),
         )),
     )
-    .padding([theme::PAD_XS + 2.0, theme::PAD_SM])
+    .padding([theme::PAD_XS - 1.0, theme::PAD_SM])
     .width(Length::Fill)
     .style(theme::header_bar)
     .into()

@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 iced = { version = "0.14", features = ["tokio", "advanced"] }
-iced_term = "0.8"
+iced_term = { path = "vendor/iced_term" }
 rusqlite = { version = "0.39", features = ["bundled"] }
 rfd = "0.17"
 directories = "6"

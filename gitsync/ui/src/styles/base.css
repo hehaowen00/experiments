@@ -104,6 +104,7 @@ h6,
   --ui-font-size-xl: 17px;
   --ui-font-size-2xl: 32px;
   --editor-font-size: 12px;
+  --git-log-row-height: 24px;
 }
 
 body {

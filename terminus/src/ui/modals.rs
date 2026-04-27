@@ -1,5 +1,7 @@
-use iced::widget::{button, checkbox, column, container, row, stack, text, text_input, Space};
-use iced::{Alignment, Background, Border, Color, Element, Length};
+use iced::widget::{
+    button, checkbox, column, container, mouse_area, row, stack, text, text_input, Space,
+};
+use iced::{Alignment, Background, Color, Element, Length};
 
 use crate::app::Modal;
 use crate::message::Message;
@@ -21,6 +23,7 @@ pub fn overlay<'a>(
             })),
             ..Default::default()
         });
+    let dimmer = mouse_area(dimmer).on_press(Message::CloseModal);
 
     let centered = container(modal)
         .center_x(Length::Fill)
@@ -31,50 +34,55 @@ pub fn overlay<'a>(
 
 pub fn add_worktree<'a>(m: &'a Modal) -> Element<'a, Message> {
     let content = column![
-        text("Add worktree").size(18),
-        Space::new().height(Length::Fixed(8.0)),
-        text("Branch").size(12),
-        text_input("feature/my-thing", &m.branch)
-            .on_input(Message::AddWtBranchChanged)
-            .padding(6),
-        checkbox(m.new_branch)
-            .label("Create new branch")
-            .on_toggle(Message::AddWtNewBranchToggled),
-        Space::new().height(Length::Fixed(6.0)),
-        text("Path").size(12),
-        row![
-            text_input("/path/to/new/worktree", &m.path)
-                .on_input(Message::AddWtPathChanged)
-                .padding(6),
-            button(text("Browse")).on_press(Message::AddWtBrowsePath),
+        text("Add worktree").size(theme::FONT_SIZE),
+        column![
+            text("Branch").size(theme::FONT_SIZE).color(theme::TEXT_DIM),
+            text_input("feature/my-thing", &m.branch)
+                .on_input(Message::AddWtBranchChanged)
+                .padding(8)
+                .style(theme::text_input),
+            checkbox(m.new_branch)
+                .label("Create new branch")
+                .on_toggle(Message::AddWtNewBranchToggled),
         ]
-        .spacing(6)
-        .align_y(Alignment::Center),
-        Space::new().height(Length::Fixed(4.0)),
+        .spacing(theme::PAD_XS + 2.0),
+        column![
+            text("Path").size(theme::FONT_SIZE).color(theme::TEXT_DIM),
+            row![
+                text_input("/path/to/new/worktree", &m.path)
+                    .on_input(Message::AddWtPathChanged)
+                    .padding(8)
+                    .style(theme::text_input),
+                button(text("Browse").size(theme::FONT_SIZE))
+                    .padding([theme::PAD_SM, theme::PAD_MD])
+                    .style(theme::secondary_button)
+                    .on_press(Message::AddWtBrowsePath),
+            ]
+            .spacing(theme::PAD_SM)
+            .align_y(Alignment::Center),
+        ]
+        .spacing(theme::PAD_XS + 2.0),
         checkbox(m.force).label("Force").on_toggle(Message::AddWtForceToggled),
-        Space::new().height(Length::Fixed(12.0)),
+        Space::new().height(Length::Fixed(theme::PAD_SM)),
         row![
             Space::new().width(Length::Fill),
-            button(text("Cancel")).on_press(Message::CloseModal),
-            button(text("Create")).on_press(Message::AddWtSubmit),
+            button(text("Cancel").size(theme::FONT_SIZE))
+                .padding([theme::PAD_SM, theme::PAD_MD])
+                .style(theme::secondary_button)
+                .on_press(Message::CloseModal),
+            button(text("Create").size(theme::FONT_SIZE))
+                .padding([theme::PAD_SM, theme::PAD_MD])
+                .style(theme::primary_button)
+                .on_press(Message::AddWtSubmit),
         ]
-        .spacing(8)
+        .spacing(theme::PAD_SM)
         .align_y(Alignment::Center),
     ]
-    .spacing(6);
+    .spacing(theme::PAD_MD);
 
     container(content)
-        .padding(20)
+        .padding(theme::PAD_LG)
         .width(Length::Fixed(460.0))
-        .style(|_t: &iced::Theme| container::Style {
-            background: Some(Background::Color(theme::SURFACE)),
-            border: Border {
-                color: theme::BORDER,
-                width: 1.0,
-                radius: iced::border::radius(8),
-            },
-            text_color: Some(theme::TEXT),
-            ..Default::default()
-        })
+        .style(theme::modal_card)
         .into()
 }

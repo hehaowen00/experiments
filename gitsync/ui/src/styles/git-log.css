@@ -109,7 +109,7 @@
   position: absolute;
   left: 0;
   right: 0;
-  height: 24px;
+  height: var(--git-log-row-height);
   cursor: pointer;
 }
 
@@ -122,7 +122,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  line-height: 24px;
+  line-height: var(--git-log-row-height);
 }
 
 .git-log-hash {

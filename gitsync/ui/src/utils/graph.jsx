@@ -44,16 +44,61 @@ function mergePath(cx, i, mid, h) {
   return `M${cx},${mid} L${x1 + r},${mid} A${r},${r} 0 0,0 ${x1},${mid + r} L${x1},${h}`;
 }
 
-export function buildGraph(commits) {
+// Find first-parent ancestry of `main` (or `master`) within the loaded commit
+// set. Used to pin the trunk to lane 0 so reciprocal merges between main and a
+// topic branch don't produce two parallel "main" lanes.
+export function computeTrunkHashes(commits) {
+  const byHash = new Map();
+  for (const c of commits) byHash.set(c.hash, c);
+
+  const findTip = (predicate) => {
+    for (const c of commits) {
+      if (!c.refs) continue;
+      const refs = c.refs
+        .split(',')
+        .map((r) => r.trim().replace(/^HEAD -> /, ''));
+      if (refs.some(predicate)) return c.hash;
+    }
+    return null;
+  };
+  const tip =
+    findTip((r) => r === 'main') ||
+    findTip((r) => r === 'master') ||
+    findTip((r) => /\/main$/.test(r)) ||
+    findTip((r) => /\/master$/.test(r));
+  if (!tip) return new Set();
+
+  const trunk = new Set();
+  let cur = byHash.get(tip);
+  while (cur && !trunk.has(cur.hash)) {
+    trunk.add(cur.hash);
+    if (cur.parents.length === 0) break;
+    cur = byHash.get(cur.parents[0]);
+  }
+  return trunk;
+}
+
+export function buildGraph(commits, trunkHashes = new Set()) {
   const lanes = [];
   const rows = [];
   let maxLanes = 0;
+  const reserveTrunkLane = trunkHashes.size > 0;
 
   for (const commit of commits) {
     let commitLane = lanes.indexOf(commit.hash);
     if (commitLane === -1) {
-      commitLane = lanes.indexOf(null);
-      if (commitLane === -1) commitLane = lanes.length;
+      if (reserveTrunkLane && trunkHashes.has(commit.hash)) {
+        commitLane = 0;
+      } else if (reserveTrunkLane) {
+        commitLane = -1;
+        for (let i = 1; i < lanes.length; i++) {
+          if (lanes[i] === null) { commitLane = i; break; }
+        }
+        if (commitLane === -1) commitLane = Math.max(1, lanes.length);
+      } else {
+        commitLane = lanes.indexOf(null);
+        if (commitLane === -1) commitLane = lanes.length;
+      }
       lanes[commitLane] = commit.hash;
     }
 
@@ -80,12 +125,25 @@ export function buildGraph(commits) {
       lanes[commitLane] = commit.parents[0];
       for (let p = 1; p < commit.parents.length; p++) {
         const parent = commit.parents[p];
+        if (reserveTrunkLane && trunkHashes.has(parent)) {
+          mergeToLanes.push(0);
+          if (lanes[0] == null) lanes[0] = parent;
+          continue;
+        }
         const existing = lanes.indexOf(parent);
         if (existing !== -1) {
           mergeToLanes.push(existing);
         } else {
-          let nl = lanes.indexOf(null);
-          if (nl === -1) nl = lanes.length;
+          let nl = -1;
+          if (reserveTrunkLane) {
+            for (let i = 1; i < lanes.length; i++) {
+              if (lanes[i] === null) { nl = i; break; }
+            }
+            if (nl === -1) nl = Math.max(1, lanes.length);
+          } else {
+            nl = lanes.indexOf(null);
+            if (nl === -1) nl = lanes.length;
+          }
           lanes[nl] = parent;
           mergeToLanes.push(nl);
         }

@@ -44,6 +44,10 @@ pub enum Message {
     NewClaudeTab,
     CloseTab(TabId),
     ActivateTab(TabId),
+    TabHoverEnter(TabId),
+    TabHoverExit(TabId),
+    ProjectTabHoverEnter(String),
+    ProjectTabHoverExit(String),
 
     // Terminal widget event (id, event)
     Terminal(TabId, iced_term::Event),

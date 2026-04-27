@@ -234,11 +234,11 @@ export default function RemotesPanel() {
                 <Icon name="fa-solid fa-backward" />
               </button>
               <Show when={!b.current}>
-                <button class="btn btn-ghost btn-xs git-branch-action" onClick={() => ws.doMerge(b.name)} title={`Merge ${b.name} into ${ws.status.branch}`} disabled={!!ws.operating()}>
-                  <Icon name="fa-solid fa-code-merge" />
-                </button>
                 <button class="btn btn-ghost btn-xs git-branch-action" onClick={() => ws.doRebase(b.name)} title={`Rebase ${ws.status.branch} onto ${b.name}`} disabled={!!ws.operating()}>
                   <Icon name="fa-solid fa-arrow-right-arrow-left" />
+                </button>
+                <button class="btn btn-ghost btn-xs git-branch-action" onClick={() => ws.doMerge(b.name)} title={`Merge ${b.name} into ${ws.status.branch}`} disabled={!!ws.operating()}>
+                  <Icon name="fa-solid fa-code-merge" />
                 </button>
                 <button class="btn btn-ghost btn-xs git-branch-checkout" onClick={() => ws.checkoutBranch(b.name)} title={`Checkout ${b.name}`} disabled={!!ws.operating()}>
                   <Icon name="fa-solid fa-right-to-bracket" />
@@ -267,11 +267,11 @@ export default function RemotesPanel() {
                 <button class="btn btn-ghost btn-xs git-branch-action" onClick={() => ws.doResetToBranch(b.name)} title={`Reset current branch to ${shortName}`} disabled={!!ws.operating()}>
                   <Icon name="fa-solid fa-backward" />
                 </button>
-                <button class="btn btn-ghost btn-xs git-branch-action" onClick={() => ws.doMerge(b.name)} title={`Merge ${shortName} into ${ws.status.branch}`}>
-                  <Icon name="fa-solid fa-code-merge" />
-                </button>
                 <button class="btn btn-ghost btn-xs git-branch-action" onClick={() => ws.doRebase(b.name)} title={`Rebase ${ws.status.branch} onto ${shortName}`}>
                   <Icon name="fa-solid fa-arrow-right-arrow-left" />
+                </button>
+                <button class="btn btn-ghost btn-xs git-branch-action" onClick={() => ws.doMerge(b.name)} title={`Merge ${shortName} into ${ws.status.branch}`}>
+                  <Icon name="fa-solid fa-code-merge" />
                 </button>
                 <button class="btn btn-ghost btn-xs git-branch-checkout" onClick={() => ws.checkoutRemoteBranch(b.name)} title={`Checkout ${shortName} to local`} disabled={!!ws.operating()}>
                   <Icon name="fa-solid fa-download" />

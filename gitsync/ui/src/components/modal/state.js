@@ -83,7 +83,7 @@ export const [modalSelectedRemote, setModalSelectedRemote] = createSignal('');
 export const [modalForce, setModalForce] = createSignal(false);
 export const [modalNewBranch, setModalNewBranch] = createSignal(false);
 export const [modalNewBranchName, setModalNewBranchName] = createSignal('');
-export const [modalPullStrategy, setModalPullStrategy] = createSignal('');
+export const [modalPullStrategy, setModalPullStrategy] = createSignal('rebase');
 
 export function showPush(remotes, lastRemote, currentBranch) {
   return new Promise((resolve) => {
@@ -117,7 +117,7 @@ export function showPull(remotes, lastRemote, lastStrategy) {
         ? remotes[0].name
         : '';
     setModalSelectedRemote(defaultRemote);
-    setModalPullStrategy(lastStrategy || '');
+    setModalPullStrategy(lastStrategy || 'rebase');
     setModalType('pull');
     setModalVisible(true);
   });

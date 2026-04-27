@@ -1,4 +1,5 @@
 import { render } from 'solid-js/web';
+import { createSignal } from 'solid-js';
 import App from './App';
 import { applyTheme, getStoredThemeId } from './themes';
 import '@fortawesome/fontawesome-free/css/all.min.css';
@@ -6,8 +7,11 @@ import './styles.css';
 
 applyTheme(getStoredThemeId());
 
+export const [uiFontSize, setUiFontSize] = createSignal(14);
+
 export function applyUiFontSize(px) {
   const n = parseInt(px);
+  setUiFontSize(n);
   const s = document.documentElement.style;
   s.setProperty('--ui-font-size', n + 'px');
   s.setProperty('--ui-font-size-xs', n - 2 + 'px');
@@ -15,6 +19,7 @@ export function applyUiFontSize(px) {
   s.setProperty('--ui-font-size-lg', n + 2 + 'px');
   s.setProperty('--ui-font-size-xl', n + 3 + 'px');
   s.setProperty('--ui-font-size-2xl', n * 2 + 4 + 'px');
+  s.setProperty('--git-log-row-height', n + 10 + 'px');
 }
 
 export function applyEditorFontSize(px) {

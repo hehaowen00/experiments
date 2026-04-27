@@ -56,7 +56,7 @@ export function createSyncOps({
           'Local and remote branches have diverged.',
           [
             {
-              label: 'Rebase',
+              label: 'Rebase (Recommended)',
               value: 'rebase',
               description:
                 'Replay local commits on top of remote changes',
@@ -130,7 +130,7 @@ export function createSyncOps({
     } else {
       const headBefore = await window.api.gitRevParseHead(repoPath);
       setOperating('Pulling...');
-      const pullResult = await window.api.gitPull(repoPath, null, remote);
+      const pullResult = await window.api.gitPull(repoPath, 'rebase', remote);
       setOperating('');
       if (pullResult.error) {
         showAlert('Pull Failed', pullResult.error);

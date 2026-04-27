@@ -21,22 +21,32 @@ function register({ mainWindow, git, gitRaw }) {
       const args = ['log', `--max-count=${count || 50}`, topoOrder ? '--topo-order' : '--date-order', fmt];
       if (skip) args.push(`--skip=${skip}`);
       if (allBranches) {
-        args.push('--exclude=refs/stash', '--all');
-      } else if (branchName) {
-        args.push(branchName);
-        // Always include matching remote tracking branches
+        // One lane per branch: include all local branches + tags, plus
+        // remote-tracking refs only when they have no local counterpart.
+        // Collapses local/remote pairs (e.g. main + origin/main) into a
+        // single tip even when they've diverged.
+        args.push('--branches', '--tags');
         try {
-          const remoteRefs = await git(repoPath, ['for-each-ref', '--format=%(refname:short)', `refs/remotes/*/${branchName}`]);
-          for (const ref of remoteRefs.trim().split('\n').filter(Boolean)) {
-            args.push(ref);
+          const localOut = await git(repoPath, [
+            'for-each-ref', '--format=%(refname:short)', 'refs/heads/',
+          ]);
+          const localNames = new Set(
+            localOut.trim().split('\n').filter(Boolean),
+          );
+          const remoteOut = await git(repoPath, [
+            'for-each-ref', '--format=%(refname:short)', 'refs/remotes/',
+          ]);
+          for (const ref of remoteOut.trim().split('\n').filter(Boolean)) {
+            if (ref.endsWith('/HEAD')) continue;
+            const slash = ref.indexOf('/');
+            const branchPart = slash >= 0 ? ref.slice(slash + 1) : ref;
+            if (!localNames.has(branchPart)) {
+              args.push(ref);
+            }
           }
         } catch {}
-      } else {
-        // Current branch: always include upstream so incoming remote commits are visible
-        try {
-          const upstream = (await git(repoPath, ['rev-parse', '--abbrev-ref', '@{upstream}'])).trim();
-          if (upstream) args.push(upstream);
-        } catch {}
+      } else if (branchName) {
+        args.push(branchName);
       }
       if (search && search.trim()) {
         const q = search.trim();

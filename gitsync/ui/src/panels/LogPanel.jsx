@@ -4,10 +4,10 @@ import Select from '../lib/Select';
 import ResizeHandle from '../lib/ResizeHandle';
 import { useWorkspace } from '../context/WorkspaceContext';
 import { DiffLines, isImageFile, ImagePreview } from '../utils/diff';
-import { buildGraph, GraphCell } from '../utils/graph';
+import { buildGraph, GraphCell, computeTrunkHashes } from '../utils/graph';
 import { showToast } from '../components/Toast';
+import { uiFontSize } from '../index';
 
-const ROW_HEIGHT = 24;
 const OVERSCAN = 10;
 
 function fmtDate(ts) {
@@ -112,12 +112,15 @@ export default function LogPanel() {
     }
   }
 
+  const rowHeight = createMemo(() => uiFontSize() + 10);
+
   const visibleRange = createMemo(() => {
     const total = ws.log.commits.length;
     if (total === 0) return { start: 0, end: 0 };
     const st = scrollTop();
-    const start = Math.max(0, Math.floor(st / ROW_HEIGHT) - OVERSCAN);
-    const end = Math.min(total, Math.ceil((st + viewHeight()) / ROW_HEIGHT) + OVERSCAN);
+    const rh = rowHeight();
+    const start = Math.max(0, Math.floor(st / rh) - OVERSCAN);
+    const end = Math.min(total, Math.ceil((st + viewHeight()) / rh) + OVERSCAN);
     return { start, end };
   });
 
@@ -126,7 +129,9 @@ export default function LogPanel() {
     return ws.log.commits.slice(start, end);
   });
 
-  const graphData = createMemo(() => buildGraph(ws.log.commits));
+  const graphData = createMemo(() =>
+    buildGraph(ws.log.commits, computeTrunkHashes(ws.log.commits)),
+  );
 
   const commitStats = createMemo(() => {
     const files = ws.commitDetail.files || [];
@@ -139,7 +144,7 @@ export default function LogPanel() {
     return { filesChanged: files.length, insertions, deletions };
   });
 
-  const totalHeight = () => ws.log.commits.length * ROW_HEIGHT;
+  const totalHeight = () => ws.log.commits.length * rowHeight();
 
   function onSearchInput(value) {
     ws.setLogSearch(value);
@@ -237,14 +242,14 @@ export default function LogPanel() {
                     class={`git-log-row ${ws.commitDetail.hash === c.hash ? 'git-log-row-selected' : ''}`}
                     onClick={() => ws.selectCommit(c.hash)}
                     onContextMenu={(e) => onCommitContextMenu(e, c)}
-                    style={{ top: `${rowIdx() * ROW_HEIGHT}px` }}
+                    style={{ top: `${rowIdx() * rowHeight()}px` }}
                   >
                     <span class="git-log-col git-log-hash"><code onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(c.short); showToast('Copied ' + c.short); }} title="Click to copy short hash">{c.short}</code></span>
                     <span class="git-log-col git-log-subject">
                       <Show when={showGraph() && !ws.logSearch() && graphData().rows[rowIdx()]}>
                         <GraphCell
                           row={graphData().rows[rowIdx()]}
-                          height={ROW_HEIGHT}
+                          height={rowHeight()}
                         />
                       </Show>
                       <span class="git-log-subject-text">
@@ -415,6 +420,12 @@ export default function LogPanel() {
                   </button>
                   <button class="file-context-menu-item" disabled={!!ws.operating()} onClick={() => {
                     dismissCommitMenu();
+                    ws.doRebase(menu.commit.short);
+                  }}>
+                    <Icon name="fa-solid fa-arrow-right-arrow-left" /> Rebase onto this commit
+                  </button>
+                  <button class="file-context-menu-item" disabled={!!ws.operating()} onClick={() => {
+                    dismissCommitMenu();
                     ws.startInteractiveRebase(menu.commit.hash);
                   }}>
                     <Icon name="fa-solid fa-list-check" /> Interactive Rebase...
@@ -436,12 +447,20 @@ export default function LogPanel() {
                     </button>
                   </Show>
                   <For each={parseRefs(menu.commit.refs).filter(r => (r.type === 'git-ref-branch' || r.type === 'git-ref-remote') && r.name !== ws.status.branch)}>{(ref) => (
-                    <button class="file-context-menu-item" disabled={!!ws.operating()} onClick={() => {
-                      dismissCommitMenu();
-                      ws.doMerge(ref.name);
-                    }}>
-                      <Icon name="fa-solid fa-code-branch" /> Merge {ref.name}
-                    </button>
+                    <>
+                      <button class="file-context-menu-item" disabled={!!ws.operating()} onClick={() => {
+                        dismissCommitMenu();
+                        ws.doRebase(ref.name);
+                      }}>
+                        <Icon name="fa-solid fa-arrow-right-arrow-left" /> Rebase onto {ref.name}
+                      </button>
+                      <button class="file-context-menu-item" disabled={!!ws.operating()} onClick={() => {
+                        dismissCommitMenu();
+                        ws.doMerge(ref.name);
+                      }}>
+                        <Icon name="fa-solid fa-code-branch" /> Merge {ref.name}
+                      </button>
+                    </>
                   )}</For>
                   <button class="file-context-menu-item danger" disabled={!!ws.operating()} onClick={() => {
                     dismissCommitMenu();

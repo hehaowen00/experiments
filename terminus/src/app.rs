@@ -18,6 +18,7 @@ pub struct App {
     pub active_project: Option<String>,
     pub next_tab_id: TabId,
     pub error: Option<String>,
+    pub hovered_project: Option<String>,
     /// Most recent terminal-pane bounds observed from a resize event.
     /// Replayed into newly-activated or newly-spawned terminals so they
     /// fill the pane from the first frame instead of waiting for an event.
@@ -32,6 +33,7 @@ pub struct ProjectState {
     pub tabs: HashMap<TabId, Tab>,
     pub tab_order: Vec<TabId>,
     pub active_tab: Option<TabId>,
+    pub hovered_tab: Option<TabId>,
     pub modal: Option<Modal>,
 }
 
@@ -115,6 +117,7 @@ impl App {
                 active_project: None,
                 next_tab_id: 1,
                 error: None,
+                hovered_project: None,
                 last_pane_size: None,
             },
             Task::none(),
@@ -142,7 +145,7 @@ impl App {
             })
             .collect();
 
-        subs.push(iced::event::listen_with(|event, _status, _id| match event {
+        subs.push(iced::event::listen_with(|event, status, _id| match event {
             iced::Event::Window(iced::window::Event::Opened { size, .. }) => {
                 Some(Message::WindowSized(size))
             }
@@ -156,6 +159,13 @@ impl App {
                 ref text,
                 ..
             }) => {
+                if matches!(
+                    key,
+                    iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape)
+                ) && status == iced::event::Status::Ignored
+                {
+                    return Some(Message::CloseModal);
+                }
                 if !modifiers.command() {
                     return None;
                 }
@@ -199,13 +209,11 @@ impl App {
     }
 
     fn compute_pane_size(&self, window: iced::Size) -> iced::Size {
-        // Chrome estimates: project-tab bar ~44, sub-tab bar ~44,
-        // status bar ~28. Sidebar 240 for git repos.
         let sidebar = if self
             .active_state()
             .map_or(false, |s| s.is_git_repo)
         {
-            240.0
+            200.0
         } else {
             0.0
         };
@@ -232,6 +240,45 @@ impl App {
             .find(|p| p.tabs.contains_key(&terminal_id))
     }
 
+    /// True when `terminal_id` is the active tab of the active project — i.e.
+    /// the only terminal whose canvas is currently on screen.
+    fn is_visible_tab(&self, terminal_id: TabId) -> bool {
+        let Some(pid) = self.active_project.as_ref() else {
+            return false;
+        };
+        self.open_tabs
+            .iter()
+            .find(|p| &p.project.id == pid)
+            .and_then(|p| p.active_tab)
+            .map_or(false, |id| id == terminal_id)
+    }
+
+    /// The terminal id currently on screen, if any. Returns `None` on the
+    /// landing page or for a project with no tabs.
+    fn visible_terminal_id(&self) -> Option<TabId> {
+        let pid = self.active_project.as_ref()?;
+        self.open_tabs
+            .iter()
+            .find(|p| &p.project.id == pid)?
+            .active_tab
+    }
+
+    /// Refresh the rendered content for the active tab of the active project.
+    /// Call after switching tabs or projects so a tab that was receiving
+    /// `ProxyToBackendQuiet` events catches up before being drawn.
+    fn sync_active_terminal(&mut self) {
+        let Some(pid) = self.active_project.clone() else {
+            return;
+        };
+        let Some(state) = self.open_tabs.iter_mut().find(|p| p.project.id == pid) else {
+            return;
+        };
+        let Some(id) = state.active_tab else { return };
+        if let Some(tab) = state.tabs.get_mut(&id) {
+            let _ = tab.term.handle(iced_term::Command::Sync);
+        }
+    }
+
     fn focus_active_terminal(&self) -> Task<Message> {
         let Some(state) = self.active_state() else {
             return Task::none();
@@ -246,6 +293,7 @@ impl App {
     }
 
     pub fn update(&mut self, msg: Message) -> Task<Message> {
+        let visible_before = self.visible_terminal_id();
         let mut focus_active = false;
         match msg {
             Message::RefreshProjects => {
@@ -505,6 +553,26 @@ impl App {
                     }
                 }
             }
+            Message::TabHoverEnter(id) => {
+                if let Some(state) = self.find_tab_for_terminal(id) {
+                    state.hovered_tab = Some(id);
+                }
+            }
+            Message::TabHoverExit(id) => {
+                if let Some(state) = self.find_tab_for_terminal(id) {
+                    if state.hovered_tab == Some(id) {
+                        state.hovered_tab = None;
+                    }
+                }
+            }
+            Message::ProjectTabHoverEnter(pid) => {
+                self.hovered_project = Some(pid);
+            }
+            Message::ProjectTabHoverExit(pid) => {
+                if self.hovered_project.as_deref() == Some(pid.as_str()) {
+                    self.hovered_project = None;
+                }
+            }
             Message::ActivateTab(id) => {
                 let size = self.last_pane_size;
                 if let Some(state) = self.find_tab_for_terminal(id) {
@@ -524,10 +592,16 @@ impl App {
                 if let iced_term::BackendCommand::Resize(Some(size), _) = cmd {
                     self.last_pane_size = Some(size);
                 }
+                let visible = self.is_visible_tab(id);
                 if let Some(state) = self.find_tab_for_terminal(id) {
                     if let Some(tab) = state.tabs.get_mut(&id) {
                         let iced_term::Event::BackendCall(_, cmd) = event;
-                        let action = tab.term.handle(iced_term::Command::ProxyToBackend(cmd));
+                        let proxy_cmd = if visible {
+                            iced_term::Command::ProxyToBackend(cmd)
+                        } else {
+                            iced_term::Command::ProxyToBackendQuiet(cmd)
+                        };
+                        let action = tab.term.handle(proxy_cmd);
                         match action {
                             iced_term::actions::Action::Shutdown => {
                                 let exited_session = state
@@ -600,6 +674,9 @@ impl App {
             Message::Error(e) => self.error = Some(e),
             Message::DismissError => self.error = None,
         }
+        if self.visible_terminal_id() != visible_before {
+            self.sync_active_terminal();
+        }
         if focus_active {
             self.focus_active_terminal()
         } else {
@@ -670,6 +747,7 @@ impl App {
             tabs: HashMap::new(),
             tab_order: Vec::new(),
             active_tab: None,
+            hovered_tab: None,
             modal: None,
         });
         self.active_project = Some(pid.clone());
@@ -836,6 +914,7 @@ fn spawn_tab(
             let _ = term.handle(iced_term::Command::ProxyToBackend(
                 iced_term::BackendCommand::Resize(Some(size), None),
             ));
+            let _ = term.handle(iced_term::Command::AddBindings(shift_enter_binding()));
 
             let pty_name = if claude { "claude" } else { "shell" };
             let in_main = if state.worktrees.is_empty() {
@@ -878,6 +957,29 @@ fn spawn_tab(
             false
         }
     }
+}
+
+/// Override Shift+Enter so it sends ESC+CR (the same sequence Option+Enter
+/// produces) instead of bare CR. Claude Code interprets ESC+CR as "insert
+/// newline" while bare CR submits the prompt — without this remap the two
+/// keys are indistinguishable to the PTY.
+fn shift_enter_binding() -> Vec<(
+    iced_term::bindings::Binding<iced_term::bindings::InputKind>,
+    iced_term::bindings::BindingAction,
+)> {
+    use iced::keyboard::{key::Named, Modifiers};
+    use iced_term::bindings::{Binding, BindingAction, InputKind};
+    use iced_term::TermMode;
+
+    vec![(
+        Binding {
+            target: InputKind::KeyCode(Named::Enter),
+            modifiers: Modifiers::SHIFT,
+            terminal_mode_include: TermMode::empty(),
+            terminal_mode_exclude: TermMode::empty(),
+        },
+        BindingAction::Esc("\x1b\r".into()),
+    )]
 }
 
 async fn pick_folder() -> Option<PathBuf> {

@@ -37,19 +37,21 @@ pub fn status_bar<'a>(state: &'a ProjectState) -> Element<'a, Message> {
         .selected_wt
         .clone()
         .unwrap_or_else(|| state.project.path.clone());
+    let n = state.tabs.len();
+    let label = if n == 1 { "tab" } else { "tabs" };
 
     container(
         row![
-            text(format!(
-                "cwd: {}",
-                theme::truncate_middle(&cwd.to_string_lossy(), 80)
-            ))
-            .size(11),
+            text("cwd").size(theme::FONT_SIZE).color(theme::TEXT_DIM),
+            text(theme::truncate_middle(&cwd.to_string_lossy(), 80)).size(theme::FONT_SIZE),
             Space::new().width(Length::Fill),
-            text(format!("tabs: {}", state.tabs.len())).size(11),
+            text(format!("· {} {}", n, label))
+                .size(theme::FONT_SIZE)
+                .color(theme::TEXT_DIM),
         ]
+        .spacing(theme::PAD_SM)
         .align_y(Alignment::Center)
-        .padding([theme::PAD_XS + 2.0, theme::PAD_LG]),
+        .padding([theme::PAD_XS, theme::PAD_MD]),
     )
     .width(Length::Fill)
     .style(theme::status_bar)
@@ -57,20 +59,25 @@ pub fn status_bar<'a>(state: &'a ProjectState) -> Element<'a, Message> {
 }
 
 fn empty_terminal_placeholder<'a>() -> Element<'a, Message> {
-    container(
+    let card = container(
         column![
-            text("No terminal open").size(15),
+            text("No terminal open").size(theme::FONT_SIZE),
             text("Use the buttons above to start one.")
-                .size(12)
+                .size(theme::FONT_SIZE)
                 .color(theme::TEXT_DIM),
         ]
         .spacing(theme::PAD_SM)
         .align_x(Alignment::Center),
     )
-    .center_x(Length::Fill)
-    .center_y(Length::Fill)
-    .width(Length::Fill)
-    .height(Length::Fill)
-    .style(theme::panel)
-    .into()
+    .padding(theme::PAD_LG)
+    .max_width(360.0)
+    .style(theme::card);
+
+    container(card)
+        .center_x(Length::Fill)
+        .center_y(Length::Fill)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(theme::panel)
+        .into()
 }
