@@ -5,12 +5,14 @@ const { generateKSUID } = require('../ksuid');
 function register({ mainWindow, git, gitRaw }) {
   ipcMain.handle('gitRepo:list', () => {
     return store.getDb()
-      .prepare('SELECT id, name, path, pinned, category_id, last_used FROM git_repos ORDER BY last_used DESC')
+      .prepare('SELECT id, name, path, pinned, category_id, last_used, sort_order FROM git_repos ORDER BY sort_order ASC, rowid ASC')
       .all();
   });
 
   ipcMain.handle('gitRepo:create', async (_, data) => {
     const id = generateKSUID();
+    const maxOrder = store.getDb().prepare('SELECT MAX(sort_order) as m FROM git_repos').get();
+    const nextOrder = (maxOrder?.m || 0) + 1;
 
     // Auto-assign global git identity if one matches
     let identityId = null;
@@ -35,9 +37,9 @@ function register({ mainWindow, git, gitRaw }) {
     } catch {}
 
     store.getDb().prepare(
-      "INSERT INTO git_repos (id, name, path, category_id, identity_id, last_used) VALUES (?, ?, ?, ?, ?, datetime('now'))",
-    ).run(id, data.name, data.path, data.category_id || null, identityId);
-    return { id, name: data.name, path: data.path, category_id: data.category_id || null, identity_id: identityId, pinned: 0 };
+      "INSERT INTO git_repos (id, name, path, category_id, identity_id, last_used, sort_order) VALUES (?, ?, ?, ?, ?, datetime('now'), ?)",
+    ).run(id, data.name, data.path, data.category_id || null, identityId, nextOrder);
+    return { id, name: data.name, path: data.path, category_id: data.category_id || null, identity_id: identityId, pinned: 0, sort_order: nextOrder };
   });
 
   ipcMain.handle('gitRepo:update', (_, id, data) => {
@@ -58,7 +60,19 @@ function register({ mainWindow, git, gitRaw }) {
   });
 
   ipcMain.handle('gitRepo:setCategory', (_, id, categoryId) => {
-    store.getDb().prepare('UPDATE git_repos SET category_id = ? WHERE id = ?').run(categoryId || null, id);
+    const maxOrder = store.getDb().prepare('SELECT MAX(sort_order) as m FROM git_repos').get();
+    store.getDb().prepare(
+      'UPDATE git_repos SET category_id = ?, sort_order = ? WHERE id = ?',
+    ).run(categoryId || null, (maxOrder?.m || 0) + 1, id);
+    return true;
+  });
+
+  ipcMain.handle('gitRepo:reorder', (_, orderedIds) => {
+    const stmt = store.getDb().prepare('UPDATE git_repos SET sort_order = ? WHERE id = ?');
+    const tx = store.getDb().transaction(() => {
+      orderedIds.forEach((id, i) => stmt.run(i, id));
+    });
+    tx();
     return true;
   });
 

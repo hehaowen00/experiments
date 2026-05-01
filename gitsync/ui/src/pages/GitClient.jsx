@@ -25,6 +25,7 @@ export default function GitClient(props) {
   let dragRepoId = null;
   let dragCategoryId = null;
   const [dropIndicator, setDropIndicator] = createSignal(null);
+  const [repoDropIndicator, setRepoDropIndicator] = createSignal(null);
   let searchRef;
 
   function onKeyDown(e) {
@@ -210,6 +211,7 @@ export default function GitClient(props) {
   function onDragEnd(e) {
     e.currentTarget.classList.remove('dragging');
     dragRepoId = null;
+    setRepoDropIndicator(null);
   }
   function onCategoryDragOver(e) {
     if (!dragRepoId) return;
@@ -226,7 +228,63 @@ export default function GitClient(props) {
     if (!dragRepoId) return;
     await window.api.gitRepoSetCategory(dragRepoId, categoryId);
     dragRepoId = null;
+    setRepoDropIndicator(null);
     loadList();
+  }
+
+  // Drag and drop - reorder repos within a category
+  function onRepoCardDragOver(e, target) {
+    if (!dragRepoId || dragRepoId === target.id) return;
+    // Only reorder within the same category — cross-category drops go to the
+    // category section handler, which moves the repo and appends it at the end.
+    const dragged = state.repos.find((r) => r.id === dragRepoId);
+    if (!dragged || dragged.category_id !== target.category_id) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'move';
+    const rect = e.currentTarget.getBoundingClientRect();
+    const mid = rect.top + rect.height / 2;
+    setRepoDropIndicator({
+      repoId: target.id,
+      position: e.clientY < mid ? 'above' : 'below',
+    });
+  }
+  async function onRepoCardDrop(e, target) {
+    if (!dragRepoId || dragRepoId === target.id) return;
+    const dragged = state.repos.find((r) => r.id === dragRepoId);
+    if (!dragged || dragged.category_id !== target.category_id) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setRepoDropIndicator(null);
+
+    const siblings = state.repos.filter(
+      (r) => r.category_id === target.category_id,
+    );
+    const fromIdx = siblings.findIndex((r) => r.id === dragRepoId);
+    let toIdx = siblings.findIndex((r) => r.id === target.id);
+    if (fromIdx === -1 || toIdx === -1) return;
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const mid = rect.top + rect.height / 2;
+    const dropBelow = e.clientY >= mid;
+    if (dropBelow && fromIdx > toIdx) toIdx += 1;
+    else if (!dropBelow && fromIdx < toIdx) toIdx -= 1;
+
+    const reorderedSiblings = [...siblings];
+    const [moved] = reorderedSiblings.splice(fromIdx, 1);
+    reorderedSiblings.splice(toIdx, 0, moved);
+
+    // Rebuild the full repo list preserving the order of repos in other
+    // categories and substituting the new order for this category.
+    const reorderedSiblingIds = new Set(reorderedSiblings.map((r) => r.id));
+    let i = 0;
+    const fullOrder = state.repos.map((r) =>
+      reorderedSiblingIds.has(r.id) ? reorderedSiblings[i++] : r,
+    );
+
+    setState('repos', fullOrder);
+    dragRepoId = null;
+    await window.api.gitRepoReorder(fullOrder.map((r) => r.id));
   }
 
   // Drag and drop - category reordering
@@ -290,15 +348,11 @@ export default function GitClient(props) {
   }
 
   function uncategorizedRepos() {
-    return filterBySearch(
-      state.repos.filter((c) => !c.category_id).sort((a, b) => b.pinned - a.pinned),
-    );
+    return filterBySearch(state.repos.filter((c) => !c.category_id));
   }
 
   function reposInCategory(catId) {
-    return filterBySearch(
-      state.repos.filter((c) => c.category_id === catId).sort((a, b) => b.pinned - a.pinned),
-    );
+    return filterBySearch(state.repos.filter((c) => c.category_id === catId));
   }
 
   initHomeDir();
@@ -333,6 +387,16 @@ export default function GitClient(props) {
         onOpen={openRepo}
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}
+        onDragOver={onRepoCardDragOver}
+        onDrop={onRepoCardDrop}
+        classList={(item) => ({
+          'repo-drop-above':
+            repoDropIndicator()?.repoId === item.id &&
+            repoDropIndicator()?.position === 'above',
+          'repo-drop-below':
+            repoDropIndicator()?.repoId === item.id &&
+            repoDropIndicator()?.position === 'below',
+        })}
       />
     );
   }

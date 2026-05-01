@@ -12,12 +12,22 @@ pub fn view<'a>(state: &'a ProjectState) -> Element<'a, Message> {
         if let Some(tab) = state.tabs.get(id) {
             let active = state.active_tab == Some(*id);
             let hovered = state.hovered_tab == Some(*id);
-            let label_text = text(truncate(&tab.title, 22)).size(theme::FONT_SIZE);
-            let label_btn = button(label_text)
-                .padding([theme::PAD_SM, theme::PAD_MD])
-                .style(theme::flat_button)
-                .on_press(Message::ActivateTab(*id));
-            let close_btn = button(text("×").size(theme::FONT_SIZE).color(theme::TEXT_DIM))
+            let accent = match tab.kind {
+                TabKind::Claude => theme::CLAUDE_ACCENT,
+                TabKind::Shell => theme::SHELL_ACCENT,
+            };
+            let label_btn = button(
+                row![
+                    text("●").size(8.0).color(accent),
+                    text(truncate(&tab.title, 22)).size(theme::FONT_SIZE),
+                ]
+                .spacing(theme::PAD_XS)
+                .align_y(Alignment::Center),
+            )
+            .padding([theme::PAD_SM, theme::PAD_MD])
+            .style(theme::flat_button)
+            .on_press(Message::ActivateTab(*id));
+            let close_btn = button(text("×").size(15.0).color(theme::TEXT_MUTED))
                 .padding([theme::PAD_XS + 2.0, theme::PAD_SM])
                 .style(theme::flat_button)
                 .on_press(Message::CloseTab(*id));
@@ -44,19 +54,17 @@ pub fn view<'a>(state: &'a ProjectState) -> Element<'a, Message> {
 
     let tabs_scroll = scrollable(tabs_row)
         .direction(scrollable::Direction::Horizontal(
-            scrollable::Scrollbar::default()
-                .width(4)
-                .scroller_width(4),
+            scrollable::Scrollbar::default().width(4).scroller_width(4),
         ))
         .width(Length::Fill);
 
     let actions = row![
-        button(text("+s").size(theme::FONT_SIZE))
-            .padding([theme::PAD_XS, theme::PAD_SM + 2.0])
+        button(text("+ shell").size(theme::FONT_SIZE))
+            .padding([theme::PAD_XS + 1.0, theme::PAD_SM + 2.0])
             .style(theme::secondary_button)
             .on_press(Message::NewShellTab),
-        button(text("+c").size(theme::FONT_SIZE))
-            .padding([theme::PAD_XS, theme::PAD_SM + 2.0])
+        button(text("+ claude").size(theme::FONT_SIZE))
+            .padding([theme::PAD_XS + 1.0, theme::PAD_SM + 2.0])
             .style(theme::primary_button)
             .on_press(Message::NewClaudeTab),
     ]
@@ -73,7 +81,7 @@ pub fn view<'a>(state: &'a ProjectState) -> Element<'a, Message> {
     .width(Length::Fill);
 
     container(bar)
-        .padding([theme::PAD_XS, theme::PAD_SM])
+        .padding([theme::PAD_SM, theme::PAD_MD])
         .width(Length::Fill)
         .style(theme::tab_bar_bg)
         .into()

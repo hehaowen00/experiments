@@ -29,6 +29,7 @@ pub struct ProjectState {
     pub project: Project,
     pub is_git_repo: bool,
     pub worktrees: Vec<Worktree>,
+    pub project_folders: Vec<PathBuf>,
     pub selected_wt: Option<PathBuf>,
     pub tabs: HashMap<TabId, Tab>,
     pub tab_order: Vec<TabId>,
@@ -209,11 +210,8 @@ impl App {
     }
 
     fn compute_pane_size(&self, window: iced::Size) -> iced::Size {
-        let sidebar = if self
-            .active_state()
-            .map_or(false, |s| s.is_git_repo)
-        {
-            200.0
+        let sidebar = if self.active_state().is_some() {
+            220.0
         } else {
             0.0
         };
@@ -338,6 +336,47 @@ impl App {
             Message::SelectWorktree(p) => {
                 if let Some(state) = self.active_state_mut() {
                     state.selected_wt = Some(p);
+                }
+            }
+            Message::SelectProjectFolder(p) => {
+                if let Some(state) = self.active_state_mut() {
+                    state.selected_wt = Some(p);
+                }
+            }
+            Message::SelectProjectRoot => {
+                if let Some(state) = self.active_state_mut() {
+                    state.selected_wt = None;
+                }
+            }
+            Message::AddProjectFolderClicked => {
+                if let Some(state) = self.active_state() {
+                    return Task::perform(
+                        pick_folder_in(state.project.path.clone()),
+                        Message::AddProjectFolderPicked,
+                    );
+                }
+            }
+            Message::AddProjectFolderPicked(Some(path)) => {
+                self.add_project_folder(path);
+            }
+            Message::AddProjectFolderPicked(None) => {}
+            Message::RemoveProjectFolderClicked(path) => {
+                let project_id = self.active_project.clone();
+                let mut err: Option<String> = None;
+                if let Some(pid) = project_id {
+                    if let Err(e) = db::delete_project_folder(&self.db, &pid, &path) {
+                        err = Some(format!("remove folder: {e:#}"));
+                    }
+                    let folders = db::list_project_folders(&self.db, &pid).unwrap_or_default();
+                    if let Some(state) = self.open_tabs.iter_mut().find(|p| p.project.id == pid) {
+                        state.project_folders = folders;
+                        if state.selected_wt.as_ref() == Some(&path) {
+                            state.selected_wt = None;
+                        }
+                    }
+                }
+                if err.is_some() {
+                    self.error = err;
                 }
             }
             Message::RefreshWorktrees => {
@@ -738,11 +777,13 @@ impl App {
         } else {
             Vec::new()
         };
+        let project_folders = db::list_project_folders(&self.db, &project.id).unwrap_or_default();
         let pid = project.id.clone();
         self.open_tabs.push(ProjectState {
             project,
             is_git_repo,
             worktrees,
+            project_folders,
             selected_wt: None,
             tabs: HashMap::new(),
             tab_order: Vec::new(),
@@ -880,6 +921,61 @@ impl App {
             }
         }
     }
+
+    fn add_project_folder(&mut self, path: PathBuf) {
+        let Some(project_id) = self.active_project.clone() else {
+            return;
+        };
+        let Some(project_root) = self
+            .open_tabs
+            .iter()
+            .find(|p| p.project.id == project_id)
+            .map(|state| state.project.path.clone())
+        else {
+            return;
+        };
+        let root = std::fs::canonicalize(&project_root).unwrap_or(project_root);
+        let canonical = match std::fs::canonicalize(&path) {
+            Ok(p) => p,
+            Err(e) => {
+                self.error = Some(format!("open folder: {e:#}"));
+                return;
+            }
+        };
+
+        if !canonical.is_dir() {
+            self.error = Some(format!("not a folder: {}", canonical.display()));
+            return;
+        }
+        if canonical == root {
+            if let Some(state) = self
+                .open_tabs
+                .iter_mut()
+                .find(|p| p.project.id == project_id)
+            {
+                state.selected_wt = None;
+            }
+            return;
+        }
+        if !canonical.starts_with(&root) {
+            self.error = Some(format!("folder must be inside {}", root.to_string_lossy()));
+            return;
+        }
+
+        if let Err(e) = db::insert_project_folder(&self.db, &project_id, &canonical) {
+            self.error = Some(format!("add folder: {e:#}"));
+            return;
+        }
+        let folders = db::list_project_folders(&self.db, &project_id).unwrap_or_default();
+        if let Some(state) = self
+            .open_tabs
+            .iter_mut()
+            .find(|p| p.project.id == project_id)
+        {
+            state.project_folders = folders;
+            state.selected_wt = Some(canonical);
+        }
+    }
 }
 
 /// Returns true if the terminal was created and inserted.
@@ -899,7 +995,9 @@ fn spawn_tab(
             font_type: iced::Font::MONOSPACE,
             ..Default::default()
         },
-        theme: iced_term::settings::ThemeSettings::default(),
+        theme: iced_term::settings::ThemeSettings::new(Box::new(
+            crate::ui::theme::terminal_palette(),
+        )),
         backend: iced_term::settings::BackendSettings {
             program,
             args,
@@ -917,15 +1015,12 @@ fn spawn_tab(
             let _ = term.handle(iced_term::Command::AddBindings(shift_enter_binding()));
 
             let pty_name = if claude { "claude" } else { "shell" };
-            let in_main = if state.worktrees.is_empty() {
-                true
-            } else {
-                state
+            let in_main = cwd == state.project.path
+                || state
                     .worktrees
                     .iter()
                     .find(|w| w.path == cwd)
-                    .map_or(false, |w| w.is_main)
-            };
+                    .map_or(false, |w| w.is_main);
             let folder = cwd.file_name().and_then(|s| s.to_str()).unwrap_or("");
             let title = if in_main || folder.is_empty() {
                 pty_name.to_string()
@@ -990,3 +1085,11 @@ async fn pick_folder() -> Option<PathBuf> {
         .map(|h| h.path().to_path_buf())
 }
 
+async fn pick_folder_in(path: PathBuf) -> Option<PathBuf> {
+    rfd::AsyncFileDialog::new()
+        .set_title("Select a folder inside this project")
+        .set_directory(path)
+        .pick_folder()
+        .await
+        .map(|h| h.path().to_path_buf())
+}

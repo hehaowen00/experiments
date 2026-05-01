@@ -24,6 +24,11 @@ pub enum Message {
     WorktreesLoaded(Vec<Worktree>),
     SelectWorktree(PathBuf),
     RefreshWorktrees,
+    SelectProjectRoot,
+    SelectProjectFolder(PathBuf),
+    AddProjectFolderClicked,
+    AddProjectFolderPicked(Option<PathBuf>),
+    RemoveProjectFolderClicked(PathBuf),
 
     // Worktree modal
     OpenAddWorktreeModal,

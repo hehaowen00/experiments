@@ -1,4 +1,4 @@
-use iced::widget::{column, container, row, text, Space};
+use iced::widget::{button, column, container, row, text, Space};
 use iced::{Alignment, Element, Length};
 
 use crate::app::ProjectState;
@@ -22,14 +22,10 @@ pub fn body<'a>(state: &'a ProjectState) -> Element<'a, Message> {
         .width(Length::Fill)
         .height(Length::Fill);
 
-    if state.is_git_repo {
-        row![sidebar::view(state), main_col]
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .into()
-    } else {
-        main_col.into()
-    }
+    row![sidebar::view(state), main_col]
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .into()
 }
 
 pub fn status_bar<'a>(state: &'a ProjectState) -> Element<'a, Message> {
@@ -42,12 +38,14 @@ pub fn status_bar<'a>(state: &'a ProjectState) -> Element<'a, Message> {
 
     container(
         row![
-            text("cwd").size(theme::FONT_SIZE).color(theme::TEXT_DIM),
+            container(text("cwd").size(theme::FONT_SM))
+                .padding([1.0, theme::PAD_XS + 2.0])
+                .style(theme::badge_accent),
             text(theme::truncate_middle(&cwd.to_string_lossy(), 80)).size(theme::FONT_SIZE),
             Space::new().width(Length::Fill),
-            text(format!("· {} {}", n, label))
-                .size(theme::FONT_SIZE)
-                .color(theme::TEXT_DIM),
+            container(text(format!("{} {}", n, label)).size(theme::FONT_SM))
+                .padding([1.0, theme::PAD_XS + 2.0])
+                .style(theme::badge),
         ]
         .spacing(theme::PAD_SM)
         .align_y(Alignment::Center)
@@ -61,17 +59,29 @@ pub fn status_bar<'a>(state: &'a ProjectState) -> Element<'a, Message> {
 fn empty_terminal_placeholder<'a>() -> Element<'a, Message> {
     let card = container(
         column![
-            text("No terminal open").size(theme::FONT_SIZE),
-            text("Use the buttons above to start one.")
+            text("No terminal open").size(20.0),
+            text("Start a shell or Claude session for the selected folder.")
                 .size(theme::FONT_SIZE)
                 .color(theme::TEXT_DIM),
+            row![
+                button(text("+ shell").size(theme::FONT_SIZE))
+                    .padding([theme::PAD_SM, theme::PAD_MD])
+                    .style(theme::secondary_button)
+                    .on_press(Message::NewShellTab),
+                button(text("+ claude").size(theme::FONT_SIZE))
+                    .padding([theme::PAD_SM, theme::PAD_MD])
+                    .style(theme::primary_button)
+                    .on_press(Message::NewClaudeTab),
+            ]
+            .spacing(theme::PAD_SM)
+            .align_y(Alignment::Center),
         ]
-        .spacing(theme::PAD_SM)
+        .spacing(theme::PAD_MD)
         .align_x(Alignment::Center),
     )
-    .padding(theme::PAD_LG)
-    .max_width(360.0)
-    .style(theme::card);
+    .padding(theme::PAD_XL)
+    .max_width(460.0)
+    .style(theme::empty_card);
 
     container(card)
         .center_x(Length::Fill)

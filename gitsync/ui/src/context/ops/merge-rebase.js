@@ -61,6 +61,7 @@ export function createMergeRebaseOps({
       !(await showConfirm(
         `Rebase "${status.branch}" onto "${branch}"?`,
         '',
+        { confirmLabel: 'Rebase', confirmStyle: 'primary' },
       ))
     )
       return;

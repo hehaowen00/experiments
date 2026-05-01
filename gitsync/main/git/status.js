@@ -54,6 +54,11 @@ function register({ mainWindow, git, gitRaw }) {
             origPath = origPath.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, '\\');
           }
         }
+        // Nested git repos (submodules, worktrees, nested repos) are reported
+        // with a trailing slash by `git status -uall`. Strip it so the file
+        // tree treats them as leaf entries under the parent folder rather
+        // than empty-named children of a synthetic directory.
+        if (filepath.endsWith('/')) filepath = filepath.slice(0, -1);
         const fullPath = path.join(repoPath, filepath);
         const isGitRepo = fs.existsSync(path.join(fullPath, '.git'));
         return { index: xy[0], working: xy[1], path: filepath, origPath, isGitRepo };

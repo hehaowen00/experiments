@@ -523,6 +523,30 @@ input, textarea {
   border-left: 2px solid var(--accent);
 }
 
+.collection-item.repo-drop-above,
+.collection-item.repo-drop-below {
+  position: relative;
+}
+
+.collection-item.repo-drop-above::before,
+.collection-item.repo-drop-below::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--accent);
+  pointer-events: none;
+}
+
+.collection-item.repo-drop-above::before {
+  top: -6px;
+}
+
+.collection-item.repo-drop-below::after {
+  bottom: -6px;
+}
+
 .collection-item .name {
   flex: 1;
   font-weight: 500;

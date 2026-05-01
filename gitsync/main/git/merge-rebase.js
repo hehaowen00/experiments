@@ -33,6 +33,33 @@ async function clearMarker(repoPath, git) {
   try { fs.unlinkSync(await markerPath(repoPath, git)); } catch {}
 }
 
+function isEmptyRebaseCommitError(message) {
+  return message.includes('No changes') ||
+    message.includes('previous cherry-pick is now empty') ||
+    message.includes('nothing to commit');
+}
+
+async function hasUnmergedFiles(repoPath, git) {
+  const out = await git(repoPath, ['ls-files', '-u']);
+  return out.trim().length > 0;
+}
+
+async function hasStagedChanges(repoPath, gitRaw) {
+  const result = await gitRaw(repoPath, ['diff', '--cached', '--quiet']);
+  if (result.exitCode !== 0 && result.exitCode !== 1) {
+    throw new Error(result.stderr || 'Failed to inspect staged changes');
+  }
+  return result.exitCode === 1;
+}
+
+async function skipEmptyRebaseCommit(repoPath, git, gitRaw, originalMessage) {
+  if (!isEmptyRebaseCommitError(originalMessage)) return null;
+  if (await hasUnmergedFiles(repoPath, git)) return null;
+  if (await hasStagedChanges(repoPath, gitRaw)) return null;
+  const out = await git(repoPath, ['rebase', '--skip']);
+  return out || 'Skipped empty rebase commit';
+}
+
 function register({ mainWindow, git, gitRaw }) {
   ipcMain.handle('git:merge', async (_, repoPath, branch, opts = {}) => {
     try {
@@ -75,10 +102,29 @@ function register({ mainWindow, git, gitRaw }) {
 
   ipcMain.handle('git:rebaseContinue', async (_, repoPath) => {
     try {
-      const out = await git(repoPath, ['rebase', '--continue']);
+      const out = await git(repoPath, ['rebase', '--continue'], {
+        env: { ...process.env, GIT_EDITOR: 'true' },
+      });
       await popStashIfNeeded(repoPath, git);
       return { ok: true, output: out };
     } catch (e) {
+      try {
+        const skipped = await skipEmptyRebaseCommit(
+          repoPath,
+          git,
+          gitRaw,
+          e.message,
+        );
+        if (skipped !== null) {
+          await popStashIfNeeded(repoPath, git);
+          return { ok: true, output: skipped };
+        }
+      } catch (skipError) {
+        if (skipError.message.includes('CONFLICT') || skipError.message.includes('could not apply')) {
+          return { ok: false, conflict: true, output: skipError.message };
+        }
+        return { error: skipError.message };
+      }
       if (e.message.includes('CONFLICT') || e.message.includes('could not apply')) {
         return { ok: false, conflict: true, output: e.message };
       }

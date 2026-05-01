@@ -34,7 +34,8 @@ function initDb() {
       category_id TEXT DEFAULT NULL,
       pinned INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      last_used TEXT DEFAULT ''
+      last_used TEXT DEFAULT '',
+      sort_order INTEGER NOT NULL DEFAULT 0
     );
 
     CREATE TABLE IF NOT EXISTS git_categories (
@@ -61,6 +62,11 @@ function initDb() {
   const cols = db.pragma('table_info(git_repos)').map(c => c.name);
   if (!cols.includes('identity_id')) {
     db.exec('ALTER TABLE git_repos ADD COLUMN identity_id TEXT DEFAULT NULL');
+  }
+  if (!cols.includes('sort_order')) {
+    db.exec('ALTER TABLE git_repos ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0');
+    // Seed sort_order from existing rowid so the initial order is stable.
+    db.exec('UPDATE git_repos SET sort_order = rowid');
   }
 
   // Migrate git_worktree_names from (repo_id, wt_path) to (wt_path)

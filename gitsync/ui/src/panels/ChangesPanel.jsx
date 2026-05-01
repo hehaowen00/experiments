@@ -170,6 +170,34 @@ export default function ChangesPanel() {
   const staged = () => stagedFiles(ws.status.files);
   const unstaged = () => unstagedFiles(ws.status.files);
   const untracked = () => [...untrackedFiles(ws.status.files), ...ws.allFiles()];
+  const conflictActions = createMemo(() => {
+    if (ws.opState() === 'rebase') {
+      return {
+        ours: {
+          label: 'Branch',
+          icon: 'fa-solid fa-code-branch',
+          title: 'Accept version from the branch being rebased onto',
+        },
+        theirs: {
+          label: 'Commit',
+          icon: 'fa-solid fa-file-lines',
+          title: 'Accept version from the commit being replayed',
+        },
+      };
+    }
+    return {
+      ours: {
+        label: 'Ours',
+        icon: 'fa-solid fa-house',
+        title: 'Accept ours (current branch)',
+      },
+      theirs: {
+        label: 'Theirs',
+        icon: 'fa-solid fa-cloud',
+        title: 'Accept theirs (incoming branch)',
+      },
+    };
+  });
 
   const stashFiles = () => ws.stashDetail.files || [];
 
@@ -242,11 +270,11 @@ export default function ChangesPanel() {
             <div class="git-section-header" onClick={() => ws.toggleSection('conflicts')}>
               <Icon name={ws.collapsedSections().has('conflicts') ? 'fa-solid fa-chevron-right' : 'fa-solid fa-chevron-down'} class="git-section-chevron" />
               <span class="git-conflict-label">Conflicts ({conflicts().length})</span>
-              <button class="btn btn-ghost btn-xs" onClick={(e) => { e.stopPropagation(); ws.resolveOurs(conflicts().map(f => f.path)); }} title="Accept all ours">
-                Ours
+              <button class="btn btn-ghost btn-xs" onClick={(e) => { e.stopPropagation(); ws.resolveOurs(conflicts().map(f => f.path)); }} title={`Accept all ${conflictActions().ours.label.toLowerCase()} versions`}>
+                {conflictActions().ours.label}
               </button>
-              <button class="btn btn-ghost btn-xs" onClick={(e) => { e.stopPropagation(); ws.resolveTheirs(conflicts().map(f => f.path)); }} title="Accept all theirs">
-                Theirs
+              <button class="btn btn-ghost btn-xs" onClick={(e) => { e.stopPropagation(); ws.resolveTheirs(conflicts().map(f => f.path)); }} title={`Accept all ${conflictActions().theirs.label.toLowerCase()} versions`}>
+                {conflictActions().theirs.label}
               </button>
             </div>
             <Show when={!ws.collapsedSections().has('conflicts')}>
@@ -260,11 +288,11 @@ export default function ChangesPanel() {
                     <span class="git-file-status git-conflict">U</span>
                     <span class="git-file-path" title={file.path}>{filename}</span>
                     <span class="git-file-actions">
-                      <button class="btn btn-ghost btn-xs" onClick={(e) => { e.stopPropagation(); ws.resolveOurs([file.path]); }} title="Accept ours (local)">
-                        <Icon name="fa-solid fa-house" />
+                      <button class="btn btn-ghost btn-xs" onClick={(e) => { e.stopPropagation(); ws.resolveOurs([file.path]); }} title={conflictActions().ours.title}>
+                        <Icon name={conflictActions().ours.icon} />
                       </button>
-                      <button class="btn btn-ghost btn-xs" onClick={(e) => { e.stopPropagation(); ws.resolveTheirs([file.path]); }} title="Accept theirs (remote)">
-                        <Icon name="fa-solid fa-cloud" />
+                      <button class="btn btn-ghost btn-xs" onClick={(e) => { e.stopPropagation(); ws.resolveTheirs([file.path]); }} title={conflictActions().theirs.title}>
+                        <Icon name={conflictActions().theirs.icon} />
                       </button>
                     </span>
                   </div>

@@ -88,6 +88,7 @@ contextBridge.exposeInMainWorld('api', {
   gitRepoDelete: (id) => ipcRenderer.invoke('gitRepo:delete', id),
   gitRepoPin: (id, pinned) => ipcRenderer.invoke('gitRepo:pin', id, pinned),
   gitRepoSetCategory: (id, categoryId) => ipcRenderer.invoke('gitRepo:setCategory', id, categoryId),
+  gitRepoReorder: (orderedIds) => ipcRenderer.invoke('gitRepo:reorder', orderedIds),
   gitRepoTouchLastUsed: (id) => ipcRenderer.invoke('gitRepo:touchLastUsed', id),
 
   // Git Client - categories

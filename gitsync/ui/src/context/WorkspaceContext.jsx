@@ -2,6 +2,7 @@ import {
   createContext,
   useContext,
   createSignal,
+  createEffect,
   onMount,
   onCleanup,
 } from 'solid-js';
@@ -586,14 +587,36 @@ export function WorkspaceProvider(props) {
     window.api.gitWatchRepo(repoPath);
     let fsDebounce = null;
     let refreshing = false;
+    let pending = false;
+    function runRefresh() {
+      if (refreshing) {
+        pending = true;
+        return;
+      }
+      refreshing = true;
+      refresh().finally(() => {
+        refreshing = false;
+        if (pending) {
+          pending = false;
+          runRefresh();
+        }
+      });
+      loadCurrentTabData();
+    }
     removeFsListener = window.api.onFsChanged((changedPath) => {
-      if (changedPath !== repoPath || operating() || refreshing) return;
+      if (changedPath !== repoPath) return;
+      if (operating()) {
+        pending = true;
+        return;
+      }
       clearTimeout(fsDebounce);
-      fsDebounce = setTimeout(() => {
-        refreshing = true;
-        refresh().finally(() => { refreshing = false; });
-        loadCurrentTabData();
-      }, 300);
+      fsDebounce = setTimeout(runRefresh, 300);
+    });
+    createEffect(() => {
+      if (!operating() && pending && !refreshing) {
+        pending = false;
+        runRefresh();
+      }
     });
     removeProgressListener = window.api.onGitProgress((line) => {
       setProgressLine(line);

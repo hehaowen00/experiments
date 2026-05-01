@@ -56,6 +56,14 @@ fn migrate(conn: &Connection) -> Result<()> {
             PRIMARY KEY (project_id, slot),
             FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
         );
+
+        CREATE TABLE IF NOT EXISTS project_folders (
+            project_id TEXT NOT NULL,
+            path       TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            PRIMARY KEY (project_id, path),
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+        );
         "#,
     )?;
     Ok(())
@@ -182,6 +190,38 @@ pub fn touch_claude_session(db: &Db, session_id: &str) -> Result<()> {
     conn.execute(
         "UPDATE claude_sessions SET last_active = datetime('now') WHERE session_id = ?1",
         params![session_id],
+    )?;
+    Ok(())
+}
+
+pub fn list_project_folders(db: &Db, project_id: &str) -> Result<Vec<PathBuf>> {
+    let conn = db.borrow();
+    let mut stmt = conn.prepare(
+        "SELECT path FROM project_folders
+         WHERE project_id = ?1 ORDER BY path",
+    )?;
+    let rows = stmt
+        .query_map(params![project_id], |row| {
+            Ok(row.get::<_, String>(0)?.into())
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    Ok(rows)
+}
+
+pub fn insert_project_folder(db: &Db, project_id: &str, path: &std::path::Path) -> Result<()> {
+    let conn = db.borrow();
+    conn.execute(
+        "INSERT OR IGNORE INTO project_folders (project_id, path) VALUES (?1, ?2)",
+        params![project_id, path.to_string_lossy()],
+    )?;
+    Ok(())
+}
+
+pub fn delete_project_folder(db: &Db, project_id: &str, path: &std::path::Path) -> Result<()> {
+    let conn = db.borrow();
+    conn.execute(
+        "DELETE FROM project_folders WHERE project_id = ?1 AND path = ?2",
+        params![project_id, path.to_string_lossy()],
     )?;
     Ok(())
 }
